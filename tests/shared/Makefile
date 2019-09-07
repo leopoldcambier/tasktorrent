@@ -1,7 +1,7 @@
 include Makefile.conf
 
-INCLUDE  = $(INCDIR)
-LIBS     = $(EXTRA_LIBDIR)
+INCLUDE  = -I../../src 
+LIBS     =
 
 OBJDIR   = ../../build
 SRCDIR   = ../../src
@@ -11,16 +11,7 @@ SRCDIR   = ../../src
 default: all
 all: tests_serialize tests
 
-ifeq ($(USE_MKL),1)
-    CFLAGS += -DUSE_MKL
-endif
-ifeq ($(USE_MKL),1)
-    BLAS_LDFLAGS = -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl 
-else
-    BLAS_LDFLAGS = -lblas -llapack
-endif
-LDFLAGS += $(BLAS_LDFLAGS)
-CXX      += -pthread
+CXX  += -pthread
 
 DEPS = $(SRCDIR)/runtime.hpp $(SRCDIR)/util.hpp $(SRCDIR)/serialization.hpp $(SRCDIR)/views.hpp $(SRCDIR)/apply_functions.hpp $(SRCDIR)/functional_extra.hpp
 OBJ  = $(OBJDIR)/serialization.o $(OBJDIR)/util.o

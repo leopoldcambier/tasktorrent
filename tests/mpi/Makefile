@@ -1,7 +1,6 @@
 include Makefile.conf
-INCDIR = ../../src
 
-INCLUDE  = -I$(INCDIR)
+INCLUDE  = -I ../../src/
 OBJDIR   = ../../build
 SRCDIR   = ../../src
 
@@ -10,15 +9,6 @@ SRCDIR   = ../../src
 default: all
 all: cholesky ddot_test tests_comms_internals tests_communicator tests_completion
 
-ifeq ($(USE_MKL),1)
-    CFLAGS += -DUSE_MKL
-endif
-ifeq ($(USE_MKL),1)
-    BLAS_LDFLAGS = -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl 
-else
-    BLAS_LDFLAGS = -lblas -llapack
-endif
-LDFLAGS += $(BLAS_LDFLAGS)
 CXX += -pthread
 
 DEPS = $(SRCDIR)/runtime.hpp $(SRCDIR)/util.hpp $(SRCDIR)/communications.hpp $(SRCDIR)/serialization.hpp $(SRCDIR)/views.hpp $(SRCDIR)/apply_functions.hpp $(SRCDIR)/functional_extra.hpp
