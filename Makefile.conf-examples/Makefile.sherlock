@@ -1,0 +1,29 @@
+# run 
+#  module load scotch eigen tbb
+
+GTEST_INCDIR = /home/users/lcambier/Softwares/googletest/googletest/include
+GTEST_LIBDIR = /home/users/lcambier/Softwares/googletest/googletest/make
+BOOST_INCDIR = /share/software/user/open/boost/1.69.0/include
+EIGEN_INCDIR = /share/software/user/open/eigen/3.3.3/include/eigen3
+
+TBB_LIBDIR = /share/software/user/restricted/tbb/2019/tbb/lib/intel64/gcc4.7
+TBB_INCDIR = /share/software/user/restricted/tbb/2019/tbb/include
+
+SCOTCH_INCDIR = /share/software/user/open/scotch/6.0.4/include
+SCOTCH_LIBDIR = /share/software/user/open/scotch/6.0.4/lib
+
+USE_MKL = 1
+
+ifeq ($(USE_MKL),1)
+    BLAS_INCDIR  = ${MKLROOT}/include
+    BLAS_LIBDIR  = ${MKLROOT}/lib/intel64
+else
+    BLAS_INCDIR  = /share/software/user/open/openblas/0.2.19/include
+    BLAS_LIBDIR  = /share/software/user/open/openblas/0.2.19/lib
+endif
+
+MMIO_INCDIR = /home/users/lcambier/linalgCpp/mmio
+
+LDFLAGS = -l tbb
+CC = UPCXX_THREADMODE=par CC=mpicc CXX=mpicxx UPCXX_GASNET_CONDUIT=ibv upcxx
+CFLAGS = -Wall --std=c++11 -O3 -lz -Wno-sign-compare
