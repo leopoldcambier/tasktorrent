@@ -8,7 +8,7 @@ _A parallel runtime library for executing concurrent directed acyclic graphs of 
 
 In this short tutorial, we explain the main features of TaskTorrent through a simple example with 4 tasks distributed on 2 ranks. The complete code can be found [here](https://github.com/leopoldcambier/ptdag/blob/master/tutorial/tuto.cpp), along with an example [Makefile](https://github.com/leopoldcambier/ptdag/blob/master/tutorial/Makefile). The following picture shows the dependencies between tasks
 
-![Deps pic](https://github.com/leopoldcambier/ptdag/raw/master/misc/deps.png "Dependencies Tutorial")
+![Deps pic](https://raw.githubusercontent.com/leopoldcambier/tasktorrent/master/misc/deps.png "Dependencies Tutorial")
 
 Rank 0 should run task 0 and 1, while rank 1 should run task 2 and 3. This is not a typical graph of tasks from a scientific code but it illustrates the main functionalities of c.
 
