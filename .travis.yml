@@ -1,0 +1,13 @@
+sudo: required
+dist: xenial
+before_install:
+  - sudo apt-get install openmpi-bin libopenmpi-dev
+language: cpp
+compiler:
+  - gcc
+install:
+  - wget http://bitbucket.org/eigen/eigen/get/3.3.7.tar.bz2 -O eigen-3.3.7.tar.bz2 && tar -xvf eigen-3.3.7.tar.bz2
+  - git clone https://github.com/google/googletest.git && cd googletest && mkdir build && cd build && cmake .. && make && cd ../../
+script:
+  - cd tests/shared/ && ./run_tests.sh && cd ../../
+  - cd tests/mpi     && ./run_tests.sh && cd ../../

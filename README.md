@@ -1,4 +1,5 @@
-# TaskTorrent
+# TaskTorrent 
+[![Build Status](https://travis-ci.org/leopoldcambier/tasktorrent.svg?branch=master)](https://travis-ci.org/leopoldcambier/tasktorrent)
 
 _A parallel runtime library for executing concurrent directed acyclic graphs of tasks with a focus on speed, portability, light weight, and user friendly interface_
 

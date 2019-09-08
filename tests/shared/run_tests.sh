@@ -1,6 +1,6 @@
 #!/bin/bash
 
-make all || exit 1
+(make clean && make all) || exit 1
 
 ./tests_serialize
 
