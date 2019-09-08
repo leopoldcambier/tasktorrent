@@ -1,6 +1,6 @@
 #!/bin/bash
 
-(make clean &&  make all) || exit 1
+(make clean && make all) || exit 1
 
 CMD="mpirun -mca shmem posix -mca btl ^tcp -n 2 ./tests_communicator"
 CMD_OSBS="mpirun -mca shmem posix -mca btl ^tcp -oversubscribe"
