@@ -761,13 +761,13 @@ private:
 public:
     Taskflow(Threadpool_shared *tp_, int verb_ = 0) : tp(tp_), verb(verb_), dep_map(tp_->size())
     {
-        f_name = [](K k) { return "_"; };
-        f_run = [](K k) { printf("Taskflow: undefined task function\n"); };
-        f_fulfill = [](K k) {};
-        f_mapping = [](K k) {printf("Taskflow: undefined mapping function\n"); return 0; };
-        f_binding = [](K k) {return false; /* false = migratable [default]; true = bound to thread */ };
-        f_indegree = [](K k) {printf("Taskflow: undefined indegree function\n"); return 0; };
-        f_prio = [](K k) { return 0.0; };
+        f_name = [](K k) { (void)k; return "_"; };
+        f_run = [](K k) { (void)k; printf("Taskflow: undefined task function\n"); };
+        f_fulfill = [](K k) { (void)k; };
+        f_mapping = [](K k) { (void)k; printf("Taskflow: undefined mapping function\n"); return 0; };
+        f_binding = [](K k) { (void)k; return false; /* false = migratable [default]; true = bound to thread */ };
+        f_indegree = [](K k) { (void)k; printf("Taskflow: undefined indegree function\n"); return 0; };
+        f_prio = [](K k) { (void)k; return 0.0; };
     }
 
     Task *make_task(K k, int &where, bool &binding)
