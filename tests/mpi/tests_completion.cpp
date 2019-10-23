@@ -22,7 +22,6 @@ int verb = 0; // Can be changed to vary the verbosity of the messages
 TEST(completion, mini)
 {
     const int rank = comm_rank();
-    const int n_ranks = comm_size();
 
     printf("Rank %d hello from %s\n", rank, processor_name().c_str());
 

@@ -29,11 +29,11 @@ int N_ = 20;
 
 void cholesky(int n_threads, int n, int N)
 {
-	// MPI info
+    // MPI info
     const int rank = comm_rank();
     const int n_ranks = comm_size();
 
-	// Form the matrix : let every node have a copy of A for now
+    // Form the matrix : let every node have a copy of A for now
     std::default_random_engine gen;
     std::uniform_int_distribution<> dist(-1, 1);
     auto rnd = [&](int i, int j) { return i == j ? 4 : i+j; };
@@ -62,11 +62,8 @@ void cholesky(int n_threads, int n, int N)
     auto am_trsm = comm.make_active_msg(
         [&](view<double> &vkk, int2& ki) {
         	int k = ki[0];
-        	int i = ki[1];
-
         	A.block(k * n, k * n, n, n) = Map<MatrixXd> (vkk.data(), n,n);
           	trsm_tf.fulfill_promise(ki);
-          	
         });
 
     auto am_gemm = comm.make_active_msg(
@@ -207,9 +204,8 @@ void cholesky(int n_threads, int n, int N)
 
         timer t0 = wctime();
         if (rank == 0){
-    		potf_tf.fulfill_promise(0);
+            potf_tf.fulfill_promise(0);
         }
-
     	tp.join();
     	timer t1 = wctime();
 

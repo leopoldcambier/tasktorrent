@@ -74,9 +74,10 @@ struct DepsLogger
     DepsLogger();
     void add_event(DepsEvent e);
 };
-} // namespace ttor
 
 std::ostream &operator<<(std::ostream &os, ttor::DepsLogger &t);
 std::ostream &operator<<(std::ostream &os, ttor::Logger &t);
+
+} // namespace ttor
 
 #endif

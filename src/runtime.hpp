@@ -15,6 +15,7 @@
 #include <cassert>
 #include <algorithm>
 #include <numeric>
+#include <functional>
 
 #include "util.hpp"
 
@@ -163,17 +164,17 @@ private:
 
 public:
     Threadpool_shared(int n_threads, int verb_ = 0, string basename_ = "Wk_", bool start_immediately = true)
-        : join_status(0),         // used to signal completion
-          tasks_in_flight(0),     // number of tasks in flight
+        : tasks_in_flight(0),     // number of tasks in flight
+          join_status(0),         // used to signal completion
+          verb(verb_), // verbosity level
+          basename(basename_),
           threads(n_threads),     // number of threads
           ready_tasks(n_threads), // pool of tasks ready to run
           ready_tasks_mtx(n_threads),
           bound_tasks(n_threads),
           bound_tasks_mtx(n_threads),
-          verb(verb_), // verbosity level
           log(false),
           logger(nullptr),
-          basename(basename_),
           total_tasks(0) // debug only
     {
         if (start_immediately)

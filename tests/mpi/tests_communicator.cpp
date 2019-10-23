@@ -263,7 +263,6 @@ TEST(ttor, critical1)
 {
     int n_threads = n_threads_;
     int rank = comm_rank();
-    int n_ranks = comm_size();
 
     Logger log(1000000);
 
@@ -336,7 +335,6 @@ TEST(ttor, critical2)
 {
     int n_threads = n_threads_;
     int rank = comm_rank();
-    int n_ranks = comm_size();
 
     Logger log(1000000);
 
@@ -457,7 +455,9 @@ void test_sparse_graph(int n_tasks_per_rank, bool self)
         {
             out_deps[i][j] = deps.front();
             if (j > 0)
+            {
                 ASSERT_GT(out_deps[i][j], out_deps[i][j - 1]);
+            }
             ++indegree[deps.front()];
             deps.pop();
             ++j;

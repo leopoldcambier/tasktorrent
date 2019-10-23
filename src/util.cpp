@@ -86,26 +86,27 @@ namespace ttor {
             printf("DepsLogger::add_event buffer full\n");
         }
     }
-}
 
-std::ostream &operator << (std::ostream &os, ttor::DepsLogger &t)  {
-    os << "digraph g{\n";
-    for(int i = 0; i < std::min(int(t.events.size()), t.i.load()); i++) {
-        auto e = t.events[i];
-        os << e.self_name << " -> " << e.out_deps_name << ";\n";
+    std::ostream &operator << (std::ostream &os, ttor::DepsLogger &t)  {
+        os << "digraph g{\n";
+        for(int i = 0; i < std::min(int(t.events.size()), t.i.load()); i++) {
+            auto e = t.events[i];
+            os << e.self_name << " -> " << e.out_deps_name << ";\n";
+        }
+        os << "}\n";
+        return os;
     }
-    os << "}\n";
-    return os;
-}
 
-std::ostream &operator << (std::ostream &os, ttor::Logger &t) {
-    if(t.was_full()) {
-        printf("Warning: buffer was full at some point during the profiling\n");
+    std::ostream &operator << (std::ostream &os, ttor::Logger &t) {
+        if(t.was_full()) {
+            printf("Warning: buffer was full at some point during the profiling\n");
+        }
+        os << std::setprecision(64);
+        for(int i = 0; i < t.n_events(); i++) {
+            const auto& e = t.get_events()[i];
+            os << e->name << "," << ttor::time(e->start) << "," << ttor::time(e->end) << "\n";
+        }
+        return os;
     }
-    os << std::setprecision(64);
-    for(int i = 0; i < t.n_events(); i++) {
-        const auto& e = t.get_events()[i];
-        os << e->name << "," << ttor::time(e->start) << "," << ttor::time(e->end) << "\n";
-    }
-    return os;
+    
 }
