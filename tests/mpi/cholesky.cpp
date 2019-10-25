@@ -33,17 +33,19 @@ void cholesky(int n_threads, int n, int N, int p, int q)
     // MPI info
     const int rank = comm_rank();
     const int n_ranks = comm_size();
+    printf("[%d] Hello from %s\n", comm_rank(), processor_name().c_str());
 
     assert(p * q == n_ranks);
+    assert(p >= 1);
+    assert(q >= 1);
 
     // Form the matrix : let every node have a copy of A for now
-    std::default_random_engine gen;
-    std::uniform_int_distribution<> dist(-1, 1);
-    auto rnd = [&](int i, int j) { return i == j ? 4 : i+j; };
-
+    // std::default_random_engine gen;
+    // std::uniform_int_distribution<> dist(-1, 1);
+    auto rnd = [&](int i, int j) { return i == j ? 1e12 : i+j; };
     MatrixXd A_ = MatrixXd::NullaryExpr(N * n, N * n, rnd);
-
-    MatrixXd A = A_ * A_.transpose();
+    // MatrixXd A = A_ * A_.transpose();
+    MatrixXd A = A_;
     MatrixXd Aref = A;
     A = A.triangularView<Lower>();
 
@@ -57,6 +59,21 @@ void cholesky(int n_threads, int n, int N, int p, int q)
         assert(r <= n_ranks);
         return r;
     };
+
+    // Block the matrix for every node
+    // Store it in a map
+    // Later on we can probably optimize this, to avoid storing the whole thing
+    // Note: concurrent access to the map should _NOT_ modify it, otherwise we need a lock
+    map<int2, MatrixXd> Mat;
+    for(int i = 0; i < N; i++) {
+        for(int j = 0; j <= i; j++) {
+            if(block2rank({i,j}) == rank) {
+                Mat[{i,j}] = A.block(i * n, j * n, n, n);
+            } else {
+                Mat[{i,j}] = MatrixXd::Zero(n, n);
+            }
+        }
+    }
 
     // Factorize
     {
@@ -77,8 +94,8 @@ void cholesky(int n_threads, int n, int N, int p, int q)
         // Active messages
         // Sends a pivot and trigger multiple trsms in one columns
         auto am_trsm = comm.make_active_msg( 
-            [&](view<double> &Lkk, int& j, view<int>& is) {        	
-                A.block(j * n, j * n, n, n) = Map<MatrixXd>(Lkk.data(), n, n);
+            [&](view<double> &Lkk, int& j, view<int>& is) {
+                Mat.at({j,j}) = Map<MatrixXd>(Lkk.data(), n, n);
                 for(auto& i: is) {
                     trsm_tf.fulfill_promise({i,j});
                 }
@@ -87,7 +104,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
         // Sends a panel bloc and trigger multiple gemms
         auto am_gemm = comm.make_active_msg(
             [&](view<double> &Lij, int& i, int& j, view<int2>& ijs) {
-                A.block(i * n, j * n, n, n) = Map<MatrixXd>(Lij.data(), n, n);
+                Mat.at({i,j}) = Map<MatrixXd>(Lij.data(), n, n);
                 for(auto& ij: ijs) {
                     int gi = ij[0];
                     int gj = ij[1];
@@ -104,9 +121,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                 return 1;
             })
             .set_task([&](int j) {
-                LLT<MatrixXd> llt;
-                llt.compute(A.block(j * n, j * n, n, n).selfadjointView<Lower>());
-                A.block(j * n, j * n, n, n) = llt.matrixL();           
+                LLT<Ref<MatrixXd>> llt(Mat.at({j,j}));
             })
             .set_fulfill([&](int j) {
                 // Dependencies
@@ -122,15 +137,16 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                 // Send data & trigger tasks
                 for(auto& p: to_fulfill) {
                     int r = p.first;
+                    // Task is local. Just fulfill.
                     if(r == rank) {
                         for(auto& i: p.second) {
                             trsm_tf.fulfill_promise({i,j});
                         }
+                    // Task is remote. Send data and fulfill.
                     } else {
-                        MatrixXd Lkk = A.block(j * n, j * n, n, n);
-                        auto Lkkv = view<double>(Lkk.data(), n*n);
+                        auto Ljjv = view<double>(Mat.at({j,j}).data(), n*n);
                         auto isv = view<int>(p.second.data(), p.second.size());
-                        am_trsm->send(r, Lkkv, j, isv);
+                        am_trsm->send(r, Ljjv, j, isv);
                     }
                 }
             })
@@ -151,8 +167,8 @@ void cholesky(int n_threads, int n, int N, int p, int q)
             .set_task([&](int2 ij) {
                 int i = ij[0];
                 int j = ij[1];
-                auto L = A.block(j * n, j * n, n, n).triangularView<Lower>().transpose();
-                A.block(i * n, j * n, n, n) = L.solve<OnTheRight>(A.block(i * n, j * n, n, n));
+                auto L = Mat.at({j,j}).triangularView<Lower>().transpose();
+                Mat.at({i,j}) = L.solve<OnTheRight>(Mat.at({i,j}));
             })
             .set_fulfill([&](int2 ij) {
                 int i = ij[0];
@@ -180,6 +196,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                 // Send data & trigger tasks
                 for(auto& p: to_fulfill) {
                     int r = p.first;
+                    // Task is local. Just fulfill.
                     if(r == rank) {
                         for(auto& ij: p.second) {
                             int gi = ij[0];
@@ -187,9 +204,9 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                             int gk = j;
                             gemm_tf.fulfill_promise({gi,gj,gk});
                         }
+                    // Task is remote. Send data and fulfill.
                     } else {
-                        MatrixXd Lij = A.block(i * n, j * n, n, n);
-                        auto Lijv = view<double>(Lij.data(), n*n);
+                        auto Lijv = view<double>(Mat.at({i,j}).data(), n*n);
                         auto ijsv = view<int2>(p.second.data(), p.second.size());
                         am_gemm->send(r, Lijv, i, j, ijsv);
                     }
@@ -216,9 +233,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                 int i = ijk[0];
                 int j = ijk[1];
                 int k = ijk[2];
-                A.block(i * n, j * n, n, n) -= A.block(i * n, k * n, n, n) * A.block(j * n, k * n, n, n).transpose();
-                if (i == j)
-                    A.block(i * n, j * n, n, n) = A.block(i * n, j * n, n, n).triangularView<Lower>();
+                Mat.at({i,j}).noalias() -= Mat.at({i,k}) * Mat.at({j,k}).transpose();
                 ASSERT_TRUE(k < N - 1);
             })
             .set_fulfill([&](int3 ijk) {
@@ -245,6 +260,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                 return 1.0;
             });
 
+            if(rank == 0) printf("Starting Cholesky\n");
             MPI_Barrier(MPI_COMM_WORLD);
             timer t0 = wctime();
             if (rank == 0){
@@ -253,22 +269,19 @@ void cholesky(int n_threads, int n, int N, int p, int q)
             tp.join();
             timer t1 = wctime();
             MPI_Barrier(MPI_COMM_WORLD);
-            cout << "Time : " << elapsed(t0, t1) << endl;
+            if(rank == 0)
+            {
+                cout << "Time : " << elapsed(t0, t1) << endl;
+            }
 
             std::ofstream logfile;
             string filename = "cholesky_"+ to_string(rank)+".log";
             logfile.open(filename);
             logfile << log;
             logfile.close();
-
-            // std::ofstream depsfile;
-            // string dfilename = "cholesky_"+ to_string(rank)+".dot";
-            // depsfile.open(dfilename);
-            // depsfile << dlog;
-            // depsfile.close();
     }
 
-    // Gather
+    // Gather everything on rank 0 and test for accuracy
     {
         Communicator comm(VERB);
         Threadpool tp(n_threads, &comm, VERB);
@@ -288,21 +301,20 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                 int i = ij[0];
                 int j = ij[1];
                 if(rank != 0) {
-                    MatrixXd Lij = A.block(i * n, j * n, n, n);
-                    auto Lijv = view<double>(Lij.data(), n*n);
+                    auto Lijv = view<double>(Mat.at({i,j}).data(), n*n);
                     am_gather->send(0, Lijv, i, j);
+                } else {
+                    A.block(i * n, j * n, n, n) = Mat.at({i,j});
                 }
             })
             .set_name([](int2 ij) {
                 return "gather_" + to_string(ij[0]) + "_" + to_string(ij[1]);
             });
 
-        if (rank != 0){
-            for(int i = 0; i < N; i++) {
-                for(int j = 0; j <= i; j++) {
-                    if(block2rank({i,j}) == rank) {
-                        gather_tf.fulfill_promise({i,j});
-                    }
+        for(int i = 0; i < N; i++) {
+            for(int j = 0; j <= i; j++) {
+                if(block2rank({i,j}) == rank) {
+                    gather_tf.fulfill_promise({i,j});
                 }
             }
         }
@@ -310,11 +322,26 @@ void cholesky(int n_threads, int n, int N, int p, int q)
         MPI_Barrier(MPI_COMM_WORLD);
 
         if(rank == 0) {
-            MatrixXd L = A.triangularView<Lower>();
-            MatrixXd LLT = L*L.transpose();
-            double error = (LLT - Aref).norm() / Aref.norm();
-            cout << "Error : " << error << endl;
-            ASSERT_LE(error, 1e-12);
+            // Test 1         
+            {
+                auto L = A.triangularView<Lower>();
+                VectorXd x = VectorXd::Random(n * N);
+                VectorXd b = Aref*x;
+                VectorXd bref = b;
+                L.solveInPlace(b);
+                L.transpose().solveInPlace(b);
+                double error = (b - x).norm() / x.norm();
+                cout << "Error solve: " << error << endl;
+                EXPECT_LE(error, 1e-8);
+            }
+            // Test 2
+            {
+                // MatrixXd L = A.triangularView<Lower>();
+                // MatrixXd A = L * L.transpose();
+                // double error = (A - Aref).norm() / Aref.norm();
+                // cout << "Error LLT : " << error << endl;
+                // EXPECT_LE(error, 1e-8);
+            }
         }
     }
 }
