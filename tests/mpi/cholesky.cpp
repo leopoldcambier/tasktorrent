@@ -81,7 +81,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
         Communicator comm(VERB);
 
         // Threadpool
-        Threadpool tp(n_threads, &comm, VERB);
+        Threadpool tp(n_threads, &comm, VERB, "[" + to_string(rank) + "]_");
         Taskflow<int> potf_tf(&tp, VERB);
         Taskflow<int2> trsm_tf(&tp, VERB);
         Taskflow<int3> gemm_tf(&tp, VERB);
@@ -90,6 +90,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
         DepsLogger dlog(1000000);
         Logger log(1000000);
         tp.set_logger(&log);
+        comm.set_logger(&log);
         
         // Active messages
         // Sends a pivot and trigger multiple trsms in one columns
@@ -97,7 +98,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
             [&](view<double> &Lkk, int& j, view<int>& is) {
                 Mat.at({j,j}) = Map<MatrixXd>(Lkk.data(), n, n);
                 for(auto& i: is) {
-                    trsm_tf.fulfill_promise({i,j});
+                    trsm_tf.fulfill_promise({i,j}, 5.0);
                 }
             });
 
@@ -109,7 +110,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                     int gi = ij[0];
                     int gj = ij[1];
                     int gk = j;
-                    gemm_tf.fulfill_promise({gi,gj,gk});
+                    gemm_tf.fulfill_promise({gi,gj,gk}, 5.0);
                 }
             });
 
@@ -140,7 +141,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                     // Task is local. Just fulfill.
                     if(r == rank) {
                         for(auto& i: p.second) {
-                            trsm_tf.fulfill_promise({i,j});
+                            trsm_tf.fulfill_promise({i,j}, 5.0);
                         }
                     // Task is remote. Send data and fulfill.
                     } else {
@@ -202,7 +203,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                             int gi = ij[0];
                             int gj = ij[1];
                             int gk = j;
-                            gemm_tf.fulfill_promise({gi,gj,gk});
+                            gemm_tf.fulfill_promise({gi,gj,gk}, 5.0);
                         }
                     // Task is remote. Send data and fulfill.
                     } else {
@@ -242,15 +243,15 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                 int k = ijk[2];
                 if (k + 1 == i && k + 1 == j)
                 {
-                    potf_tf.fulfill_promise(k+1); // same node, no comms
+                    potf_tf.fulfill_promise(k+1, 5.0); // same node, no comms
                 }
                 else if (k + 1 == j)
                 {
-                    trsm_tf.fulfill_promise({i, k + 1}); // same node, no comms
+                    trsm_tf.fulfill_promise({i, k + 1}, 5.0); // same node, no comms
                 }
                 else
                 {
-                    gemm_tf.fulfill_promise({i, j, k + 1}); // same node, no comms
+                    gemm_tf.fulfill_promise({i, j, k + 1}, 5.0); // same node, no comms
                 }
             })
             .set_name([](int3 ijk) {
@@ -275,7 +276,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
             }
 
             std::ofstream logfile;
-            string filename = "cholesky_"+ to_string(rank)+".log";
+            string filename = "cholesky_"+ to_string(n_ranks)+".log."+to_string(rank);
             logfile.open(filename);
             logfile << log;
             logfile.close();
@@ -314,7 +315,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
         for(int i = 0; i < N; i++) {
             for(int j = 0; j <= i; j++) {
                 if(block2rank({i,j}) == rank) {
-                    gather_tf.fulfill_promise({i,j});
+                    gather_tf.fulfill_promise({i,j}, 5.0);
                 }
             }
         }

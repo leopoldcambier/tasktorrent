@@ -834,7 +834,7 @@ public:
     // If task cannot be found in the task map, create a new entry.
     // If it exists, reduce by 1 the dependency count.
     // If count == 0, insert the task in the ready queue.
-    void fulfill_promise(K k)
+    void fulfill_promise(K k, double priority = 1.0)
     {
         // Shortcut: if indegree == 1, we can insert the
         // task immediately.
@@ -853,7 +853,7 @@ public:
         Task *t = new Task();
         t->fulfill = []() {};
         t->name = "dep_map_intern_" + to_string(where);
-        t->priority = 0;
+        t->priority = priority;
 
         t->run = [this, where, k]() {
             auto &dmk = this->dep_map[where];
