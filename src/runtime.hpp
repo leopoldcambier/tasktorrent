@@ -15,6 +15,7 @@
 #include <cassert>
 #include <algorithm>
 #include <numeric>
+#include <functional>
 
 #include "util.hpp"
 
@@ -163,17 +164,17 @@ private:
 
 public:
     Threadpool_shared(int n_threads, int verb_ = 0, string basename_ = "Wk_", bool start_immediately = true)
-        : join_status(0),         // used to signal completion
-          tasks_in_flight(0),     // number of tasks in flight
+        : tasks_in_flight(0),     // number of tasks in flight
+          join_status(0),         // used to signal completion
+          verb(verb_), // verbosity level
+          basename(basename_),
           threads(n_threads),     // number of threads
           ready_tasks(n_threads), // pool of tasks ready to run
           ready_tasks_mtx(n_threads),
           bound_tasks(n_threads),
           bound_tasks_mtx(n_threads),
-          verb(verb_), // verbosity level
           log(false),
           logger(nullptr),
-          basename(basename_),
           total_tasks(0) // debug only
     {
         if (start_immediately)
@@ -760,13 +761,13 @@ private:
 public:
     Taskflow(Threadpool_shared *tp_, int verb_ = 0) : tp(tp_), verb(verb_), dep_map(tp_->size())
     {
-        f_name = [](K k) { return "_"; };
-        f_run = [](K k) { printf("Taskflow: undefined task function\n"); };
-        f_fulfill = [](K k) {};
-        f_mapping = [](K k) {printf("Taskflow: undefined mapping function\n"); return 0; };
-        f_binding = [](K k) {return false; /* false = migratable [default]; true = bound to thread */ };
-        f_indegree = [](K k) {printf("Taskflow: undefined indegree function\n"); return 0; };
-        f_prio = [](K k) { return 0.0; };
+        f_name = [](K k) { (void)k; return "_"; };
+        f_run = [](K k) { (void)k; printf("Taskflow: undefined task function\n"); };
+        f_fulfill = [](K k) { (void)k; };
+        f_mapping = [](K k) { (void)k; printf("Taskflow: undefined mapping function\n"); return 0; };
+        f_binding = [](K k) { (void)k; return false; /* false = migratable [default]; true = bound to thread */ };
+        f_indegree = [](K k) { (void)k; printf("Taskflow: undefined indegree function\n"); return 0; };
+        f_prio = [](K k) { (void)k; return 0.0; };
     }
 
     Task *make_task(K k, int &where, bool &binding)
@@ -833,7 +834,7 @@ public:
     // If task cannot be found in the task map, create a new entry.
     // If it exists, reduce by 1 the dependency count.
     // If count == 0, insert the task in the ready queue.
-    void fulfill_promise(K k)
+    void fulfill_promise(K k, double priority = 1.0)
     {
         // Shortcut: if indegree == 1, we can insert the
         // task immediately.
@@ -852,7 +853,7 @@ public:
         Task *t = new Task();
         t->fulfill = []() {};
         t->name = "dep_map_intern_" + to_string(where);
-        t->priority = 0;
+        t->priority = priority;
 
         t->run = [this, where, k]() {
             auto &dmk = this->dep_map[where];
