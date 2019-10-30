@@ -2,10 +2,22 @@
 #include "runtime.hpp"
 #include "util.hpp"
 
+#include <Eigen/Core>
+#include <Eigen/Cholesky>
+#include <fstream>
+#include <array>
+#include <random>
+#include <mutex>
 #include <iostream>
 #include <map>
+#include <memory>
 
+#include <gtest/gtest.h>
 #include <mpi.h>
+
+using namespace std;
+using namespace Eigen;
+using namespace ttor;
 
 using namespace std;
 using namespace ttor;
