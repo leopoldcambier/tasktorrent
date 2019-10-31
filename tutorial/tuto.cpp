@@ -12,7 +12,7 @@
 #include <map>
 #include <memory>
 
-#include <gtest/gtest.h>
+
 #include <mpi.h>
 
 using namespace std;
