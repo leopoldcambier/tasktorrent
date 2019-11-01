@@ -139,6 +139,8 @@ int main(int argc, char **argv)
 
     assert(prov == req);
 
+
+
     int n_threads = 2;
     int verb = 0; // Can be changed to vary the verbosity of the messages
 
@@ -152,6 +154,7 @@ int main(int argc, char **argv)
         verb = atoi(argv[2]);
     }
 
+    cout<<"test\n";
     tuto_1(n_threads, verb);
 
     MPI_Finalize();
