@@ -46,6 +46,9 @@ void tuto_1(int n_threads, int verb)
 
 
     auto val = [&](int i, int j) {return i+j;}
+    MatrixXd A = MatrixXd::NullaryExpr(n*nb,n*nb, val);
+
+
     // Outgoing dependencies for each task
     map<int, vector<int>> out_deps;
     out_deps[0] = {1, 3}; // Task 0 fulfills task 1 and 3
