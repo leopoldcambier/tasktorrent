@@ -21,6 +21,12 @@ using namespace ttor;
 
 using namespace std;
 using namespace ttor;
+
+int n = 100;
+int nb = 10;
+
+
+
 //Test Test2
 void tuto_1(int n_threads, int verb)
 {
@@ -38,6 +44,8 @@ void tuto_1(int n_threads, int verb)
     // Number of tasks
     int n_tasks_per_rank = 2;
 
+
+    auto val = [&](int i, int j) {return i+j;}
     // Outgoing dependencies for each task
     map<int, vector<int>> out_deps;
     out_deps[0] = {1, 3}; // Task 0 fulfills task 1 and 3
@@ -73,6 +81,7 @@ void tuto_1(int n_threads, int verb)
     // Define the task flow
     tf.set_task([&](int k) {
           printf("Task %d is now running on rank %d\n", k, comm_rank());
+          cout<<A(k,0)<<"\n";
       })
         .set_fulfill([&](int k) {
             for (int k_ : out_deps[k]) // Looping through all outgoing dependency edges
@@ -154,7 +163,6 @@ int main(int argc, char **argv)
         verb = atoi(argv[2]);
     }
 
-    cout<<"test\n";
     tuto_1(n_threads, verb);
 
     MPI_Finalize();
