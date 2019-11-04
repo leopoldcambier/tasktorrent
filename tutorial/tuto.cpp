@@ -195,13 +195,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             int k=kij[0];
             int i=kij[1];
             int j=kij[2];
-            int t=0;
-            if (k==0) {
-                t=2;
-            }
-            else {
-                t=3;
-            }
+            int t=2;
             if (i==j) {
                 t--;
             }
