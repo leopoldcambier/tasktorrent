@@ -26,13 +26,12 @@ using namespace ttor;
 typedef array<int, 2> int2;
 typedef array<int, 3> int3;
 
-int n = 10;
-int nb = 10;
+
 
 
 
 //Test Test2
-void tuto_1(int n_threads, int verb)
+void tuto_1(int n_threads, int verb, int n, int nb)
 {
     const int rank = comm_rank();
     const int n_ranks = comm_size();
@@ -259,15 +258,23 @@ int main(int argc, char **argv)
 
     if (argc >= 2)
     {
-        n_threads = atoi(argv[1]);
+        n = atoi(argv[1]);
     }
 
     if (argc >= 3)
     {
-        verb = atoi(argv[2]);
+        nb = atoi(argv[2]);
+    }
+    
+    int n=1;
+    int nb=2;
+    if (argc >= 5) {
+        n_threads=atoi(argv[3]);
+        verb=atoi(argv[4]);
     }
 
-    tuto_1(n_threads, verb);
+
+    tuto_1(n_threads, verb, n, nb);
 
     MPI_Finalize();
 }
