@@ -43,7 +43,7 @@ void tuto_1(int n_threads, int verb)
     int n_tasks_per_rank = 2;
 
 
-    auto val = [&](int i, int j) {return 1/(i+j+1); };
+    auto val = [&](int i, int j) {return 1/(float)(i+j+1); };
     MatrixXd A = MatrixXd::NullaryExpr(n*nb,n*nb, val);
     MatrixXd L = A;
 
