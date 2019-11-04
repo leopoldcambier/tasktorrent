@@ -26,8 +26,8 @@ using namespace ttor;
 typedef array<int, 2> int2;
 typedef array<int, 3> int3;
 
-int n = 10;
-int nb = 10;
+int n = 2;
+int nb = 2;
 
 
 
