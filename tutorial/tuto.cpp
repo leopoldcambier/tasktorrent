@@ -66,7 +66,7 @@ void tuto_1(int n_threads, int verb)
 
     // Initialize the runtime structures
     Threadpool tp(n_threads, &comm, verb, "WkTuto_" + to_string(rank) + "_");
-    Taskflow<int> portf(&tp, verb);
+    Taskflow<int> potrf(&tp, verb);
     Taskflow<int2> trsm(&tp, verb);
     Taskflow<int3> gemm(&tp, verb);
 
@@ -74,16 +74,16 @@ void tuto_1(int n_threads, int verb)
 
 
     // Define the task flow
-    portf.set_task([&](int k) {
-          printf("Portf %d is now running on rank %d\n", k, comm_rank());
+    potrf.set_task([&](int k) {
+          printf("Potrf %d is now running on rank %d\n", k, comm_rank());
       })
         .set_fulfill([&](int k) {
             for (int p = k+1; p<nb; p++) // Looping through all outgoing dependency edges
             {
                 int dest = task_2_rank(p); // defined above
 
-                portg.fulfill_promise(p, 5.0);
-                printf("Task %d fulfilling local task %d on rank %d\n", k, p, comm_rank());
+                potrf.fulfill_promise(p, 5.0);
+                printf("Potrf %d fulfilling local task %d on rank %d\n", k, p, comm_rank());
 
             }
         })
