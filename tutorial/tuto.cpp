@@ -71,7 +71,8 @@ void tuto_1(int n_threads, int verb)
     potrf.set_task([&](int k) {
           LLT<MatrixXd> lltOfA(L.block(k*n, k*n, n, n));
           L.block(k*n, k*n, n, n)=lltOfA.matrixL();
-          cout<<((A.block(k*n, k*n, n, n)-L.block(k*n, k*n, n, n)*L.block(k*n, k*n, n, n).transpose()).norm());
+          MatrixXd temp=L.block(k*n, k*n, n, n);
+          cout<<temp(0,0)<<endl;
           printf("Potrf %d is now running on rank %d\n", k, comm_rank());
       })
         .set_fulfill([&](int k) {
