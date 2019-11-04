@@ -148,7 +148,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             int k=ki[0];
             int i=ki[1];
 
-            return (k % n_threads);
+            return ((k*n+i) % n_threads);
         })
         .set_binding([&](int2 ki) {
             int k=ki[0];
@@ -210,7 +210,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             int i=kij[1];
             int j=kij[2];
 
-            return (k % n_threads);
+            return ((k*n*n+i+j*n)  % n_threads);
         })
         .set_binding([&](int3 kij) {
             return false;
