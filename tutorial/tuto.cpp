@@ -27,7 +27,7 @@ typedef array<int, 2> int2;
 typedef array<int, 3> int3;
 
 int n = 10;
-int nb = 3;
+int nb = 10;
 
 
 
@@ -108,7 +108,7 @@ void tuto_1(int n_threads, int verb)
     trsm.set_task([&](int2 ki) {
         int k=ki[0];
         int i=ki[1];
-        cout<<L.block(i*n,k*n,n,n)<<endl;
+        //cout<<L.block(i*n,k*n,n,n)<<endl;
         auto T=L.block(k*n,k*n,n,n).triangularView<Lower>().transpose().solve<OnTheRight>(L.block(i*n,k*n,n,n));
         //cout<<T(0,0)<<"\n";
         L.block(i*n,k*n,n,n)=T;
