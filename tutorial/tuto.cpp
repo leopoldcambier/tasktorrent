@@ -22,7 +22,11 @@ using namespace ttor;
 using namespace std;
 using namespace ttor;
 
-int n = 100;
+
+typedef array<int, 2> int2;
+typedef array<int, 3> int3;
+
+int n = 10;
 int nb = 10;
 
 
@@ -50,16 +54,7 @@ void tuto_1(int n_threads, int verb)
 
 
     // Outgoing dependencies for each task
-    map<int, vector<int>> out_deps;
-    out_deps[0] = {1, 3}; // Task 0 fulfills task 1 and 3
-    out_deps[2] = {1, 3}; // Task 2 fulfills task 1 and 3
 
-    // Number of incoming dependencies for each task
-    map<int, int> indegree;
-    indegree[0] = 1;
-    indegree[1] = 2;
-    indegree[2] = 1;
-    indegree[3] = 2;
 
     // Map tasks to rank
     auto task_2_rank = [&](int k) {
@@ -71,71 +66,153 @@ void tuto_1(int n_threads, int verb)
 
     // Initialize the runtime structures
     Threadpool tp(n_threads, &comm, verb, "WkTuto_" + to_string(rank) + "_");
-    Taskflow<int> tf(&tp, verb);
+    Taskflow<int> portf(&tp, verb);
+    Taskflow<int2> trsm(&tp, verb);
+    Taskflow<int3> gemm(&tp, verb);
 
     // Create active message
-    auto am = comm.make_active_msg(
-        [&](int &k, int &k_) {
-            /* The data k and k_ are received over the network using MPI */
-            printf("Task %d fulfilling %d (remote)\n", k, k_);
-            tf.fulfill_promise(k_);
-        });
+
 
     // Define the task flow
-    tf.set_task([&](int k) {
-          printf("Task %d is now running on rank %d\n", k, comm_rank());
-          cout<<A(k,0)<<"\n";
+    portf.set_task([&](int k) {
+          printf("Portf %d is now running on rank %d\n", k, comm_rank());
       })
         .set_fulfill([&](int k) {
-            for (int k_ : out_deps[k]) // Looping through all outgoing dependency edges
+            for (int p = k+1; p<nb; p++) // Looping through all outgoing dependency edges
             {
-                int dest = task_2_rank(k_); // defined above
-                if (dest == rank)
-                {
-                    tf.fulfill_promise(k_);
-                    printf("Task %d fulfilling local task %d on rank %d\n", k, k_, comm_rank());
-                }
-                else
-                {
-                    // Satisfy remote task
-                    // Send k and k_ to rank dest using an MPI non-blocking send.
-                    // The type of k and k_ must match the declaration of am above.
-                    am->send(dest, k, k_);
-                }
+                int dest = task_2_rank(p); // defined above
+
+                portg.fulfill_promise(p, 5.0);
+                printf("Task %d fulfilling local task %d on rank %d\n", k, p, comm_rank());
+
             }
         })
         .set_indegree([&](int k) {
-            return indegree[k];
+            return 1;
         })
         .set_mapping([&](int k) {
-            /* This is the index of the thread that will get assigned to run this task.
-             * Tasks can in general be stolen (i.e., migrate) by other threads, when idle.
-             * The optional set_binding function below determines whether task k
-             * is migratable or not.
-             */
+
             return (k % n_threads);
         })
         .set_binding([&](int k) {
             return false;
-            /* false == task can be migrated between worker threads [default value].
-             * true == task is bound to the thread selected by set_mapping.
-             * This function is optional. The library assumes false if this
-             * function is not defined.
-             */
+
         })
         .set_name([&](int k) { // This is just for debugging and profiling
-            return "tutoTask_" + to_string(k) + "_" + to_string(rank);
+            return "POTRF" + to_string(k) + "_" + to_string(rank);
         });
 
+
+
+    trsm.set_task([&](int2 ki) {
+        int k=ki[0];
+        int i=ki[1];
+        printf("Trsm (%d, %d) is now running on rank %d\n", k, i, comm_rank());
+      })
+        .set_fulfill([&](int2 ki) {
+            int k=ki[0];
+            int i=ki[1];
+            for (int j=k+1; j<nb;j++) // Looping through all outgoing dependency edges
+            {
+
+                if (i<j) {
+                    gemm.fulfill_promise({k,i,j}, 5.0);
+                    printf("Trsm (%d, %d) fulfilling local Gemm (%d, %d, %d) on rank %d\n", k, i, k, i, j, comm_rank());
+                }
+                else {
+                    gemm.fulfill_promise({k,j,i}, 5.0);
+                    printf("Trsm (%d, %d) fulfilling local Gemm (%d, %d, %d) on rank %d\n", k, i, k, j, i, comm_rank());
+                }
+
+            }
+        })
+        .set_indegree([&](int2 ki) {
+            int k=ki[0];
+            int i=ki[1];
+            if (k==0) {
+                return 1;
+            }
+            else {
+                return 2;
+            }
+        })
+        .set_mapping([&](int2 ki) {
+            int k=ki[0];
+            int i=ki[1];
+
+            return (k % n_threads);
+        })
+        .set_binding([&](int2 ki) {
+            int k=ki[0];
+            int i=ki[1];
+            return false;
+
+        })
+        .set_name([&](int2 ki) { // This is just for debugging and profiling
+            int k=ki[0];
+            int i=ki[1];
+            return "TRSM" + to_string(k) + "_" + to_string(i) + "_" +to_string(rank);
+        });
+
+
+    gemm.set_task([&](int3 kij) {
+            int k=kij[0];
+            int i=kij[1];
+            int j=kij[2];
+            printf("Gemm (%d, %d, %d) is now running on rank %d\n", k, i, j, comm_rank());
+      })
+        .set_fulfill([&](int3 kij) {
+            int k=kij[0];
+            int i=kij[1];
+            int j=kij[2];
+            if (k<i-1) {
+                gemm.fulfill_promise({k+1, i, j}, 5.0);
+            }
+            else {
+                if (i==j) {
+                    potrf.fulfill_promise(i, 5.0);
+                    printf("Gemm (%d, %d, %d) fulfilling Potrf %d on rank %d\n", k, i, j, i, comm_rank());
+                }
+                else {
+                    trsm.fulfill_promise({i,j}, 5.0);
+                    printf("Gemm (%d, %d, %d) fulfilling Trsm (%d, %d) on rank %d\n", k, i, j, i, j, comm_rank());
+                }
+            }
+            
+
+        })
+        .set_indegree([&](int3 kij) {
+            int k=kij[0];
+            if (k==0) {
+                return 2;
+            }
+            else {
+                return 3;
+            }
+        })
+        .set_mapping([&](int3 kij) {
+            int k=kij[0];
+            int i=kij[1];
+            int j=kij[2];
+
+            return (k % n_threads);
+        })
+        .set_binding([&](int3 kij) {
+            return false;
+
+        })
+        .set_name([&](int3 kij) { // This is just for debugging and profiling
+            int k=kij[0];
+            int i=kij[1];
+            int j=kij[2];
+            return "GEMM" + to_string(k) + "_" + to_string(i)+"_"+to_string(j)+"_"+to_string(comm_rank());
+        });
+
+
+    
+
     // Seed initial tasks
-    if (rank == task_2_rank(0))
-    {
-        tf.fulfill_promise(0); // Task 0 starts on rank 0
-    }
-    else if (rank == task_2_rank(2))
-    {
-        tf.fulfill_promise(2); // Task 2 starts on rank 1
-    }
+    potrf.fulfill(0, 5.0);
 
     // Other ranks do nothing
     // Run until completion
