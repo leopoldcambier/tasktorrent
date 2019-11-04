@@ -235,6 +235,7 @@ void tuto_1(int n_threads, int verb)
     // Other ranks do nothing
     // Run until completion
     tp.join();
+    L=L.triangularView<Lower>();
     cout<<"LLT Error: "<<(A-L*L.transpose()).norm()/A.norm()<<"\n";
 }
 
