@@ -177,12 +177,17 @@ void tuto_1(int n_threads, int verb)
         })
         .set_indegree([&](int3 kij) {
             int k=kij[0];
+            int t=0;
             if (k==0) {
-                return 2;
+                t=2;
             }
             else {
-                return 3;
+                t=3;
             }
+            if (i==j) {
+                t--;
+            }
+            return t;
         })
         .set_mapping([&](int3 kij) {
             int k=kij[0];
