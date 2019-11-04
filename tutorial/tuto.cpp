@@ -74,8 +74,8 @@ void tuto_1(int n_threads, int verb, int n, int nb)
           L.block(k*n, k*n, n, n)=lltOfA.matrixL();
           MatrixXd temp=L.block(k*n, k*n, n, n);
           //cout<<temp(0,0)<<endl;
-          //cout<<LR(k,k)<<endl;
-          //printf("Potrf %d is now running on rank %d\n", k, comm_rank());
+          cout<<(LR.block(k*n, k*n, n, n)-L.block(k*n, k*n, n, n)).norm()<<endl;
+          printf("Potrf %d is now running on rank %d\n", k, comm_rank());
       })
         .set_fulfill([&](int k) {
             for (int p = k+1; p<nb; p++) // Looping through all outgoing dependency edges
