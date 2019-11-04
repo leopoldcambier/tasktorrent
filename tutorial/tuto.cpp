@@ -160,6 +160,8 @@ void tuto_1(int n_threads, int verb)
             int i=kij[1];
             int j=kij[2];
             L.block(i*n, j*n, n, n)-=L.block(j*n, k*n, n, n)*L.block(i*n, k*n, n, n).transpose();
+            MatrixXd Temp=L.block(i*n, j*n, n, n);
+            cout<<Temp(0,0)<<endl;
             printf("Gemm (%d, %d, %d) is now running on rank %d\n", k, i, j, comm_rank());
       })
         .set_fulfill([&](int3 kij) {
