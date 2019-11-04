@@ -27,7 +27,7 @@ typedef array<int, 2> int2;
 typedef array<int, 3> int3;
 
 int n = 10;
-int nb = 10;
+int nb = 4;
 
 
 
@@ -40,7 +40,7 @@ void tuto_1(int n_threads, int verb)
 
 
     // Number of tasks
-    // int n_tasks_per_rank = 2;
+    int n_tasks_per_rank = 2;
 
 
     auto val = [&](int i, int j) {return i+j;};
