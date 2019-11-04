@@ -47,7 +47,7 @@ void tuto_1(int n_threads, int verb)
     MatrixXd A = MatrixXd::NullaryExpr(n*nb,n*nb, val);
     MatrixXd L = A;
     LLT<MatrixXd> Test(A);
-    //MatrixXd LR=Test.matrixL();
+    MatrixXd LR=Test.matrixL();
 
     // Outgoing dependencies for each task
 
@@ -237,6 +237,7 @@ void tuto_1(int n_threads, int verb)
     tp.join();
     L=L.triangularView<Lower>();
     cout<<"LLT Error: "<<(A-L*L.transpose()).norm()/A.norm()<<"\n";
+    cout<<"LLT Error GT: "<<(A-LR*LR.transpose()).norm()/A.norm()<<"\n";
 }
 
 int main(int argc, char **argv)
