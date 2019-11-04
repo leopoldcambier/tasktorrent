@@ -255,6 +255,9 @@ int main(int argc, char **argv)
 
     int n_threads = 2;
     int verb = 0; // Can be changed to vary the verbosity of the messages
+    int n=1;
+    int nb=2;
+
 
     if (argc >= 2)
     {
@@ -266,8 +269,7 @@ int main(int argc, char **argv)
         nb = atoi(argv[2]);
     }
     
-    int n=1;
-    int nb=2;
+
     if (argc >= 5) {
         n_threads=atoi(argv[3]);
         verb=atoi(argv[4]);
