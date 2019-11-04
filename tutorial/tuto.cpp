@@ -26,7 +26,7 @@ using namespace ttor;
 typedef array<int, 2> int2;
 typedef array<int, 3> int3;
 
-int n = 2;
+int n = 3;
 int nb = 3;
 
 
