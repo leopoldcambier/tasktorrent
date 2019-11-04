@@ -108,14 +108,14 @@ void tuto_1(int n_threads, int verb)
     trsm.set_task([&](int2 ki) {
         int k=ki[0];
         int i=ki[1];
-        //cout<<L.block(i*n,k*n,n,n)<<endl;
+        cout<<L.block(i*n,k*n,n,n)<<endl;
         auto T=L.block(k*n,k*n,n,n).triangularView<Lower>().transpose().solve<OnTheRight>(L.block(i*n,k*n,n,n));
         //cout<<T(0,0)<<"\n";
         L.block(i*n,k*n,n,n)=T;
         MatrixXd Temp=L.block(i*n, k*n, n, n);
-        //cout<<Temp(0,0)<<endl;
-        //cout<<LR(i,k)<<endl;
-        //printf("Trsm (%d, %d) is now running on rank %d\n", k, i, comm_rank());
+        cout<<Temp(0,0)<<endl;
+        cout<<LR(i,k)<<endl;
+        printf("Trsm (%d, %d) is now running on rank %d\n", k, i, comm_rank());
       })
         .set_fulfill([&](int2 ki) {
             int k=ki[0];
@@ -123,7 +123,7 @@ void tuto_1(int n_threads, int verb)
             for (int j=k+1; j<nb;j++) // Looping through all outgoing dependency edges
             {
 
-                if (i<j) {
+                if (j<i) {
                     gemm.fulfill_promise({k,i,j}, 5.0);
                     //printf("Trsm (%d, %d) fulfilling local Gemm (%d, %d, %d) on rank %d\n", k, i, k, i, j, comm_rank());
                 }
@@ -168,9 +168,9 @@ void tuto_1(int n_threads, int verb)
             int i=kij[1];
             int j=kij[2];
             L.block(i*n, j*n, n, n)-=L.block(i*n, k*n, n, n)*L.block(j*n, k*n, n, n).transpose();
-            MatrixXd Temp=L.block(j*n, i*n, n, n);
-            //cout<<Temp(0,0)<<endl;
-            //printf("Gemm (%d, %d, %d) is now running on rank %d\n", k, i, j, comm_rank());
+            MatrixXd Temp=L.block(i*n, j*n, n, n);
+            cout<<Temp(0,0)<<endl;
+            printf("Gemm (%d, %d, %d) is now running on rank %d\n", k, i, j, comm_rank());
       })
         .set_fulfill([&](int3 kij) {
             int k=kij[0];
