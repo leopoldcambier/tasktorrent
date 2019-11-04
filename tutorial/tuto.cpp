@@ -103,7 +103,7 @@ void tuto_1(int n_threads, int verb)
     trsm.set_task([&](int2 ki) {
         int k=ki[0];
         int i=ki[1];
-        auto T=L.triangularView<Lower>().transpose().solve<OnTheRight>(L.block(i*n,k*n,n,n));
+        auto T=L.block(k*n,k*n,n,n).triangularView<Lower>().transpose().solve<OnTheRight>(L.block(i*n,k*n,n,n));
         L.block(i*n,k*n,n,n)=T;
         printf("Trsm (%d, %d) is now running on rank %d\n", k, i, comm_rank());
       })
