@@ -184,7 +184,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
                     printf("Gemm (%d, %d, %d) fulfilling Potrf %d on rank %d\n", k, i, j, i, comm_rank());
                 }
                 else {
-                    trsm.fulfill_promise({i,j}, 5.0);
+                    trsm.fulfill_promise({j,i}, 5.0);
                     printf("Gemm (%d, %d, %d) fulfilling Trsm (%d, %d) on rank %d\n", k, i, j, i, j, comm_rank());
                 }
             }
