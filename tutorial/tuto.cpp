@@ -27,7 +27,7 @@ typedef array<int, 2> int2;
 typedef array<int, 3> int3;
 
 int n = 1;
-int nb = 20;
+int nb = 10;
 
 
 
