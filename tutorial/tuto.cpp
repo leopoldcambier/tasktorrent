@@ -42,7 +42,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     int n_tasks_per_rank = 2;
 
 
-    auto val = [&](int i, int j) { return i == j ? 1e10 : i+j; };
+    auto val = [&](int i, int j) { return 1/(float)((i-j)*(i-j)+1); };
     MatrixXd A = MatrixXd::NullaryExpr(n*nb,n*nb, val);
     MatrixXd L = A;
     LLT<MatrixXd> Test(A);
@@ -74,8 +74,8 @@ void tuto_1(int n_threads, int verb, int n, int nb)
           L.block(k*n, k*n, n, n)=lltOfA.matrixL();
           MatrixXd temp=L.block(k*n, k*n, n, n);
           //cout<<temp(0,0)<<endl;
-          cout<<(LR.block(k*n, k*n, n, n)-L.block(k*n, k*n, n, n)).norm()<<endl;
-          printf("Potrf %d is now running on rank %d\n", k, comm_rank());
+          //cout<<(LR.block(k*n, k*n, n, n)-L.block(k*n, k*n, n, n)).norm()<<endl;
+          //printf("Potrf %d is now running on rank %d\n", k, comm_rank());
       })
         .set_fulfill([&](int k) {
             for (int p = k+1; p<nb; p++) // Looping through all outgoing dependency edges
@@ -112,10 +112,10 @@ void tuto_1(int n_threads, int verb, int n, int nb)
         //cout<<T(0,0)<<"\n";
         L.block(i*n,k*n,n,n)=T;
         MatrixXd Temp=L.block(i*n, k*n, n, n);
-        cout<<(LR.block(i*n, k*n, n, n)-L.block(i*n, k*n, n, n)).norm()<<endl;
+        //cout<<(LR.block(i*n, k*n, n, n)-L.block(i*n, k*n, n, n)).norm()<<endl;
         //cout<<Temp(0,0)<<endl;
         //cout<<LR(i,k)<<endl;
-        printf("Trsm (%d, %d) is now running on rank %d\n", k, i, comm_rank());
+        //printf("Trsm (%d, %d) is now running on rank %d\n", k, i, comm_rank());
       })
         .set_fulfill([&](int2 ki) {
             int k=ki[0];
@@ -170,7 +170,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             L.block(i*n, j*n, n, n)-=L.block(i*n, k*n, n, n)*L.block(j*n, k*n, n, n).transpose();
             MatrixXd Temp=L.block(i*n, j*n, n, n);
             //cout<<Temp(0,0)<<endl;
-            printf("Gemm (%d, %d, %d) is now running on rank %d\n", k, i, j, comm_rank());
+            //printf("Gemm (%d, %d, %d) is now running on rank %d\n", k, i, j, comm_rank());
       })
         .set_fulfill([&](int3 kij) {
             int k=kij[0];
