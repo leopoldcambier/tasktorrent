@@ -113,6 +113,7 @@ void tuto_1(int n_threads, int verb)
         L.block(i*n,k*n,n,n)=T;
         MatrixXd Temp=L.block(i*n, k*n, n, n);
         cout<<Temp(0,0)<<endl;
+        cout<<Temp(i,k)<<endl;
         printf("Trsm (%d, %d) is now running on rank %d\n", k, i, comm_rank());
       })
         .set_fulfill([&](int2 ki) {
