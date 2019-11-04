@@ -26,7 +26,7 @@ using namespace ttor;
 typedef array<int, 2> int2;
 typedef array<int, 3> int3;
 
-int n = 10;
+int n = 1;
 int nb = 4;
 
 
@@ -45,7 +45,7 @@ void tuto_1(int n_threads, int verb)
 
     auto val = [&](int i, int j) {return i+j;};
     MatrixXd A = MatrixXd::NullaryExpr(n*nb,n*nb, val);
-
+    MatrixXd L = A;
 
     // Outgoing dependencies for each task
 
@@ -69,6 +69,8 @@ void tuto_1(int n_threads, int verb)
 
     // Define the task flow
     potrf.set_task([&](int k) {
+          LLT<MatrixXd> lltOfA(L.block(k*n, k*n, n, n));
+          L.block(k*n, k*n, n, n)=lltOfA.matrixL();
           printf("Potrf %d is now running on rank %d\n", k, comm_rank());
       })
         .set_fulfill([&](int k) {
@@ -101,6 +103,8 @@ void tuto_1(int n_threads, int verb)
     trsm.set_task([&](int2 ki) {
         int k=ki[0];
         int i=ki[1];
+        auto T=L.triangularView<Lower>().transpose().solve<OnTheRight>(L.block(i*n,k*n,n,n));
+        L.block(i*n,k*n,n,n)=T;
         printf("Trsm (%d, %d) is now running on rank %d\n", k, i, comm_rank());
       })
         .set_fulfill([&](int2 ki) {
@@ -153,6 +157,7 @@ void tuto_1(int n_threads, int verb)
             int k=kij[0];
             int i=kij[1];
             int j=kij[2];
+            L.block(i*n, j*n, n, n)-=L.block(j*n, k*n, n, n)*L.block(i*n, k*n, n, n).transpose();
             printf("Gemm (%d, %d, %d) is now running on rank %d\n", k, i, j, comm_rank());
       })
         .set_fulfill([&](int3 kij) {
