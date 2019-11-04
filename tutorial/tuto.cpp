@@ -212,7 +212,7 @@ void tuto_1(int n_threads, int verb)
     
 
     // Seed initial tasks
-    potrf.fulfill(0, 5.0);
+    potrf.fulfill_promise(0, 5.0);
 
     // Other ranks do nothing
     // Run until completion
