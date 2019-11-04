@@ -37,16 +37,10 @@ void tuto_1(int n_threads, int verb)
     const int rank = comm_rank();
     const int n_ranks = comm_size();
 
-    if (n_ranks < 2)
-    {
-        printf("You need to run this code with at least 2 MPI processors\n");
-        exit(0);
-    }
 
-    printf("Rank %d hello from %s\n", rank, processor_name().c_str());
 
     // Number of tasks
-    int n_tasks_per_rank = 2;
+    // int n_tasks_per_rank = 2;
 
 
     auto val = [&](int i, int j) {return i+j;};
