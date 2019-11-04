@@ -76,8 +76,8 @@ void tuto_1(int n_threads, int verb)
             {
                 int dest = task_2_rank(p); // defined above
 
-                potrf.fulfill_promise(p, 5.0);
-                printf("Potrf %d fulfilling local task %d on rank %d\n", k, p, comm_rank());
+                trsm.fulfill_promise({k,p}, 5.0);
+                printf("Potrf %d fulfilling local Trsm (%d, %d) on rank %d\n", k, k, p, comm_rank());
 
             }
         })
