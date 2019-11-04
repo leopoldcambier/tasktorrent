@@ -81,7 +81,7 @@ void tuto_1(int n_threads, int verb)
                 int dest = task_2_rank(p); // defined above
 
                 trsm.fulfill_promise({k,p}, 5.0);
-                printf("Potrf %d fulfilling local Trsm (%d, %d) on rank %d\n", k, k, p, comm_rank());
+                //printf("Potrf %d fulfilling local Trsm (%d, %d) on rank %d\n", k, k, p, comm_rank());
 
             }
         })
@@ -108,6 +108,8 @@ void tuto_1(int n_threads, int verb)
         auto T=L.block(k*n,k*n,n,n).triangularView<Lower>().transpose().solve<OnTheRight>(L.block(i*n,k*n,n,n));
         //cout<<T(0,0)<<"\n";
         L.block(i*n,k*n,n,n)=T;
+        MatrixXd Temp=L.block(i*n, k*n, n, n);
+        cout<<Temp(0,0)<<endl;
         printf("Trsm (%d, %d) is now running on rank %d\n", k, i, comm_rank());
       })
         .set_fulfill([&](int2 ki) {
@@ -118,11 +120,11 @@ void tuto_1(int n_threads, int verb)
 
                 if (i<j) {
                     gemm.fulfill_promise({k,i,j}, 5.0);
-                    printf("Trsm (%d, %d) fulfilling local Gemm (%d, %d, %d) on rank %d\n", k, i, k, i, j, comm_rank());
+                    //printf("Trsm (%d, %d) fulfilling local Gemm (%d, %d, %d) on rank %d\n", k, i, k, i, j, comm_rank());
                 }
                 else {
                     gemm.fulfill_promise({k,j,i}, 5.0);
-                    printf("Trsm (%d, %d) fulfilling local Gemm (%d, %d, %d) on rank %d\n", k, i, k, j, i, comm_rank());
+                    //printf("Trsm (%d, %d) fulfilling local Gemm (%d, %d, %d) on rank %d\n", k, i, k, j, i, comm_rank());
                 }
 
             }
@@ -175,11 +177,11 @@ void tuto_1(int n_threads, int verb)
             else {
                 if (i==j) {
                     potrf.fulfill_promise(i, 5.0);
-                    printf("Gemm (%d, %d, %d) fulfilling Potrf %d on rank %d\n", k, i, j, i, comm_rank());
+                    //printf("Gemm (%d, %d, %d) fulfilling Potrf %d on rank %d\n", k, i, j, i, comm_rank());
                 }
                 else {
                     trsm.fulfill_promise({i,j}, 5.0);
-                    printf("Gemm (%d, %d, %d) fulfilling Trsm (%d, %d) on rank %d\n", k, i, j, i, j, comm_rank());
+                    //printf("Gemm (%d, %d, %d) fulfilling Trsm (%d, %d) on rank %d\n", k, i, j, i, j, comm_rank());
                 }
             }
             
