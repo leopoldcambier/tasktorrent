@@ -71,7 +71,7 @@ void tuto_1(int n_threads, int verb)
     potrf.set_task([&](int k) {
           LLT<MatrixXd> lltOfA(L.block(k*n, k*n, n, n));
           L.block(k*n, k*n, n, n)=lltOfA.matrixL();
-          cout<<((A.block(k*n, k*n, n, n)-L.block(k*n, k*n, n, n)*L.block(k*n, k*n, n, n).transpose()).norm());
+          //cout<<((A.block(k*n, k*n, n, n)-L.block(k*n, k*n, n, n)*L.block(k*n, k*n, n, n).transpose()).norm());
           printf("Potrf %d is now running on rank %d\n", k, comm_rank());
       })
         .set_fulfill([&](int k) {
@@ -105,6 +105,7 @@ void tuto_1(int n_threads, int verb)
         int k=ki[0];
         int i=ki[1];
         auto T=L.block(k*n,k*n,n,n).triangularView<Lower>().transpose().solve<OnTheRight>(L.block(i*n,k*n,n,n));
+        cout<<T(0,0)<<"\n";
         L.block(i*n,k*n,n,n)=T;
         printf("Trsm (%d, %d) is now running on rank %d\n", k, i, comm_rank());
       })
