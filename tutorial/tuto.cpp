@@ -175,7 +175,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             int k=kij[0];
             int i=kij[1];
             int j=kij[2];
-            if (k<i-1) {
+            if (k<j-1) {
                 gemm.fulfill_promise({k+1, i, j}, 5.0);
             }
             else {
