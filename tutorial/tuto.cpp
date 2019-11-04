@@ -223,6 +223,7 @@ void tuto_1(int n_threads, int verb)
     // Other ranks do nothing
     // Run until completion
     tp.join();
+    cout<<"LLT Error: "<<(A-L*L.transpose()).norm()/A.norm()<<"\n";
 }
 
 int main(int argc, char **argv)
