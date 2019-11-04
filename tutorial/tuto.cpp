@@ -108,7 +108,7 @@ void tuto_1(int n_threads, int verb)
     trsm.set_task([&](int2 ki) {
         int k=ki[0];
         int i=ki[1];
-        cout<<L.block(i*n,k*n,n,n)<<endl;
+        //cout<<L.block(i*n,k*n,n,n)<<endl;
         auto T=L.block(k*n,k*n,n,n).triangularView<Lower>().transpose().solve<OnTheRight>(L.block(i*n,k*n,n,n));
         //cout<<T(0,0)<<"\n";
         L.block(i*n,k*n,n,n)=T;
@@ -170,7 +170,7 @@ void tuto_1(int n_threads, int verb)
             L.block(j*n, i*n, n, n)-=L.block(j*n, k*n, n, n)*L.block(i*n, k*n, n, n).transpose();
             MatrixXd Temp=L.block(j*n, i*n, n, n);
             //cout<<Temp(0,0)<<endl;
-            printf("Gemm (%d, %d, %d) is now running on rank %d\n", k, i, j, comm_rank());
+            //printf("Gemm (%d, %d, %d) is now running on rank %d\n", k, i, j, comm_rank());
       })
         .set_fulfill([&](int3 kij) {
             int k=kij[0];
