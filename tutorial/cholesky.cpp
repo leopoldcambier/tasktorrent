@@ -235,7 +235,6 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                 int j = ijk[1];
                 int k = ijk[2];
                 Mat.at({i,j}).noalias() -= Mat.at({i,k}) * Mat.at({j,k}).transpose();
-                ASSERT_TRUE(k < N - 1);
             })
             .set_fulfill([&](int3 ijk) {
                 int i = ijk[0];
@@ -333,7 +332,6 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                 L.transpose().solveInPlace(b);
                 double error = (b - x).norm() / x.norm();
                 cout << "Error solve: " << error << endl;
-                EXPECT_LE(error, 1e-8);
             }
             // Test 2
             {
@@ -399,9 +397,14 @@ int main(int argc, char **argv)
         VERB = atoi(argv[6]);
     }
 
-    const int return_flag = RUN_ALL_TESTS();
+    int n_threads = n_threads_;
+  	int n = n_;
+  	int N = N_;
+    int p = p_;
+    int q = q_;
+    cholesky(n_threads, n, N, p, q);
 
     MPI_Finalize();
 
-    return return_flag;
+    return 0;
 }
