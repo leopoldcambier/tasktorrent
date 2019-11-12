@@ -11,7 +11,7 @@
 #include <iostream>
 #include <map>
 
-#include <gtest/gtest.h>
+
 #include <mpi.h>
 
 using namespace std;
@@ -360,7 +360,6 @@ TEST(cholesky, one)
 
 int main(int argc, char **argv)
 {
-    ::testing::InitGoogleTest(&argc, argv);
 
     int req = MPI_THREAD_FUNNELED;
     int prov = -1;
