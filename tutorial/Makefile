@@ -20,6 +20,9 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(OBJ)
 tuto: tuto.cpp $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE)
 
+cholesky: cholesky.cpp $(OBJ)
+	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE)
+
 run: tuto
 	mpirun -mca shmem posix -mca btl ^tcp -n 2 ./tuto	
 
