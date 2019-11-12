@@ -345,15 +345,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
     }
 }
 
-TEST(cholesky, one)
-{
-    int n_threads = n_threads_;
-  	int n = n_;
-  	int N = N_;
-    int p = p_;
-    int q = q_;
-    cholesky(n_threads, n, N, p, q);
-}
+
 
 
 int main(int argc, char **argv)
