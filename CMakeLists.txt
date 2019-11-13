@@ -9,6 +9,6 @@ find_package(MPI REQUIRED)
 include_directories(src/)
 set(SOURCES src/communications.cpp src/serialization.cpp src/util.cpp)
 
-add_library(taskTorrent STATIC ${SOURCES})
+add_library(TaskTorrent STATIC ${SOURCES})
 
 
