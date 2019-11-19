@@ -232,7 +232,9 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     // Other ranks do nothing
     // Run until completion
     timer t0 = wctime();
-    tp.join();
+    //tp.join();
+    LLT<MatrixXd> Test(A);
+    MatrixXd LR=Test.matrixL();
     timer t1 = wctime();
     L=L.triangularView<Lower>();
     cout<<"Elapsed time: "<<elapsed(t0,t1)<<endl;
