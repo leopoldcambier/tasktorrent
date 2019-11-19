@@ -236,7 +236,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     // Run until completion
     //tp.join();
     timer t0 = wctime();
-    int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', L.rows(), L.data(), L.rows());
+    //int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', L.rows(), L.data(), L.rows());
     timer t1 = wctime();
     L=L.triangularView<Lower>();
     cout<<"Elapsed time: "<<elapsed(t0,t1)<<endl;
