@@ -250,7 +250,7 @@ int main(int argc, char **argv)
     int req = MPI_THREAD_FUNNELED;
     int prov = -1;
 
-    MPI_Init_thread(NULL, NULL, req, &prov);
+    //MPI_Init_thread(NULL, NULL, req, &prov);
 
     assert(prov == req);
 
@@ -281,5 +281,5 @@ int main(int argc, char **argv)
 
     tuto_1(n_threads, verb, n, nb);
 
-    MPI_Finalize();
+    //MPI_Finalize();
 }
