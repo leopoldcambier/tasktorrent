@@ -19,7 +19,7 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(OBJ)
 	$(CC) -o $@ -c $< $(CFLAGS) $(INCLUDE)
 
 tuto: tuto.cpp $(OBJ)
-	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE)
 
 cholesky: cholesky.cpp $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE)
