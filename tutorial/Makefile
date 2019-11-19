@@ -3,6 +3,7 @@ CFLAGS   = --std=c++14 -g
 INCLUDE  = -I../src/
 SRCDIR   = ../src
 OBJDIR   = ../build
+LFLAGS   = -llapack
 
 .PHONY: clean
 
@@ -18,7 +19,7 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(OBJ)
 	$(CC) -o $@ -c $< $(CFLAGS) $(INCLUDE)
 
 tuto: tuto.cpp $(OBJ)
-	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE)
+	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LFLAGS)
 
 cholesky: cholesky.cpp $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE)
