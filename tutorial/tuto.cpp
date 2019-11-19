@@ -252,7 +252,7 @@ int main(int argc, char **argv)
 
     //MPI_Init_thread(NULL, NULL, req, &prov);
 
-    assert(prov == req);
+    //assert(prov == req);
 
 
 
