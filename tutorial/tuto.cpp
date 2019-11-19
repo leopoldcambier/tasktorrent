@@ -238,13 +238,13 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     tp.join();
     A = MatrixXd::NullaryExpr(n*nb,n*nb, val);
     MatrixXd L2 = A;
+    MatrixXd L1 = A;
     timer t0 = wctime();
     int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', L2.rows(), L2.data(), L2.rows());
     timer t1 = wctime();
-    LLT<MatrixXd> Test(A);
-    MatrixXd L1=Test.matrixL();
+    LLT<Ref<MatrixXd>> llt(L1);
     timer t2 = wctime();
-    //L=L.triangularView<Lower>();
+    L1=L1.triangularView<Lower>();
     L2=L2.triangularView<Lower>();
     cout<<"Elapsed time for LAPACK_dpotrf: "<<elapsed(t0,t1)<<endl;
     cout<<"Elapsed time for Eigen: "<<elapsed(t1,t2)<<endl;
