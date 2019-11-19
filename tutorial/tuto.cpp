@@ -237,18 +237,16 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     // Run until completion
     //tp.join();
     timer t0 = wctime();
-    //int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', L.rows(), L.data(), L.rows());
     int rr;
     int NN=L.rows();
     char cc='U';
     LAPACK_dpotrf(&cc, &NN,L.data(), &NN, &rr);
     timer t1 = wctime();
-    LLT<MatrixXd> Test(L1);
-    L1=Test.matrixL();
+    int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', L1.rows(), L1.data(), L1.rows());
     timer t2 = wctime();
     L=L.triangularView<Lower>();
-    cout<<"Elapsed time for LAPACK: "<<elapsed(t0,t1)<<endl;
-    cout<<"Elapsed time for Eigen: "<<elapsed(t1,t2)<<endl;
+    cout<<"Elapsed time for LAPACK_dpotrf: "<<elapsed(t0,t1)<<endl;
+    cout<<"Elapsed time for LAPACKE_dpotrf: "<<elapsed(t1,t2)<<endl;
     cout<<"LLT Error: "<<(*A-L*L.transpose()).norm()/A->norm()<<"\n";
     cout<<"LLT Error: "<<(*A-L1*L1.transpose()).norm()/A->norm()<<"\n";
     //cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, L.rows(), L.rows(), L.cols(), -1.0, L.data(), L.rows(), L.data(), L.rows(), 0.0, A->data(), L.rows());
