@@ -234,14 +234,14 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
     // Other ranks do nothing
     // Run until completion
-    tp.join();
+    //tp.join();
     timer t0 = wctime();
-    int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', A->rows(), A->data(), A->rows());
+    int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', L.rows(), L.data(), L.rows());
     timer t1 = wctime();
     L=L.triangularView<Lower>();
     cout<<"Elapsed time: "<<elapsed(t0,t1)<<endl;
-    //cout<<"LLT Error: "<<(A-L*L.transpose()).norm()/A.norm()<<"\n";
-    //cout<<"LLT Error GT: "<<(A-LR*LR.transpose()).norm()/A.norm()<<"\n";
+    cout<<"LLT Error: "<<(A-L*L.transpose()).norm()/A.norm()<<"\n";
+    cout<<"LLT Error GT: "<<(A-LR*LR.transpose()).norm()/A.norm()<<"\n";
 }
 
 int main(int argc, char **argv)
