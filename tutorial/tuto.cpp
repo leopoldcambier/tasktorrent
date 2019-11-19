@@ -234,8 +234,8 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
     // Other ranks do nothing
     // Run until completion
+    tp.join();
     timer t0 = wctime();
-    //tp.join();
     int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', A->rows(), A->data(), A->rows());
     timer t1 = wctime();
     L=L.triangularView<Lower>();
