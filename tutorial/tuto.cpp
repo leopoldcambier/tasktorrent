@@ -1,7 +1,8 @@
 #include "communications.hpp"
 #include "runtime.hpp"
 #include "util.hpp"
-
+#include <mkl_cblas.h>
+#include <mkl_lapacke.h>
 #include <Eigen/Core>
 #include <Eigen/Cholesky>
 #include <fstream>
@@ -233,8 +234,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     // Run until completion
     timer t0 = wctime();
     //tp.join();
-    LLT<MatrixXd> Test(A);
-    MatrixXd LR=Test.matrixL();
+    int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', A.rows(), A.data(), A.rows());
     timer t1 = wctime();
     L=L.triangularView<Lower>();
     cout<<"Elapsed time: "<<elapsed(t0,t1)<<endl;
