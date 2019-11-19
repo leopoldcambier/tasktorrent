@@ -2,7 +2,11 @@
 #define __TTOR_TASKTORRENT_HPP__
 
 #include "apply_functions.hpp"
-#include "communications.cpp"
+
+#ifndef TTOR_SHARED
+#include "communications.hpp"
+#endif
+
 #include "functional_extra.hpp"
 #include "runtime.hpp"
 #include "serialization.hpp"
