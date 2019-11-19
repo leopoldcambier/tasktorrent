@@ -1,4 +1,4 @@
-CC       = g++
+CC       = mpicxx
 CFLAGS   = --std=c++14 -g
 INCLUDE  = -I../src/
 SRCDIR   = ../src
