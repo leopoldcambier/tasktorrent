@@ -48,8 +48,6 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     A = MatrixXd::NullaryExpr(n*nb,n*nb, val);
     //cout<<A->rows()<<"\n";
     MatrixXd L = A;
-    MatrixXd L1 = A;
-    MatrixXd L2 = A;
     //LLT<MatrixXd> Test(A);
     //MatrixXd LR=Test.matrixL();
 
@@ -237,7 +235,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     // Other ranks do nothing
     // Run until completion
     tp.join();
-    MatrixXd L = A;
+    MatrixXd L2 = A;
     timer t0 = wctime();
     int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', L2.rows(), L2.data(), L2.rows());
     timer t1 = wctime();
