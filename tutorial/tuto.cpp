@@ -240,7 +240,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', L.rows(), L.data(), L.rows());
     timer t1 = wctime();
     LLT<MatrixXd> Test(A);
-    MatrixXd L1=Test.matrixL();
+    L1=Test.matrixL();
     timer t2 = wctime();
     L=L.triangularView<Lower>();
     cout<<"Elapsed time for LAPACK_dpotrf: "<<elapsed(t0,t1)<<endl;
