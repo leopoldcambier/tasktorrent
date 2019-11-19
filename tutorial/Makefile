@@ -1,5 +1,5 @@
 CC       = mpicxx
-CFLAGS   = --std=c++14 -g
+CFLAGS   = --std=c++14 -O0 -g 
 INCLUDE  = -I../src/
 SRCDIR   = ../src
 OBJDIR   = ../build
