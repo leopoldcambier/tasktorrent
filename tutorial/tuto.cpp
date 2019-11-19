@@ -233,7 +233,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
     // Other ranks do nothing
     // Run until completion
-    //tp.join();
+    tp.join();
     timer t0 = wctime();
     int rr;
     int NN=L.rows();
