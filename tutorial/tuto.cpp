@@ -241,8 +241,8 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     int rr;
     dpotrf('U', L.rows(),L.data(), L.rows(), rr);
     timer t1 = wctime();
-    LLT<MatrixXd> Test(L1);
-    L1=Test.matrixL()
+    //LLT<MatrixXd> Test(L1);
+    //L1=Test.matrixL();
     //timer t2 = wctime();
     L=L.triangularView<Lower>();
     cout<<"Elapsed time: "<<elapsed(t0,t1)<<endl;
