@@ -241,7 +241,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     L=L.triangularView<Lower>();
     cout<<"Elapsed time: "<<elapsed(t0,t1)<<endl;
     cout<<"LLT Error: "<<(A-L*L.transpose()).norm()/A.norm()<<"\n";
-    cout<<"LLT Error GT: "<<(A-LR*LR.transpose()).norm()/A.norm()<<"\n";
+    //cout<<"LLT Error GT: "<<(A-LR*LR.transpose()).norm()/A.norm()<<"\n";
 }
 
 int main(int argc, char **argv)
