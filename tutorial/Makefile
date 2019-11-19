@@ -3,7 +3,7 @@ CFLAGS   = --std=c++14 -g
 INCLUDE  = -I../src/
 SRCDIR   = ../src
 OBJDIR   = ../build
-LDFLAGS  = -llapack -lblas
+LDFLAGS  = -llapack
 
 .PHONY: clean
 
