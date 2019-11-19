@@ -44,8 +44,9 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
 
     auto val = [&](int i, int j) { return 1/(float)((i-j)*(i-j)+1); };
-    MatrixXd A = MatrixXd::NullaryExpr(n*nb,n*nb, val);
-    MatrixXd L = A;
+    MatrixXd* A;
+    *A = MatrixXd::NullaryExpr(n*nb,n*nb, val);
+    MatrixXd L = *A;
     //LLT<MatrixXd> Test(A);
     //MatrixXd LR=Test.matrixL();
 
@@ -234,7 +235,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     // Run until completion
     timer t0 = wctime();
     //tp.join();
-    int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', A.rows(), A.data(), A.rows());
+    int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', A->rows(), A->data(), A->rows());
     timer t1 = wctime();
     L=L.triangularView<Lower>();
     cout<<"Elapsed time: "<<elapsed(t0,t1)<<endl;
