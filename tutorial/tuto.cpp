@@ -239,7 +239,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     timer t0 = wctime();
     int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', L.rows(), L.data(), L.rows());
     timer t1 = wctime();
-    LLT<Ref<MatrixXd> Test(L1);
+    LLT<Ref<MatrixXd>> Test(L1);
     timer t2 = wctime();
     L=L.triangularView<Lower>();
     cout<<"Elapsed time: "<<elapsed(t0,t1)<<endl;
