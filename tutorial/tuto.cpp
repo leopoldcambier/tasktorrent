@@ -237,9 +237,9 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     // Run until completion
     //tp.join();
     timer t0 = wctime();
-    int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', L.rows(), L.data(), L.rows());
-    //int rr;
-    //dpotrf('U', L.rows(),L.data(), L.rows(), rr);
+    //int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', L.rows(), L.data(), L.rows());
+    int rr;
+    LAPACK_dpotrf('U', L.rows(),L.data(), L.rows(), rr);
     timer t1 = wctime();
     LLT<MatrixXd> Test(L1);
     L1=Test.matrixL();
