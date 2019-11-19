@@ -34,8 +34,8 @@ typedef array<int, 3> int3;
 //Test Test2
 void tuto_1(int n_threads, int verb, int n, int nb)
 {
-    const int rank = 0;
-    const int n_ranks = 1;
+    const int rank = comm_rank();
+    const int n_ranks = comm_size();
 
 
 
@@ -223,7 +223,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             int k=kij[0];
             int i=kij[1];
             int j=kij[2];
-            return "GEMM" + to_string(k) + "_" + to_string(i)+"_"+to_string(j)+"_"+to_string(0);
+            return "GEMM" + to_string(k) + "_" + to_string(i)+"_"+to_string(j)+"_"+to_string(comm_rank());
         });
 
 
@@ -247,12 +247,12 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
 int main(int argc, char **argv)
 {
-    //int req = MPI_THREAD_FUNNELED;
+    int req = MPI_THREAD_FUNNELED;
     int prov = -1;
 
-    //MPI_Init_thread(NULL, NULL, req, &prov);
+    MPI_Init_thread(NULL, NULL, req, &prov);
 
-    //assert(prov == req);
+    assert(prov == req);
 
 
 
@@ -281,5 +281,5 @@ int main(int argc, char **argv)
 
     tuto_1(n_threads, verb, n, nb);
 
-    //MPI_Finalize();
+    MPI_Finalize();
 }
