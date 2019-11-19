@@ -48,7 +48,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     *A = MatrixXd::NullaryExpr(n*nb,n*nb, val);
     cout<<A->rows()<<"\n";
     MatrixXd L = *A;
-    //MatrixXd L1 = *A;
+    MatrixXd L1 = *A;
     //LLT<MatrixXd> Test(A);
     //MatrixXd LR=Test.matrixL();
 
@@ -237,14 +237,17 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     // Run until completion
     //tp.join();
     timer t0 = wctime();
-    int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', L.rows(), L.data(), L.rows());
+    //int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', L.rows(), L.data(), L.rows());
+    int rr;
+    dpotrf('U', L.rows(),L.data(), L.rows(), rr);
     timer t1 = wctime();
-    //LLT<Ref<MatrixXd>> Test(L1);
+    LLT<MatrixXd> Test(L1);
+    L1=Test.matrixL()
     //timer t2 = wctime();
     L=L.triangularView<Lower>();
     cout<<"Elapsed time: "<<elapsed(t0,t1)<<endl;
-    //cout<<"Elapsed time: "<<elapsed(t1,t2)<<endl;
-    cout<<"LLT Error: "<<(*A-L*L.transpose()).norm()/A->norm()<<"\n";
+    cout<<"Elapsed time: "<<elapsed(t1,t2)<<endl;
+    //cout<<"LLT Error: "<<(*A-L*L.transpose()).norm()/A->norm()<<"\n";
     //cout<<"LLT Error: "<<(*A-L1*L1.transpose()).norm()/A->norm()<<"\n";
     //cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, L.rows(), L.rows(), L.cols(), -1.0, L.data(), L.rows(), L.data(), L.rows(), 0.0, A->data(), L.rows());
     //cout<<"LLT Error GT: "<<(A-LR*LR.transpose()).norm()/A.norm()<<"\n";
