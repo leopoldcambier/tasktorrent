@@ -1,8 +1,6 @@
 #include "communications.hpp"
 #include "runtime.hpp"
 #include "util.hpp"
-#include <cblas.h>
-#include <lapacke.h>
 #include <Eigen/Core>
 #include <Eigen/Cholesky>
 #include <fstream>
@@ -44,11 +42,11 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
 
     auto val = [&](int i, int j) { return 1/(float)((i-j)*(i-j)+1); };
-    MatrixXd* A;
-    *A = MatrixXd::NullaryExpr(n*nb,n*nb, val);
-    cout<<A->rows()<<"\n";
-    MatrixXd L = *A;
-    MatrixXd L1 = *A;
+    MatrixXd A;
+    A = MatrixXd::NullaryExpr(n*nb,n*nb, val);
+    //cout<<A->rows()<<"\n";
+    //MatrixXd L = *A;
+    //MatrixXd L1 = *A;
     //LLT<MatrixXd> Test(A);
     //MatrixXd LR=Test.matrixL();
 
