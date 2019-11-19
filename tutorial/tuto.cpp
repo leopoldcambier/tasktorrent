@@ -240,9 +240,9 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     int rr;
     int NN=L.rows();
     char cc='U';
-    LAPACK_dpotrf(&cc, &NN,L.data(), &NN, &rr);
+    //LAPACK_dpotrf(&cc, &NN,L.data(), &NN, &rr);
     timer t1 = wctime();
-    int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', L1.rows(), L1.data(), L1.rows());
+    //int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', L1.rows(), L1.data(), L1.rows());
     timer t2 = wctime();
     L=L.triangularView<Lower>();
     cout<<"Elapsed time for LAPACK_dpotrf: "<<elapsed(t0,t1)<<endl;
