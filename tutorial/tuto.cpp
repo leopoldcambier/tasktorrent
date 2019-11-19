@@ -48,7 +48,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     *A = MatrixXd::NullaryExpr(n*nb,n*nb, val);
     cout<<A->rows()<<"\n";
     MatrixXd L = *A;
-    MatrixXd L1 = *A;
+    //MatrixXd L1 = *A;
     //LLT<MatrixXd> Test(A);
     //MatrixXd LR=Test.matrixL();
 
