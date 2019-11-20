@@ -83,14 +83,14 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     potrf.set_task([&](int k) {
           //LLT<MatrixXd> lltOfA(L.block(k*n, k*n, n, n));
           //MatrixXd LR=lltOfA.matrixL();
-          MatrixXd temp=L.block(k*n, k*n, n, n);
+          //MatrixXd temp=L.block(k*n, k*n, n, n);
           //cout << "A: \n";
           //cout << L.block(k*n, k*n, n, n) << "\n\n";
           //LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, L.block(k*n, k*n, n, n).data(), n);
-          LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, temp.data(), n);
-          L.block(k*n, k*n, n, n)=temp;
-          cout << "temp: \n";
-          cout << temp << "\n\n";
+          LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, blocs[k+k*n]->data(), n);
+          //L.block(k*n, k*n, n, n)=temp;
+          //cout << "temp: \n";
+          //cout << temp << "\n\n";
           //cout << "Lkk: \n";
           //cout << L.block(k*n, k*n, n, n) << "\n\n";
           //cout << "Eigen: \n";
@@ -130,11 +130,11 @@ void tuto_1(int n_threads, int verb, int n, int nb)
         int k=ki[0];
         int i=ki[1];
         //cout<<L.block(i*n,k*n,n,n)<<endl;
-        MatrixXd temp=L.block(i*n,k*n,n,n);
-        MatrixXd temp2=L.block(k*n,k*n,n,n);
+        //MatrixXd temp=L.block(i*n,k*n,n,n);
+        //MatrixXd temp2=L.block(k*n,k*n,n,n);
         //auto T=L.block(k*n,k*n,n,n).triangularView<Lower>().transpose().solve<OnTheRight>(L.block(i*n,k*n,n,n));
-        cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, n, n, 1.0, temp2.data(),n, temp.data(), n);
-        L.block(i*n,k*n,n,n)=temp;
+        cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, n, n, 1.0, blocs[k+k*n]->data(),n, blocs[i+k*n]->data(), n);
+        //L.block(i*n,k*n,n,n)=temp;
         //cout<<L.block(k*n,k*n,n,n)<<"\n\n";
         //cout << "LAPACK: \n";
         //cout << temp*L.block(k*n,k*n,n,n).transpose() << "\n\n";
@@ -198,11 +198,11 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             int i=kij[1];
             int j=kij[2];
             //L.block(i*n, j*n, n, n)-=L.block(i*n, k*n, n, n)*L.block(j*n, k*n, n, n).transpose();
-            MatrixXd blocij=L.block(i*n, j*n, n, n);
-            MatrixXd blocik=L.block(i*n, k*n, n, n);
-            MatrixXd blocjk=L.block(j*n, k*n, n, n);
-            cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, n, n, n, -1.0,blocik.data(), n, blocjk.transpose().data(), n, 1.0, blocij.data(), n);
-            L.block(i*n, j*n, n, n)=blocij;
+            //MatrixXd blocij=L.block(i*n, j*n, n, n);
+            //MatrixXd blocik=L.block(i*n, k*n, n, n);
+            //MatrixXd blocjk=L.block(j*n, k*n, n, n);
+            cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, n, n, n, -1.0,blocs[i+k*n]->data(), n, blocs[j+k*n]->transpose().data(), n, 1.0, blocs[i+j*n]->data(), n);
+            //L.block(i*n, j*n, n, n)=blocij;
             //cout<<Temp(0,0)<<endl;
             //printf("Gemm (%d, %d, %d) is now running on rank %d\n", k, i, j, comm_rank());
       })
@@ -270,7 +270,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     timer t1 = wctime();
     for (int ii=0; ii<nb; ii++) {
         for (int jj=0; jj<nb; jj++) {
-            //L.block(ii*n,jj*n,n,n)=*blocs[ii+jj*nb];
+            L.block(ii*n,jj*n,n,n)=*blocs[ii+jj*nb];
         }
     }
     auto L1=L.triangularView<Lower>();
