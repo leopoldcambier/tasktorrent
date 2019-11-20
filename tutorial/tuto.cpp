@@ -73,9 +73,9 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
     // Define the task flow
     potrf.set_task([&](int k) {
-          //LLT<MatrixXd> lltOfA(L.block(k*n, k*n, n, n));
-          //L.block(k*n, k*n, n, n)=lltOfA.matrixL();
-          LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, L.block(k*n, k*n, n, n).data(), n);
+          LLT<MatrixXd> lltOfA(L.block(k*n, k*n, n, n));
+          L.block(k*n, k*n, n, n)=lltOfA.matrixL();
+          //LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, L.block(k*n, k*n, n, n).data(), n);
           //MatrixXd temp=L.block(k*n, k*n, n, n);
           //cout<<temp(0,0)<<endl;
           //cout<<(LR.block(k*n, k*n, n, n)-L.block(k*n, k*n, n, n)).norm()<<endl;
