@@ -76,7 +76,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
           Block<MatrixXd> temp(L,k*n,k*n,n,n);
           //Map<MatrixXd>(temp, n, n)=L.block(k*n, k*n, n, n);
           LLT<MatrixXd> lltOfA(temp);
-          //MatrixXd LR=lltOfA.matrixL();
+          MatrixXd LR=lltOfA.matrixL();
           cout << "A: \n";
           cout << L.block(k*n, k*n, n, n) << "\n\n";
           LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, temp.data(), n);
