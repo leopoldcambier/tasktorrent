@@ -87,7 +87,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
           //cout << "A: \n";
           //cout << L.block(k*n, k*n, n, n) << "\n\n";
           //LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, L.block(k*n, k*n, n, n).data(), n);
-          LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, blocs[k+k*n]->data(), n);
+          LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, blocs[k+k*nb]->data(), n);
           //L.block(k*n, k*n, n, n)=temp;
           //cout << "temp: \n";
           //cout << temp << "\n\n";
@@ -133,7 +133,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
         //MatrixXd temp=L.block(i*n,k*n,n,n);
         //MatrixXd temp2=L.block(k*n,k*n,n,n);
         //auto T=L.block(k*n,k*n,n,n).triangularView<Lower>().transpose().solve<OnTheRight>(L.block(i*n,k*n,n,n));
-        cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, n, n, 1.0, blocs[k+k*n]->data(),n, blocs[i+k*n]->data(), n);
+        cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, n, n, 1.0, blocs[k+k*nb]->data(),n, blocs[i+k*nb]->data(), n);
         //L.block(i*n,k*n,n,n)=temp;
         //cout<<L.block(k*n,k*n,n,n)<<"\n\n";
         //cout << "LAPACK: \n";
@@ -201,7 +201,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             //MatrixXd blocij=L.block(i*n, j*n, n, n);
             //MatrixXd blocik=L.block(i*n, k*n, n, n);
             //MatrixXd blocjk=L.block(j*n, k*n, n, n);
-            cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, n, n, n, -1.0,blocs[i+k*n]->data(), n, blocs[j+k*n]->transpose().data(), n, 1.0, blocs[i+j*n]->data(), n);
+            cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, n, n, n, -1.0,blocs[i+k*nb]->data(), n, blocs[j+k*nb]->transpose().data(), n, 1.0, blocs[i+j*nb]->data(), n);
             //L.block(i*n, j*n, n, n)=blocij;
             //cout<<Temp(0,0)<<endl;
             //printf("Gemm (%d, %d, %d) is now running on rank %d\n", k, i, j, comm_rank());
