@@ -241,14 +241,14 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     timer t0 = wctime();
     tp.join();
     timer t1 = wctime();
-    L=L.triangularView<Lower>();
+    auto L1=L.triangularView<Lower>();
     cout<<"Elapsed time: "<<elapsed(t0,t1)<<endl;
 
     VectorXd x = VectorXd::Random(n * N);
     VectorXd b = A*x;
     VectorXd bref = b;
-    L.solveInPlace(b);
-    L.transpose().solveInPlace(b);
+    L1.solveInPlace(b);
+    L1.transpose().solveInPlace(b);
     double error = (b - x).norm() / x.norm();
     cout << "Error solve: " << error << endl;
     //cout<<"LLT Error: "<<(A-L*L.transpose()).norm()/A.norm()<<"\n";
