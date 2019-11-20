@@ -74,7 +74,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     // Define the task flow
     potrf.set_task([&](int k) {
           MatrixXd *temp=L.block(k*n, k*n, n, n).get();
-          LLT<MatrixXd> lltOfA(temp);
+          LLT<MatrixXd> lltOfA(*temp);
           MatrixXd LR=lltOfA.matrixL();
           cout << "A: \n";
           cout << L.block(k*n, k*n, n, n) << "\n\n";
