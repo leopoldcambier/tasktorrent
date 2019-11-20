@@ -113,6 +113,8 @@ void tuto_1(int n_threads, int verb, int n, int nb)
         int i=ki[1];
         //cout<<L.block(i*n,k*n,n,n)<<endl;
         auto T=L.block(k*n,k*n,n,n).triangularView<Lower>().transpose().solve<OnTheRight>(L.block(i*n,k*n,n,n));
+        cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit,
+                    n, n, 1.0, L.block(k*n,k*n,n,n).data(),n, L.block(i*n,k*n,n,n).data(), n);
         //cout<<T(0,0)<<"\n";
         L.block(i*n,k*n,n,n)=T;
         MatrixXd Temp=L.block(i*n, k*n, n, n);
@@ -240,7 +242,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     timer t1 = wctime();
     L=L.triangularView<Lower>();
     cout<<"Elapsed time: "<<elapsed(t0,t1)<<endl;
-    //cout<<"LLT Error: "<<(A-L*L.transpose()).norm()/A.norm()<<"\n";
+    cout<<"LLT Error: "<<(A-L*L.transpose()).norm()/A.norm()<<"\n";
     //cout<<"LLT Error for Eigen : "<<(A-L1*L1.transpose()).norm()/A.norm()<<"\n";
     //cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, L.rows(), L.rows(), L.cols(), -1.0, L.data(), L.rows(), L.data(), L.rows(), 0.0, A.data(), L.rows());
     //cout<<"LLT Error GT: "<<(A-LR*LR.transpose()).norm()/A.norm()<<"\n";
