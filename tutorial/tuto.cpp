@@ -46,8 +46,15 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     auto val = [&](int i, int j) { return 1/(float)((i-j)*(i-j)+1); };
     MatrixXd A;
     A = MatrixXd::NullaryExpr(n*nb,n*nb, val);
+    MatrixXd L = A.triangularView<Lower>();
+    vector<unique_ptr<MatrixXd>> blocs(nb*nb);
+    for (int ii=0; ii<nb; ii++) {
+        for (int jj=0; jj<nb; jj++) {
+            blocs[ii+jj*nb]=make_unique<MatrixXd>(n,n);
+            *blocs[ii+jj*nb]=L.block(ii*n,jj*n,n,n);
+        }
+    }
     //cout<<A->rows()<<"\n";
-    MatrixXd L = A;
     //LLT<MatrixXd> Test(A);
     //MatrixXd LR=Test.matrixL();
 
@@ -260,6 +267,11 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     timer t0 = wctime();
     tp.join();
     timer t1 = wctime();
+    for (int ii=0; ii<nb; ii++) {
+        for (int jj=0; jj<nb; jj++) {
+            L.block(ii*n,jj*n,n,n)=*blocs[ii+jj*nb]=;
+        }
+    }
     auto L1=L.triangularView<Lower>();
     cout<<"Elapsed time: "<<elapsed(t0,t1)<<endl;
 
