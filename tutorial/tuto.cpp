@@ -92,8 +92,8 @@ void tuto_1(int n_threads, int verb, int n, int nb)
           //LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, L.block(k*n, k*n, n, n).data(), n);
           LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, blocs[k+k*nb]->data(), n);
           //L.block(k*n, k*n, n, n)=L.block(k*n, k*n, n, n).triangularView<Lower>();
-          //cout << "temp: \n";
-          //cout << temp << "\n\n";
+          cout << "temp: \n";
+          cout << *blocs[k+k*nb] << "\n\n";
           //cout << "Lkk: \n";
           //cout << L.block(k*n, k*n, n, n) << "\n\n";
           //cout << "Eigen: \n";
