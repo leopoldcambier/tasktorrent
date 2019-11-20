@@ -81,17 +81,16 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
     // Define the task flow
     potrf.set_task([&](int k) {
-          //Block<MatrixXd> temp(L,k*n,k*n,n,n);
-          //Map<MatrixXd>(temp, n, n)=L.block(k*n, k*n, n, n);
-          //LLT<MatrixXd> lltOfA(temp);
+          //LLT<MatrixXd> lltOfA(L.block(k*n, k*n, n, n));
           //MatrixXd LR=lltOfA.matrixL();
+          MatrixXd temp=L.block(k*n, k*n, n, n);
           //cout << "A: \n";
           //cout << L.block(k*n, k*n, n, n) << "\n\n";
           //LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, L.block(k*n, k*n, n, n).data(), n);
-          LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, blocs[k+k*nb]->data(), n);
-          //L.block(k*n, k*n, n, n)=L.block(k*n, k*n, n, n).triangularView<Lower>();
-          //cout << "temp: \n";
-          //cout << *blocs[k+k*nb] << "\n\n";
+          LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, temp->data, n);
+          L.block(k*n, k*n, n, n)=temp;
+          cout << "temp: \n";
+          cout << *blocs[k+k*nb] << "\n\n";
           //cout << "Lkk: \n";
           //cout << L.block(k*n, k*n, n, n) << "\n\n";
           //cout << "Eigen: \n";
