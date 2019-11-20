@@ -1,5 +1,3 @@
-
-
 #include "communications.hpp"
 #include "runtime.hpp"
 #include "util.hpp"
@@ -237,20 +235,12 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
     // Other ranks do nothing
     // Run until completion
-    tp.join();
-    A = MatrixXd::NullaryExpr(n*nb,n*nb, val);
-    MatrixXd L2 = A;
-    MatrixXd L1 = A;
     timer t0 = wctime();
-    int err = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', L2.rows(), L2.data(), L2.rows());
+    tp.join();
     timer t1 = wctime();
-    LLT<Ref<MatrixXd>> llt(L1);
-    timer t2 = wctime();
-    L1=L1.triangularView<Lower>();
-    L2=L2.triangularView<Lower>();
-    cout<<"Elapsed time for LAPACK_dpotrf: "<<elapsed(t0,t1)<<endl;
-    cout<<"Elapsed time for Eigen: "<<elapsed(t1,t2)<<endl;
-    //cout<<"LLT Error for LAPACK: "<<(A-L2*L2.transpose()).norm()/A.norm()<<"\n";
+    L=L.triangularView<Lower>();
+    cout<<"Elapsed time: "<<elapsed(t0,t1)<<endl;
+    cout<<"LLT Error: "<<(A-L*L.transpose()).norm()/A.norm()<<"\n";
     //cout<<"LLT Error for Eigen : "<<(A-L1*L1.transpose()).norm()/A.norm()<<"\n";
     //cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, L.rows(), L.rows(), L.cols(), -1.0, L.data(), L.rows(), L.data(), L.rows(), 0.0, A.data(), L.rows());
     //cout<<"LLT Error GT: "<<(A-LR*LR.transpose()).norm()/A.norm()<<"\n";
