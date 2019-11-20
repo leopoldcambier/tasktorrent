@@ -73,13 +73,13 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
     // Define the task flow
     potrf.set_task([&](int k) {
-          LLT<MatrixXd> lltOfA(L.block(k*n, k*n, n, n));
-          L.block(k*n, k*n, n, n)=lltOfA.matrixL();
-          //LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, L.block(k*n, k*n, n, n).data(), n);
+          MatrixXd temp=L.block(k*n, k*n, n, n);
+          LLT<MatrixXd> lltOfA(temp);
+          MatrixXd LR=lltOfA.matrixL();
+          LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, L.block(k*n, k*n, n, n).data(), n);
           //L.block(k*n, k*n, n, n)=L.block(k*n, k*n, n, n).triangularView<Lower>();
-          //MatrixXd temp=L.block(k*n, k*n, n, n);
           //cout<<temp(0,0)<<endl;
-          //cout<<(LR.block(k*n, k*n, n, n)-L.block(k*n, k*n, n, n)).norm()<<endl;
+          cout<<(L.block(k*n, k*n, n, n)-LR).norm()<<endl;
           //printf("Potrf %d is now running on rank %d\n", k, comm_rank());
       })
         .set_fulfill([&](int k) {
@@ -113,10 +113,10 @@ void tuto_1(int n_threads, int verb, int n, int nb)
         int k=ki[0];
         int i=ki[1];
         //cout<<L.block(i*n,k*n,n,n)<<endl;
-        //auto T=L.block(k*n,k*n,n,n).triangularView<Lower>().transpose().solve<OnTheRight>(L.block(i*n,k*n,n,n));
-        cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, n, n, 1.0, L.block(k*n,k*n,n,n).data(),n, L.block(i*n,k*n,n,n).data(), n);
+        auto T=L.block(k*n,k*n,n,n).triangularView<Lower>().transpose().solve<OnTheRight>(L.block(i*n,k*n,n,n));
+        //cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, n, n, 1.0, L.block(k*n,k*n,n,n).data(),n, L.block(i*n,k*n,n,n).data(), n);
         //cout<<T(0,0)<<"\n";
-        //L.block(i*n,k*n,n,n)=T;
+        L.block(i*n,k*n,n,n)=T;
         //MatrixXd Temp=L.block(i*n, k*n, n, n);
         //cout<<(LR.block(i*n, k*n, n, n)-L.block(i*n, k*n, n, n)).norm()<<endl;
         //cout<<Temp(0,0)<<endl;
