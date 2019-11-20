@@ -244,7 +244,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     auto L1=L.triangularView<Lower>();
     cout<<"Elapsed time: "<<elapsed(t0,t1)<<endl;
 
-    VectorXd x = VectorXd::Random(n * N);
+    VectorXd x = VectorXd::Random(n * nb);
     VectorXd b = A*x;
     VectorXd bref = b;
     L1.solveInPlace(b);
