@@ -73,12 +73,13 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
     // Define the task flow
     potrf.set_task([&](int k) {
-          Ref<MatrixXd> temp=L.block(k*n, k*n, n, n);
+          double *temp;
+          Map<MatrixXd>(temp, n, n)=L.block(k*n, k*n, n, n);
           //LLT<MatrixXd> lltOfA(*temp);
           //MatrixXd LR=lltOfA.matrixL();
           //cout << "A: \n";
           //cout << L.block(k*n, k*n, n, n) << "\n\n";
-          LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, temp.data(), n);
+          LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, temp, n);
           //L.block(k*n, k*n, n, n)=temp.triangularView<Lower>();
           //cout << "LAPACK: \n";
           //cout << L.block(k*n, k*n, n, n) << "\n\n";
