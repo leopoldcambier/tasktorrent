@@ -46,11 +46,14 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     auto val = [&](int i, int j) { return 1/(float)((i-j)*(i-j)+1); };
     MatrixXd A;
     A = MatrixXd::NullaryExpr(n*nb,n*nb, val);
-    MatrixXd L = A.triangularView<Lower>();
+    MatrixXd L = A;
     vector<unique_ptr<MatrixXd>> blocs(nb*nb);
     for (int ii=0; ii<nb; ii++) {
         for (int jj=0; jj<nb; jj++) {
             blocs[ii+jj*nb]=make_unique<MatrixXd>(n,n);
+            if (ii==jj) {
+                *blocs[ii+jj*nb]=L.block(ii*n,jj*n,n,n).triangularView<Lower>();
+            }
             *blocs[ii+jj*nb]=L.block(ii*n,jj*n,n,n);
         }
     }
@@ -86,7 +89,8 @@ void tuto_1(int n_threads, int verb, int n, int nb)
           //MatrixXd LR=lltOfA.matrixL();
           //cout << "A: \n";
           //cout << L.block(k*n, k*n, n, n) << "\n\n";
-          LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, L.block(k*n, k*n, n, n).data(), n);
+          //LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, L.block(k*n, k*n, n, n).data(), n);
+          LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, blocs[k+k*nb]->data(), n);
           //L.block(k*n, k*n, n, n)=L.block(k*n, k*n, n, n).triangularView<Lower>();
           //cout << "temp: \n";
           //cout << temp << "\n\n";
