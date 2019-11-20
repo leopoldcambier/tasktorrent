@@ -119,8 +119,10 @@ void tuto_1(int n_threads, int verb, int n, int nb)
         int k=ki[0];
         int i=ki[1];
         //cout<<L.block(i*n,k*n,n,n)<<endl;
+        MatrixXd temp=L.block(i*n,k*n,n,n);
         auto T=L.block(k*n,k*n,n,n).triangularView<Lower>().transpose().solve<OnTheRight>(L.block(i*n,k*n,n,n));
-        //cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, n, n, 1.0, L.block(k*n,k*n,n,n).data(),n, L.block(i*n,k*n,n,n).data(), n);
+        cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, n, n, 1.0, L.block(k*n,k*n,n,n).data(),n, temp.data(), n);
+        L.block(i*n,k*n,n,n)=temp;
         //cout<<T(0,0)<<"\n";
 
         L.block(i*n,k*n,n,n)=T;
