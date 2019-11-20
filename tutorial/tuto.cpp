@@ -77,7 +77,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
           LLT<MatrixXd> lltOfA(temp);
           MatrixXd LR=lltOfA.matrixL();
           LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, L.block(k*n, k*n, n, n).data(), n);
-          //L.block(k*n, k*n, n, n)=L.block(k*n, k*n, n, n).triangularView<Lower>();
+          L.block(k*n, k*n, n, n)=L.block(k*n, k*n, n, n).triangularView<Lower>();
           //cout<<temp(0,0)<<endl;
           cout<<(L.block(k*n, k*n, n, n)-LR).norm()<<endl;
           //printf("Potrf %d is now running on rank %d\n", k, comm_rank());
@@ -116,6 +116,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
         auto T=L.block(k*n,k*n,n,n).triangularView<Lower>().transpose().solve<OnTheRight>(L.block(i*n,k*n,n,n));
         //cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, n, n, 1.0, L.block(k*n,k*n,n,n).data(),n, L.block(i*n,k*n,n,n).data(), n);
         //cout<<T(0,0)<<"\n";
+
         L.block(i*n,k*n,n,n)=T;
         //MatrixXd Temp=L.block(i*n, k*n, n, n);
         //cout<<(LR.block(i*n, k*n, n, n)-L.block(i*n, k*n, n, n)).norm()<<endl;
