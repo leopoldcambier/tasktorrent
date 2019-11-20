@@ -51,10 +51,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     for (int ii=0; ii<nb; ii++) {
         for (int jj=0; jj<nb; jj++) {
             blocs[ii+jj*nb]=make_unique<MatrixXd>(n,n);
-            if (ii==jj) {
-                *blocs[ii+jj*nb]=L.block(ii*n,jj*n,n,n).triangularView<Lower>();
-                cout << *blocs[ii+jj*nb] << "\n\n";
-            }
+
             *blocs[ii+jj*nb]=L.block(ii*n,jj*n,n,n);
         }
     }
