@@ -270,7 +270,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     timer t1 = wctime();
     for (int ii=0; ii<nb; ii++) {
         for (int jj=0; jj<nb; jj++) {
-            L.block(ii*n,jj*n,n,n)=*blocs[ii+jj*nb];
+            //L.block(ii*n,jj*n,n,n)=*blocs[ii+jj*nb];
         }
     }
     auto L1=L.triangularView<Lower>();
