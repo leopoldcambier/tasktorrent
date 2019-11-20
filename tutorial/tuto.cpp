@@ -79,11 +79,11 @@ void tuto_1(int n_threads, int verb, int n, int nb)
           cout << "A: \n";
           cout << L.block(k*n, k*n, n, n) << "\n\n";
           LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, L.block(k*n, k*n, n, n).data(), n);
-          L.block(k*n, k*n, n, n)=L.block(k*n, k*n, n, n).triangularView<Lower>();
+          //L.block(k*n, k*n, n, n)=L.block(k*n, k*n, n, n).triangularView<Lower>();
           cout << "LAPACK: \n";
-          cout << L.block(k*n, k*n, n, n)*L.block(k*n, k*n, n, n).transpose() << "\n\n";
+          cout << L.block(k*n, k*n, n, n) << "\n\n";
           cout << "Eigen: \n";
-          cout << LR*LR.transpose() << "\n\n";
+          cout << LR<< "\n\n";
           //cout<<temp(0,0)<<endl;
           cout<<(L.block(k*n, k*n, n, n)-LR).norm()<<endl;
           //printf("Potrf %d is now running on rank %d\n", k, comm_rank());
