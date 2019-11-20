@@ -1,6 +1,5 @@
 
-#define EIGEN_USE_BLAS
-#define EIGEN_USE_LAPACKE
+
 #include "communications.hpp"
 #include "runtime.hpp"
 #include "util.hpp"
