@@ -73,19 +73,19 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
     // Define the task flow
     potrf.set_task([&](int k) {
-          MatrixXd *temp=&L.block(k*n, k*n, n, n);
-          LLT<MatrixXd> lltOfA(*temp);
-          MatrixXd LR=lltOfA.matrixL();
-          cout << "A: \n";
-          cout << L.block(k*n, k*n, n, n) << "\n\n";
-          LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, temp->data(), n);
-          //L.block(k*n, k*n, n, n)=L.block(k*n, k*n, n, n).triangularView<Lower>();
-          cout << "LAPACK: \n";
-          cout << L.block(k*n, k*n, n, n) << "\n\n";
-          cout << "Eigen: \n";
-          cout << LR<< "\n\n";
+          MatrixXd temp=L.block(k*n, k*n, n, n);
+          //LLT<MatrixXd> lltOfA(*temp);
+          //MatrixXd LR=lltOfA.matrixL();
+          //cout << "A: \n";
+          //cout << L.block(k*n, k*n, n, n) << "\n\n";
+          LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, temp.data(), n);
+          L.block(k*n, k*n, n, n)=temp.triangularView<Lower>();
+          //cout << "LAPACK: \n";
+          //cout << L.block(k*n, k*n, n, n) << "\n\n";
+          //cout << "Eigen: \n";
+          //cout << LR<< "\n\n";
           //cout<<temp(0,0)<<endl;
-          cout<<(L.block(k*n, k*n, n, n)-LR).norm()<<endl;
+          //cout<<(L.block(k*n, k*n, n, n)-LR).norm()<<endl;
           //printf("Potrf %d is now running on rank %d\n", k, comm_rank());
       })
         .set_fulfill([&](int k) {
