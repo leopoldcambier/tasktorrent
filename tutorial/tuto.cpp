@@ -79,7 +79,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
           //MatrixXd LR=lltOfA.matrixL();
           //cout << "A: \n";
           //cout << L.block(k*n, k*n, n, n) << "\n\n";
-          LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, temp, n);
+          LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, temp.data(), n);
           //L.block(k*n, k*n, n, n)=temp.triangularView<Lower>();
           //cout << "LAPACK: \n";
           //cout << L.block(k*n, k*n, n, n) << "\n\n";
