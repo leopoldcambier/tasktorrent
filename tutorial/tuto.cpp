@@ -47,7 +47,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     MatrixXd A;
     A = MatrixXd::NullaryExpr(n*nb,n*nb, val);
     //cout<<A->rows()<<"\n";
-    MatrixXd L = A.triangularView<Lower>();
+    //MatrixXd L = A.triangularView<Lower>();
     //LLT<MatrixXd> Test(A);
     //MatrixXd LR=Test.matrixL();
 
@@ -80,7 +80,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
           //cout << "A: \n";
           //cout << L.block(k*n, k*n, n, n) << "\n\n";
           LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, temp.data(), n);
-          //L.block(k*n, k*n, n, n)=temp.triangularView<Lower>();
+          L.block(k*n, k*n, n, n)=L.block(k*n, k*n, n, n).triangularView<Lower>();
           //cout << "LAPACK: \n";
           //cout << L.block(k*n, k*n, n, n) << "\n\n";
           //cout << "Eigen: \n";
