@@ -202,7 +202,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             //MatrixXd blocik=L.block(i*n, k*n, n, n);
             //MatrixXd blocjk=L.block(j*n, k*n, n, n);
             if (i==j) {
-                cblas_dsyrk(CblasColMajor, CblasLower, CblasNoTrans, n, n, -1.0, blocs[i+k*nb]->data(), n, 1.0, blocs[i+j*nb]->data(), n)
+                cblas_dsyrk(CblasColMajor, CblasLower, CblasNoTrans, n, n, -1.0, blocs[i+k*nb]->data(), n, 1.0, blocs[i+j*nb]->data(), n);
             }
             else {
                 cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, n, n, n, -1.0,blocs[i+k*nb]->data(), n, blocs[j+k*nb]->transpose().data(), n, 1.0, blocs[i+j*nb]->data(), n);
