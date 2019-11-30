@@ -201,7 +201,15 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             //MatrixXd blocij=L.block(i*n, j*n, n, n);
             //MatrixXd blocik=L.block(i*n, k*n, n, n);
             //MatrixXd blocjk=L.block(j*n, k*n, n, n);
-            cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, n, n, n, -1.0,blocs[i+k*nb]->data(), n, blocs[j+k*nb]->transpose().data(), n, 1.0, blocs[i+j*nb]->data(), n);
+            if (i==j) {
+                cblas_dsyrk(CblasColMajor, CblasLower, CblasNoTrans, n, n, -1.0, blocs[i+k*nb]->data(), n, 1.0, blocs[i+j*nb]->data(), n)
+            }
+            else {
+                cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, n, n, n, -1.0,blocs[i+k*nb]->data(), n, blocs[j+k*nb]->transpose().data(), n, 1.0, blocs[i+j*nb]->data(), n);
+            }
+            
+            
+            
             //L.block(i*n, j*n, n, n)=blocij;
             //cout<<Temp(0,0)<<endl;
             //printf("Gemm (%d, %d, %d) is now running on rank %d\n", k, i, j, comm_rank());
