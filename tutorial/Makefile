@@ -1,5 +1,5 @@
 CC       = g++
-CFLAGS   = -DEIGEN_USE_LAPACKE -DTTOR_SHARED --std=c++14 -g -O3
+CFLAGS   = -DEIGEN_USE_LAPACKE -DTTOR_SHARED --std=c++14 -g -O3 -DEIGEN_NO_DEBUG
 INCLUDE  = -I../src/
 SRCDIR   = ../src
 OBJDIR   = ../build
