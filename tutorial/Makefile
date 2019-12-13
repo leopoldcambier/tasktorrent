@@ -3,7 +3,7 @@ CFLAGS   = -DEIGEN_USE_LAPACKE -DTTOR_SHARED --std=c++14 -g -O3 -DEIGEN_NO_DEBUG
 INCLUDE  = -I../src/
 SRCDIR   = ../src
 OBJDIR   = ../build
-LFLAGS   = -llapack -lblas
+LFLAGS   = -llapack -lblas -lpthread
 
 .PHONY: clean
 

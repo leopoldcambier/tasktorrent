@@ -1,4 +1,3 @@
-#include "communications.hpp"
 #include "runtime.hpp"
 #include "util.hpp"
 #include <cblas.h>
@@ -13,8 +12,6 @@
 #include <map>
 #include <memory>
 
-
-#include <mpi.h>
 
 using namespace std;
 using namespace Eigen;
@@ -34,8 +31,7 @@ typedef array<int, 3> int3;
 //Test Test2
 void tuto_1(int n_threads, int verb, int n, int nb)
 {
-    const int rank = comm_rank();
-    const int n_ranks = comm_size();
+    int rank = 0;
     double gemm_t=0;
     double potrf_t=0;
     double trsm_t=0;
@@ -70,11 +66,8 @@ void tuto_1(int n_threads, int verb, int n, int nb)
         return k / n_tasks_per_rank;
     };
 
-    // Initialize the communicator structure
-    Communicator comm(verb);
-
     // Initialize the runtime structures
-    Threadpool tp(n_threads, &comm, verb, "WkTuto_" + to_string(rank) + "_");
+    Threadpool tp(n_threads, verb, "WkTuto_" + to_string(rank) + "_");
     Taskflow<int> potrf(&tp, verb);
     Taskflow<int2> trsm(&tp, verb);
     Taskflow<int3> gemm(&tp, verb);
@@ -96,7 +89,6 @@ void tuto_1(int n_threads, int verb, int n, int nb)
                 int dest = task_2_rank(p); // defined above
 
                 trsm.fulfill_promise({k,p}, 5.0);
-                //printf("Potrf %d fulfilling local Trsm (%d, %d) on rank %d\n", k, k, p, comm_rank());
 
             }
         })
@@ -139,7 +131,6 @@ void tuto_1(int n_threads, int verb, int n, int nb)
         //cout<<(LR.block(i*n, k*n, n, n)-L.block(i*n, k*n, n, n)).norm()<<endl;
         //cout<<Temp(0,0)<<endl;
         //cout<<LR(i,k)<<endl;
-        //printf("Trsm (%d, %d) is now running on rank %d\n", k, i, comm_rank());
       })
         .set_fulfill([&](int2 ki) {
             int k=ki[0];
@@ -149,11 +140,9 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
                 if (j<i) {
                     gemm.fulfill_promise({k,i,j}, 5.0);
-                    //printf("Trsm (%d, %d) fulfilling local Gemm (%d, %d, %d) on rank %d\n", k, i, k, i, j, comm_rank());
                 }
                 else {
                     gemm.fulfill_promise({k,j,i}, 5.0);
-                    //printf("Trsm (%d, %d) fulfilling local Gemm (%d, %d, %d) on rank %d\n", k, i, k, j, i, comm_rank());
                 }
 
             }
@@ -212,7 +201,6 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             
             //L.block(i*n, j*n, n, n)=blocij;
             //cout<<Temp(0,0)<<endl;
-            //printf("Gemm (%d, %d, %d) is now running on rank %d\n", k, i, j, comm_rank());
       })
         .set_fulfill([&](int3 kij) {
             int k=kij[0];
@@ -224,11 +212,9 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             else {
                 if (i==j) {
                     potrf.fulfill_promise(i, 5.0);
-                    //printf("Gemm (%d, %d, %d) fulfilling Potrf %d on rank %d\n", k, i, j, i, comm_rank());
                 }
                 else {
                     trsm.fulfill_promise({j,i}, 5.0);
-                    //printf("Gemm (%d, %d, %d) fulfilling Trsm (%d, %d) on rank %d\n", k, i, j, i, j, comm_rank());
                 }
             }
             
@@ -262,7 +248,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             int k=kij[0];
             int i=kij[1];
             int j=kij[2];
-            return "GEMM" + to_string(k) + "_" + to_string(i)+"_"+to_string(j)+"_"+to_string(comm_rank());
+            return "GEMM" + to_string(k) + "_" + to_string(i)+"_"+to_string(j);
         });
 
 
@@ -303,14 +289,6 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
 int main(int argc, char **argv)
 {
-    int req = MPI_THREAD_FUNNELED;
-    int prov = -1;
-
-    MPI_Init_thread(NULL, NULL, req, &prov);
-
-    assert(prov == req);
-
-
 
     int n_threads = 2;
     int verb = 0; // Can be changed to vary the verbosity of the messages
@@ -337,5 +315,4 @@ int main(int argc, char **argv)
 
     tuto_1(n_threads, verb, n, nb);
 
-    MPI_Finalize();
 }
