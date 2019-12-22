@@ -16,11 +16,11 @@ OBJ1  = $(OBJDIR)/serialization.o $(OBJDIR)/util.o
 
 # Objects
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(DEPS)
-	$(CC) -o $@ -c $< $(CFLAGS) $(INCLUDE)
+	$(GCC) -o $@ -c $< $(CFLAGS) $(INCLUDE)
 
 # Objects
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(OBJ)
-	$(CC) -o $@ -c $< $(CFLAGS) $(INCLUDE)
+	$(GCC) -o $@ -c $< $(CFLAGS) $(INCLUDE)
 
 tuto: tuto.cpp $(OBJ1)
 	$(GCC) $(CFLAGS1) -o $@ $^ $(INCLUDE) $(LFLAGS)
