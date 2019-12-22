@@ -22,7 +22,7 @@ tuto: tuto.cpp $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LFLAGS)
 
 cholesky: cholesky.cpp $(OBJ)
-	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE)
+	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LFLAGS)
 
 run: tuto
 	mpirun -mca shmem posix -mca btl ^tcp -n 2 ./tuto	
