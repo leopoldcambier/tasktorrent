@@ -1,32 +1,32 @@
-CC       = g++
-CXX		 = mpicxx
-CFLAGS   = -DEIGEN_USE_LAPACKE --std=c++14 -g -O3 -DEIGEN_NO_DEBUG
+CC       = mpicxx
+CFLAGS   = -DEIGEN_USE_LAPACKE --std=c++14 -g 
 INCLUDE  = -I../src/
 SRCDIR   = ../src
 OBJDIR   = ../build
-LFLAGS   = -llapack -lblas -lpthread
+LFLAGS   = -llapack
 
 .PHONY: clean
 
-DEPS = $(SRCDIR)/runtime.hpp $(SRCDIR)/util.hpp $(SRCDIR)/serialization.hpp $(SRCDIR)/views.hpp $(SRCDIR)/apply_functions.hpp $(SRCDIR)/functional_extra.hpp
-OBJ  = $(OBJDIR)/serialization.o $(OBJDIR)/util.o
+DEPS = $(SRCDIR)/runtime.hpp $(SRCDIR)/util.hpp $(SRCDIR)/communications.hpp $(SRCDIR)/serialization.hpp $(SRCDIR)/views.hpp $(SRCDIR)/apply_functions.hpp $(SRCDIR)/functional_extra.hpp
+OBJ  = $(OBJDIR)/communications.o $(OBJDIR)/serialization.o $(OBJDIR)/util.o
 
 # Objects
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(DEPS)
-	$(CXX) -o $@ -c $< $(CFLAGS) $(INCLUDE)
+	$(CC) -o $@ -c $< $(CFLAGS) $(INCLUDE)
 
 # Objects
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(OBJ)
-	$(CXX) -o $@ -c $< $(CFLAGS) $(INCLUDE)
+	$(CC) -o $@ -c $< $(CFLAGS) $(INCLUDE)
 
 tuto: tuto.cpp $(OBJ)
-	$(CXX) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LFLAGS)
+	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LFLAGS)
 
 cholesky: cholesky.cpp $(OBJ)
-	$(CXX) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LFLAGS)
+	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE)
+
+run: tuto
+	mpirun -mca shmem posix -mca btl ^tcp -n 2 ./tuto	
 
 clean:
 	rm -f tuto
-	rm -f cholesky
 	rm -f $(OBJDIR)/*.o
-	
