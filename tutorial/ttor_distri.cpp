@@ -58,11 +58,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             *blocs[ii+jj*nb]=L.block(ii*n,jj*n,n,n);
         }
     }
-    //cout<<A->rows()<<"\n";
-    //LLT<MatrixXd> Test(A);
-    //MatrixXd LR=Test.matrixL();
 
-    // Outgoing dependencies for each task
 
 
     // Map tasks to rank
@@ -120,26 +116,9 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     trsm.set_task([&](int2 ki) {
         int k=ki[0];
         int i=ki[1];
-        //cout<<L.block(i*n,k*n,n,n)<<endl;
-        //MatrixXd temp=L.block(i*n,k*n,n,n);
-        //MatrixXd temp2=L.block(k*n,k*n,n,n);
-        //auto T=L.block(k*n,k*n,n,n).triangularView<Lower>().transpose().solve<OnTheRight>(L.block(i*n,k*n,n,n));
-        timer t0 = wctime();
         cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, n, n, 1.0, blocs[k+k*nb]->data(),n, blocs[i+k*nb]->data(), n);
-        timer t1 = wctime();
-        trsm_t+=elapsed(t0,t1);
-        //L.block(i*n,k*n,n,n)=temp;
-        //cout<<L.block(k*n,k*n,n,n)<<"\n\n";
-        //cout << "LAPACK: \n";
-        //cout << temp*L.block(k*n,k*n,n,n).transpose() << "\n\n";
-        //cout << "Eigen: \n";
-        //cout << T*L.block(k*n,k*n,n,n).transpose()<< "\n\n";
-        //L.block(i*n,k*n,n,n)=T;
-        //MatrixXd Temp=L.block(i*n, k*n, n, n);
-        //cout<<(LR.block(i*n, k*n, n, n)-L.block(i*n, k*n, n, n)).norm()<<endl;
-        //cout<<Temp(0,0)<<endl;
-        //cout<<LR(i,k)<<endl;
-        //printf("Trsm (%d, %d) is now running on rank %d\n", k, i, comm_rank());
+
+
       })
         .set_fulfill([&](int2 ki) {
             int k=ki[0];
@@ -191,28 +170,15 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             int k=kij[0];
             int i=kij[1];
             int j=kij[2];
-            //L.block(i*n, j*n, n, n)-=L.block(i*n, k*n, n, n)*L.block(j*n, k*n, n, n).transpose();
-            //MatrixXd blocij=L.block(i*n, j*n, n, n);
-            //MatrixXd blocik=L.block(i*n, k*n, n, n);
-            //MatrixXd blocjk=L.block(j*n, k*n, n, n);
+
             if (i==j) {
-                timer t0 = wctime();
                 cblas_dsyrk(CblasColMajor, CblasLower, CblasNoTrans, n, n, -1.0, blocs[i+k*nb]->data(), n, 1.0, blocs[i+j*nb]->data(), n);
-                timer t1 = wctime();
-                syrk_t+=elapsed(t0,t1);
             }
             else {
-                timer t0 = wctime();
                 cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, n, n, n, -1.0,blocs[i+k*nb]->data(), n, blocs[j+k*nb]->transpose().data(), n, 1.0, blocs[i+j*nb]->data(), n);
-                timer t1 = wctime();
-                gemm_t+=elapsed(t0,t1);
             }
             
-            
-            
-            //L.block(i*n, j*n, n, n)=blocij;
-            //cout<<Temp(0,0)<<endl;
-            //printf("Gemm (%d, %d, %d) is now running on rank %d\n", k, i, j, comm_rank());
+
       })
         .set_fulfill([&](int3 kij) {
             int k=kij[0];
@@ -291,14 +257,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     L1.transpose().solveInPlace(b);
     double error = (b - x).norm() / x.norm();
     cout << "Error solve: " << error << endl;
-    cout << "POTRF: " << potrf_t << endl;
-    cout << "TRSM: " << trsm_t << endl;
-    cout << "SYRK: " << syrk_t << endl;
-    cout << "GEMM: " << gemm_t << endl;
-    //cout<<"LLT Error: "<<(A-L*L.transpose()).norm()/A.norm()<<"\n";
-    //cout<<"LLT Error for Eigen : "<<(A-L1*L1.transpose()).norm()/A.norm()<<"\n";
-    //cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, L.rows(), L.rows(), L.cols(), -1.0, L.data(), L.rows(), L.data(), L.rows(), 0.0, A.data(), L.rows());
-    //cout<<"LLT Error GT: "<<(A-LR*LR.transpose()).norm()/A.norm()<<"\n";
+
 }
 
 int main(int argc, char **argv)
