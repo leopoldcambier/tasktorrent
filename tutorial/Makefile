@@ -1,3 +1,4 @@
+GCC 	 = g++
 CC       = mpicxx
 CFLAGS   = -DEIGEN_USE_LAPACKE --std=c++14 -g -O3 -DEIGEN_NO_DEBUG
 INCLUDE  = -I../src/
@@ -6,6 +7,9 @@ OBJDIR   = ../build
 LFLAGS   = -llapack -lblas
 
 .PHONY: clean
+
+DEPS = $(SRCDIR)/runtime.hpp $(SRCDIR)/util.hpp $(SRCDIR)/communications.hpp $(SRCDIR)/serialization.hpp $(SRCDIR)/views.hpp $(SRCDIR)/apply_functions.hpp $(SRCDIR)/functional_extra.hpp
+OBJ  = $(OBJDIR)/communications.o $(OBJDIR)/serialization.o $(OBJDIR)/util.o
 
 DEPS = $(SRCDIR)/runtime.hpp $(SRCDIR)/util.hpp $(SRCDIR)/communications.hpp $(SRCDIR)/serialization.hpp $(SRCDIR)/views.hpp $(SRCDIR)/apply_functions.hpp $(SRCDIR)/functional_extra.hpp
 OBJ  = $(OBJDIR)/communications.o $(OBJDIR)/serialization.o $(OBJDIR)/util.o
@@ -19,7 +23,7 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(OBJ)
 	$(CC) -o $@ -c $< $(CFLAGS) $(INCLUDE)
 
 tuto: tuto.cpp $(OBJ)
-	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LFLAGS)
+	$(GCC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LFLAGS)
 
 cholesky: cholesky.cpp $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LFLAGS)
