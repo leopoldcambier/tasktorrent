@@ -1,7 +1,6 @@
 CC       = g++
 CXX		 = mpicxx
-CFLAGS   = -DEIGEN_USE_LAPACKE -DTTOR_SHARED --std=c++14 -g -O3 -DEIGEN_NO_DEBUG
-CFLAGS1   = -DEIGEN_USE_LAPACKE --std=c++14 -g -O3 -DEIGEN_NO_DEBUG
+CFLAGS   = -DEIGEN_USE_LAPACKE --std=c++14 -g -O3 -DEIGEN_NO_DEBUG
 INCLUDE  = -I../src/
 SRCDIR   = ../src
 OBJDIR   = ../build
@@ -21,10 +20,10 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(OBJ)
 	$(CXX) -o $@ -c $< $(CFLAGS) $(INCLUDE)
 
 tuto: tuto.cpp $(OBJ)
-	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LFLAGS)
+	$(CXX) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LFLAGS)
 
 cholesky: cholesky.cpp $(OBJ)
-	$(CXX) $(CFLAGS1) -o $@ $^ $(INCLUDE) $(LFLAGS)
+	$(CXX) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LFLAGS)
 
 clean:
 	rm -f tuto
