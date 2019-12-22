@@ -76,14 +76,30 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     Taskflow<int3> gemm(&tp, verb);
 
     // Create active message
+    auto am_trsm = comm.make_active_msg( 
+            [&](view<double> &Lkk, int& j, view<int>& is) {
+                Mat.at({j,j}) = Map<MatrixXd>(Lkk.data(), n, n);
+                for(auto& i: is) {
+                    trsm_tf.fulfill_promise({i,j}, 5.0);
+                }
+            });
 
+        // Sends a panel bloc and trigger multiple gemms
+    auto am_gemm = comm.make_active_msg(
+        [&](view<double> &Lij, int& i, int& j, view<int2>& ijs) {
+            Mat.at({i,j}) = Map<MatrixXd>(Lij.data(), n, n);
+            for(auto& ij: ijs) {
+                int gi = ij[0];
+                int gj = ij[1];
+                int gk = j;
+                gemm_tf.fulfill_promise({gi,gj,gk}, 5.0);
+            }
+        });
 
     // Define the task flow
     potrf.set_task([&](int k) {
-          timer t0 = wctime();
+
           LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, blocs[k+k*nb]->data(), n);
-          timer t1 = wctime();
-          potrf_t+=elapsed(t0,t1);
 
       })
         .set_fulfill([&](int k) {
@@ -175,7 +191,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
                 cblas_dsyrk(CblasColMajor, CblasLower, CblasNoTrans, n, n, -1.0, blocs[i+k*nb]->data(), n, 1.0, blocs[i+j*nb]->data(), n);
             }
             else {
-                cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, n, n, n, -1.0,blocs[i+k*nb]->data(), n, blocs[j+k*nb]->transpose().data(), n, 1.0, blocs[i+j*nb]->data(), n);
+                cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, n, n, n, -1.0,blocs[i+k*nb]->data(), n, blocs[j+k*nb]->data(), n, 1.0, blocs[i+j*nb]->data(), n);
             }
             
 
