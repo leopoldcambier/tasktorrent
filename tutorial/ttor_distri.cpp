@@ -278,13 +278,10 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
     
 
-    // Seed initial tasks
     if (rank == 0){
         potrf.fulfill_promise(0);
     }
 
-    // Other ranks do nothing
-    // Run until completion
     MPI_Barrier(MPI_COMM_WORLD);
     timer t0 = wctime();
     tp.join();
