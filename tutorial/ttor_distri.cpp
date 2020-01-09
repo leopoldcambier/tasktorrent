@@ -108,7 +108,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             
             for (int r = 0; r<n_ranks; r++) // Looping through all outgoing dependency edges
             {
-                cout<<r<<": "
+                cout<<r<<": ";
                 for (auto& i: fulfill[r]) {
                         cout<<i<<" ";
                     }
