@@ -120,7 +120,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
                     am_trsm->send(r, Ljjv, k, isv);
 
                 }
-                //printf("Potrf %d fulfilling local Trsm (%d, %d) on rank %d\n", k, k, p, comm_rank());
+                printf("Potrf %d fulfilling local Trsm (%d, %d) on rank %d\n", k, k, p, comm_rank());
 
             }
         })
@@ -177,7 +177,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
                 }
                 
-                 //printf("Trsm (%d, %d) fulfilling local Gemm (%d, %d, %d) on rank %d\n", k, i, k, j, i, comm_rank());
+                printf("Trsm (%d, %d) fulfilling local Gemm (%d, %d, %d) on rank %d\n", k, i, k, j, i, comm_rank());
 
             }
         })
@@ -234,11 +234,11 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             else {
                 if (i==j) {
                     potrf.fulfill_promise(i, 5.0);
-                    //printf("Gemm (%d, %d, %d) fulfilling Potrf %d on rank %d\n", k, i, j, i, comm_rank());
+                    printf("Gemm (%d, %d, %d) fulfilling Potrf %d on rank %d\n", k, i, j, i, comm_rank());
                 }
                 else {
                     trsm.fulfill_promise({j,i}, 5.0);
-                    //printf("Gemm (%d, %d, %d) fulfilling Trsm (%d, %d) on rank %d\n", k, i, j, i, j, comm_rank());
+                    printf("Gemm (%d, %d, %d) fulfilling Trsm (%d, %d) on rank %d\n", k, i, j, i, j, comm_rank());
                 }
             }
             
