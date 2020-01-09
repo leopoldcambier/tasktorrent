@@ -285,6 +285,19 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     timer t1 = wctime();
     for (int ii=0; ii<nb; ii++) {
         for (int jj=0; jj<nb; jj++) {
+            if (jj<=ii)  {
+            if (rank==0 && rank!=bloc_2_rank(ii,jj)) {
+                MPI_Recv(blocs[ii+jj*nb]->data(), n*n, MPI_DOUBLE, (ii+jj*nb)%size, (ii+jj*nb)%size, MPI_COMM_WORLD, &status);
+                }
+
+            else if (rank==bloc_2_rank(ii,jj)) {
+                MPI_Send(blocs[ii+jj*nb]->data(), n*n, MPI_DOUBLE, 0, (ii+jj*nb)%size, MPI_COMM_WORLD);
+                }
+            }
+        }
+    }
+    for (int ii=0; ii<nb; ii++) {
+        for (int jj=0; jj<nb; jj++) {
             L.block(ii*n,jj*n,n,n)=*blocs[ii+jj*nb];
         }
     }
