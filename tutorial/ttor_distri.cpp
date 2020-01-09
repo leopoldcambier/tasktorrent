@@ -283,6 +283,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     timer t0 = wctime();
     tp.join();
     timer t1 = wctime();
+    MPI_Status status;
     for (int ii=0; ii<nb; ii++) {
         for (int jj=0; jj<nb; jj++) {
             if (jj<=ii)  {
