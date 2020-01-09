@@ -26,7 +26,7 @@ tuto: tuto.cpp $(OBJ1)
 	$(GCC) $(CFLAGS1) -o $@ $^ $(INCLUDE) $(LFLAGS)
 
 ttor_distri: ttor_distri.cpp $(OBJ)
-	$(CC) $(CFLAGS1) -o $@ $^ $(INCLUDE) $(LFLAGS)
+	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LFLAGS)
 
 cholesky: cholesky.cpp $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LFLAGS)

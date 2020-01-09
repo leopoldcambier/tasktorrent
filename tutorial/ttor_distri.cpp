@@ -80,7 +80,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             [&](view<double> &Lkk, int& j, view<int>& is) {
                 Mat.at({j,j}) = Map<MatrixXd>(Lkk.data(), n, n);
                 for(auto& i: is) {
-                    trsm_tf.fulfill_promise({i,j}, 5.0);
+                    trsm.fulfill_promise({i,j}, 5.0);
                 }
             });
 
@@ -92,7 +92,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
                 int gi = ij[0];
                 int gj = ij[1];
                 int gk = j;
-                gemm_tf.fulfill_promise({gi,gj,gk}, 5.0);
+                gemm.fulfill_promise({gi,gj,gk}, 5.0);
             }
         });
 
