@@ -97,7 +97,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     potrf.set_task([&](int k) {
 
           LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, blocs[k+k*nb]->data(), n);
-
+          cout<<"Running potrf "<<k<<" on rank "<<rank<<"\n";
       })
         .set_fulfill([&](int k) {
             vector<vector<int>> fulfill(n_ranks);
@@ -108,18 +108,18 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             
             for (int r = 0; r<n_ranks; r++) // Looping through all outgoing dependency edges
             {
-                cout<<r<<": ";
+                //cout<<r<<": ";
                 for (auto& i: fulfill[r]) {
                         cout<<i<<" ";
                     }
-                cout<<"\n";
+                //cout<<"\n";
                 if (rank == r) {
                     for (auto& i: fulfill[r]) {
                         trsm.fulfill_promise({k,i}, 5.0);
                     }
                 }
                 else {
-                    cout<<"Sending data from "<<rank<<" to "<<r<<"\n";
+                    //cout<<"Sending data from "<<rank<<" to "<<r<<"\n";
                     auto Ljjv = view<double>(blocs[k+k*nb]->data(), n*n);
                     auto isv = view<int>(fulfill[r].data(), fulfill[r].size());
                     am_trsm->send(r, Ljjv, k, isv);
