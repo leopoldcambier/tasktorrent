@@ -102,10 +102,10 @@ void tuto_1(int n_threads, int verb, int n, int nb)
         .set_fulfill([&](int k) {
             vector<vector<int>> fulfill(n_ranks);
             for (int i=k+1; i<nb; i++) {
-                fulfill[bloc_2_rank(i,k)].pushback(i);
+                fulfill[bloc_2_rank(i,k)].push_back(i);
                 
             }
-            for (int r = 0; i<n_ranks; i++) // Looping through all outgoing dependency edges
+            for (int r = 0; r<n_ranks; i++) // Looping through all outgoing dependency edges
             {
                 if (rank == r) {
                     for (auto& i: fulfill[r]) {
@@ -114,7 +114,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
                 }
                 else {
                     auto Ljjv = view<double>(blocs[k+k*nb]->data(), n*n);
-                    auto isv = view<int>(fulfull[r].data(), fullfill[r].size());
+                    auto isv = view<int>(fulfill[r].data(), fulfill[r].size());
                     am_trsm->send(r, Ljjv, k, isv);
 
                 }
