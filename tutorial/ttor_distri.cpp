@@ -62,8 +62,8 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
 
     // Map tasks to rank
-    auto task_2_rank = [&](int k) {
-        return k / n_tasks_per_rank;
+    auto bloc_2_rank = [&](int i, int j) {
+        return (i+j*nb)%n_ranks;
     };
 
     // Initialize the communicator structure
@@ -77,22 +77,19 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
     // Create active message
     auto am_trsm = comm.make_active_msg( 
-            [&](view<double> &Lkk, int& j, view<int>& is) {
-                Mat.at({j,j}) = Map<MatrixXd>(Lkk.data(), n, n);
+            [&](view<double> &Lkk, int& k, view<int>& is) {
+                *blocs[k+k*nb] = Map<MatrixXd>(Lkk.data(), n, n);
                 for(auto& i: is) {
-                    trsm.fulfill_promise({i,j}, 5.0);
+                    trsm.fulfill_promise({k,i}, 5.0);
                 }
             });
 
         // Sends a panel bloc and trigger multiple gemms
     auto am_gemm = comm.make_active_msg(
-        [&](view<double> &Lij, int& i, int& j, view<int2>& ijs) {
-            Mat.at({i,j}) = Map<MatrixXd>(Lij.data(), n, n);
+        [&](view<double> &Lij, int& i, int& k, view<int2>& ijs) {
+            *blocs[i+k*nb] = Map<MatrixXd>(Lij.data(), n, n);
             for(auto& ij: ijs) {
-                int gi = ij[0];
-                int gj = ij[1];
-                int gk = j;
-                gemm.fulfill_promise({gi,gj,gk}, 5.0);
+                gemm.fulfill_promise({k,ij[0],ij[1]}, 5.0);
             }
         });
 
@@ -103,11 +100,24 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
       })
         .set_fulfill([&](int k) {
-            for (int p = k+1; p<nb; p++) // Looping through all outgoing dependency edges
+            vector<vector<int>> fulfill(n_ranks);
+            for (int i=k+1; i<nb; i++) {
+                fulfill[bloc_2_rank(i,k)].pushback(i);
+                
+            }
+            for (int r = 0; i<n_ranks; i++) // Looping through all outgoing dependency edges
             {
-                int dest = task_2_rank(p); // defined above
+                if (rank == r) {
+                    for (auto& i: fulfill[r]) {
+                        trsm.fulfill_promise({k,i}, 5.0);
+                    }
+                }
+                else {
+                    auto Ljjv = view<double>(blocs[k+k*nb]->data(), n*n);
+                    auto isv = view<int>(fulfull[r].data(), fullfill[r].size());
+                    am_trsm->send(r, Ljjv, k, isv);
 
-                trsm.fulfill_promise({k,p}, 5.0);
+                }
                 //printf("Potrf %d fulfilling local Trsm (%d, %d) on rank %d\n", k, k, p, comm_rank());
 
             }
@@ -139,16 +149,32 @@ void tuto_1(int n_threads, int verb, int n, int nb)
         .set_fulfill([&](int2 ki) {
             int k=ki[0];
             int i=ki[1];
-            for (int j=k+1; j<nb;j++) // Looping through all outgoing dependency edges
-            {
-
+            vector<vector<int2>> fulfill(n_ranks);
+            for (int i=k+1; i<nb; i++) {
                 if (j<i) {
-                    gemm.fulfill_promise({k,i,j}, 5.0);
-                    //printf("Trsm (%d, %d) fulfilling local Gemm (%d, %d, %d) on rank %d\n", k, i, k, i, j, comm_rank());
+                    fulfill[bloc_2_rank(i,j)].pushback({i,j});
                 }
                 else {
-                    gemm.fulfill_promise({k,j,i}, 5.0);
-                    //printf("Trsm (%d, %d) fulfilling local Gemm (%d, %d, %d) on rank %d\n", k, i, k, j, i, comm_rank());
+                    fulfill[bloc_2_rank(j,i)].pushback({j,i});
+                }
+                
+            }
+            for (int r=0; r<n_ranks; r++)   // Looping through all outgoing dependency edges
+            {
+
+                if (r == rank) {
+                    for (auto& ij : fulfill[r]) {
+                        gemm.fulfill_promise({k,ij[0],ij[1]}, 5.0);
+                    }
+                }
+                else {
+                    auto Lijv = view<double>(blocs[i+k*nb]->data(), n*n);
+                    auto ijsv = view<int2>(fulfill[r].data(), fulfill[r].size());
+                    am_gemm->send(r, Lijv, i, k, ijsv);
+
+                }
+                
+                 //printf("Trsm (%d, %d) fulfilling local Gemm (%d, %d, %d) on rank %d\n", k, i, k, j, i, comm_rank());
                 }
 
             }
