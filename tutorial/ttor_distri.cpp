@@ -175,7 +175,6 @@ void tuto_1(int n_threads, int verb, int n, int nb)
                 }
                 
                  //printf("Trsm (%d, %d) fulfilling local Gemm (%d, %d, %d) on rank %d\n", k, i, k, j, i, comm_rank());
-                }
 
             }
         })
