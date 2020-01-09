@@ -175,7 +175,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
                     }
                 }
                 else {
-                    cout<<"Sending data from "<<rank<<" to "<<r<<"\n";
+                    //cout<<"Sending data from "<<rank<<" to "<<r<<"\n";
                     auto Lijv = view<double>(blocs[i+k*nb]->data(), n*n);
                     auto ijsv = view<int2>(fulfill[r].data(), fulfill[r].size());
                     am_gemm->send(r, Lijv, i, k, ijsv);
@@ -284,7 +284,9 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     
 
     // Seed initial tasks
-    potrf.fulfill_promise(0, 5.0);
+    if (rank == 0){
+        potrf.fulfill_promise(0);
+    }
 
     // Other ranks do nothing
     // Run until completion
