@@ -285,9 +285,11 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
     // Other ranks do nothing
     // Run until completion
+    MPI_Barrier(MPI_COMM_WORLD);
     timer t0 = wctime();
     tp.join();
     timer t1 = wctime();
+    MPI_Barrier(MPI_COMM_WORLD);
     cout<<"TEST\n";
     
     MPI_Status status;
