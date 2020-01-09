@@ -105,7 +105,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
                 fulfill[bloc_2_rank(i,k)].push_back(i);
                 
             }
-            for (int r = 0; r<n_ranks; i++) // Looping through all outgoing dependency edges
+            for (int r = 0; r<n_ranks; r++) // Looping through all outgoing dependency edges
             {
                 if (rank == r) {
                     for (auto& i: fulfill[r]) {
@@ -150,7 +150,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             int k=ki[0];
             int i=ki[1];
             vector<vector<int2>> fulfill(n_ranks);
-            for (int i=k+1; i<nb; i++) {
+            for (int j=k+1; j<nb; j++) {
                 if (j<i) {
                     fulfill[bloc_2_rank(i,j)].pushback({i,j});
                 }
