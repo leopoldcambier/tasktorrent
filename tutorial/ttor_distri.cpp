@@ -152,10 +152,10 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             vector<vector<int2>> fulfill(n_ranks);
             for (int j=k+1; j<nb; j++) {
                 if (j<i) {
-                    fulfill[bloc_2_rank(i,j)].pushback({i,j});
+                    fulfill[bloc_2_rank(i,j)].push_back({i,j});
                 }
                 else {
-                    fulfill[bloc_2_rank(j,i)].pushback({j,i});
+                    fulfill[bloc_2_rank(j,i)].push_back({j,i});
                 }
                 
             }
