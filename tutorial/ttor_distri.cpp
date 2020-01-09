@@ -97,7 +97,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     potrf.set_task([&](int k) {
 
           LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, blocs[k+k*nb]->data(), n);
-          cout<<"Running potrf "<<k<<" on rank "<<rank<<"\n";
+          //cout<<"Running potrf "<<k<<" on rank "<<rank<<"\n";
       })
         .set_fulfill([&](int k) {
             vector<vector<int>> fulfill(n_ranks);
@@ -145,7 +145,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
         int k=ki[0];
         int i=ki[1];
         cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, n, n, 1.0, blocs[k+k*nb]->data(),n, blocs[i+k*nb]->data(), n);
-        cout<<"Running trsm "<<k<<" "<<i<<" on rank "<<rank<<"\n";
+        //cout<<"Running trsm "<<k<<" "<<i<<" on rank "<<rank<<"\n";
 
       })
         .set_fulfill([&](int2 ki) {
