@@ -108,11 +108,6 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             
             for (int r = 0; r<n_ranks; r++) // Looping through all outgoing dependency edges
             {
-                //cout<<r<<": ";
-                for (auto& i: fulfill[r]) {
-                        cout<<i<<" ";
-                    }
-                //cout<<"\n";
                 if (rank == r) {
                     for (auto& i: fulfill[r]) {
                         trsm.fulfill_promise({k,i}, 5.0);
