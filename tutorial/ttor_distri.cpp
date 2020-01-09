@@ -113,6 +113,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
                     }
                 }
                 else {
+                    cout<<"Sending data from "<<rank<<" to "<<r<<"\n";
                     auto Ljjv = view<double>(blocs[k+k*nb]->data(), n*n);
                     auto isv = view<int>(fulfill[r].data(), fulfill[r].size());
                     am_trsm->send(r, Ljjv, k, isv);
@@ -168,6 +169,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
                     }
                 }
                 else {
+                    cout<<"Sending data from "<<rank<<" to "<<r<<"\n";
                     auto Lijv = view<double>(blocs[i+k*nb]->data(), n*n);
                     auto ijsv = view<int2>(fulfill[r].data(), fulfill[r].size());
                     am_gemm->send(r, Lijv, i, k, ijsv);
