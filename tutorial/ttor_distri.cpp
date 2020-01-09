@@ -286,7 +286,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     cout<<"TEST\n";
     
     MPI_Status status;
-    /*
+    
     for (int ii=0; ii<nb; ii++) {
         for (int jj=0; jj<nb; jj++) {
             if (jj<=ii)  {
@@ -300,7 +300,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             }
         }
     }
-    */
+    
     for (int ii=0; ii<nb; ii++) {
         for (int jj=0; jj<nb; jj++) {
             L.block(ii*n,jj*n,n,n)=*blocs[ii+jj*nb];
