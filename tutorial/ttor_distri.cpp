@@ -284,6 +284,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     tp.join();
     timer t1 = wctime();
     cout<<"TEST\n";
+    /*
     MPI_Status status;
     for (int ii=0; ii<nb; ii++) {
         for (int jj=0; jj<nb; jj++) {
@@ -298,6 +299,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             }
         }
     }
+    */
     for (int ii=0; ii<nb; ii++) {
         for (int jj=0; jj<nb; jj++) {
             L.block(ii*n,jj*n,n,n)=*blocs[ii+jj*nb];
