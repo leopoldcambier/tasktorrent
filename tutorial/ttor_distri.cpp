@@ -167,7 +167,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
                 if (r == rank) {
                     for (auto& ij : fulfill[r]) {
                         gemm.fulfill_promise({k,ij[0],ij[1]}, 5.0);
-                        printf("Trsm (%d, %d) fulfilling local Gemm (%d, %d, %d) on rank %d\n", k, i, k, j, i, comm_rank());
+                        printf("Trsm (%d, %d) fulfilling local Gemm (%d, %d, %d) on rank %d\n", k, i, k, ij[0], ij[1], comm_rank());
                     }
                 }
                 else {
