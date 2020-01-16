@@ -68,6 +68,9 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     Taskflow<int> potrf(&tp, verb);
     Taskflow<int2> trsm(&tp, verb);
     Taskflow<int3> gemm(&tp, verb);
+    Logger logger(1000000);                
+    Threadpool_shared tp(ttor_threads, 0);
+    tp.set_logger(&logger);
 
     // Create active message
 
@@ -237,6 +240,17 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     }
     auto L1=L.triangularView<Lower>();
     cout<<"Elapsed time: "<<elapsed(t0,t1)<<endl;
+
+
+
+    std::ofstream logfile;
+    std::string filename = "ttor_shared_"+ to_string(n)+"_"+to_string(nb)+".log."+to_string(rank);
+    logfile.open(filename);
+    logfile << logger;
+    logfile.close();
+
+
+
 
     VectorXd x = VectorXd::Random(n * nb);
     VectorXd b = A*x;
