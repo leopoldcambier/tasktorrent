@@ -1,3 +1,25 @@
+## Use:
+# (1) Generate log files from the application
+#
+# ttor::Communicator comm(...);
+# ttor::Threadpool_mpi tp(nthread, ...);
+# ttor::Logger logger(buffer_size);
+# tp.set_logger(&logger);
+# comm.set_logger(&logger)
+# ... do things ...
+# std::ofstream logfile;
+# std::string filename = ...
+# logfile.open(filename);
+# logfile << log;
+# logfile.close();
+#
+# Assume this creates the files file.log.0 and file.log.1 (multiple ranks)
+#
+# (2) Start the server and serve the profile
+#
+# bokeh serve --show profiler_server.py --websocket-max-message-size 200000000 --args --file file.log.*
+#
+
 import numpy as np
 from bisect import bisect_left
 import argparse
