@@ -68,8 +68,9 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     Taskflow<int> potrf(&tp, verb);
     Taskflow<int2> trsm(&tp, verb);
     Taskflow<int3> gemm(&tp, verb);
+    DepsLogger dlog(1000000);
     Logger logger(1000000);                
-    Threadpool_shared tp(ttor_threads, 0);
+    //Threadpool_shared tp(ttor_threads, 0);
     tp.set_logger(&logger);
 
     // Create active message
