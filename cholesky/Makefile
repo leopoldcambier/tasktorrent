@@ -7,8 +7,7 @@ LFLAGS   = -llapack -lblas -lpthread
 
 .PHONY: clean
 
-DEPS = $(SRCDIR)/runtime.hpp $(SRCDIR)/util.hpp $(SRCDIR)/serialization.hpp $(SRCDIR)/views.hpp $(SRCDIR)/apply_functions.hpp 
-$(SRCDIR)/functional_extra.hpp
+DEPS = $(SRCDIR)/runtime.hpp $(SRCDIR)/util.hpp $(SRCDIR)/serialization.hpp $(SRCDIR)/views.hpp $(SRCDIR)/apply_functions.hpp $(SRCDIR)/functional_extra.hpp
 OBJ  = $(OBJDIR)/serialization.o $(OBJDIR)/util.o
 
 # Objects
