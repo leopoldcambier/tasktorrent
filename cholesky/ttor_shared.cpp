@@ -286,8 +286,7 @@ blocs[j+k*nb]->transpose().data(), n, 1.0, blocs[i+j*nb]->data(), n);
     cout << "GEMM: " << gemm_t << endl;
     //cout<<"LLT Error: "<<(A-L*L.transpose()).norm()/A.norm()<<"\n";
     //cout<<"LLT Error for Eigen : "<<(A-L1*L1.transpose()).norm()/A.norm()<<"\n";
-    //cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, L.rows(), L.rows(), L.cols(), -1.0, L.data(), L.rows(), L.data(), 
-L.rows(), 0.0, A.data(), L.rows());
+    //cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, L.rows(), L.rows(), L.cols(), -1.0, L.data(), L.rows(), L.data(), L.rows(), 0.0, A.data(), L.rows());
     //cout<<"LLT Error GT: "<<(A-LR*LR.transpose()).norm()/A.norm()<<"\n";
 }
 
