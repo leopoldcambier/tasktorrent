@@ -63,7 +63,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
     // Map tasks to rank
     auto bloc_2_rank = [&](int i, int j) {
-        return (i+j*nb)%n_ranks;
+        return (i*nb+j)%n_ranks;
     };
 
     // Initialize the communicator structure
@@ -328,7 +328,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     double error = (b - x).norm() / x.norm();
     cout << "Error solve: " << error << endl;
     std::ofstream logfile;
-    string filename = "ttor_distributed_"+to_string(n)+"_"+to_string(nb)+"_"+ to_string(n_ranks)+".log."+to_string(rank);
+    string filename = "ttor_distributed_samecol_"+to_string(n)+"_"+to_string(nb)+"_"+ to_string(n_ranks)+".log."+to_string(rank);
     logfile.open(filename);
     logfile << log;
     logfile.close();
