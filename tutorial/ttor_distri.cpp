@@ -75,6 +75,11 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     Taskflow<int2> trsm(&tp, verb);
     Taskflow<int3> gemm(&tp, verb);
 
+    DepsLogger dlog(1000000);
+    Logger log(1000000);
+    tp.set_logger(&log);
+    comm.set_logger(&log);
+
     // Create active message
     auto am_trsm = comm.make_active_msg( 
             [&](view<double> &Lkk, int& k, view<int>& is) {
@@ -322,6 +327,11 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     L1.transpose().solveInPlace(b);
     double error = (b - x).norm() / x.norm();
     cout << "Error solve: " << error << endl;
+    std::ofstream logfile;
+    string filename = "ttor_distributed_"+to_string(n)+"_"+to_string(nb)+"_"+ to_string(n_ranks)+".log."+to_string(rank);
+    logfile.open(filename);
+    logfile << log;
+    logfile.close();
 
 }
 
