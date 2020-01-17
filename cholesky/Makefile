@@ -19,10 +19,10 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(DEPS)
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(OBJ)
 	$(CC) -o $@ -c $< $(CFLAGS) $(INCLUDE)
 
-tuto: tuto.cpp $(OBJ)
+ttor_shared: ttor_shared.cpp $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LFLAGS)
 
 clean:
-	rm -f tuto
+	rm -f ttor_shared
 	rm -f $(OBJDIR)/*.o
 
