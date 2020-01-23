@@ -273,7 +273,7 @@ void cholesky(int n_threads, int verb, int n, int nb)
     printf("Accu time: %e\n", accu_us_t.load() * 1e-6);
 
     std::ofstream logfile;
-    string filename = "ttor_distributed_samecol_"+to_string(n)+"_"+to_string(nb)+"_"+ to_string(n_ranks)+".log."+to_string(rank);
+    string filename = "ttor_dist_accumu"+to_string(n)+"_"+to_string(nb)+"_"+ to_string(n_ranks)+".log."+to_string(rank);
     logfile.open(filename);
     logfile << log;
     logfile.close();
