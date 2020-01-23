@@ -41,6 +41,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     double trsm_t=0;
     double syrk_t=0;
 
+    // Test Master Branch
 
     // Number of tasks
     int n_tasks_per_rank = 2;
