@@ -1,3 +1,6 @@
+#ifndef __TTOR_FUNCTIONAL_EXTRA_HPP__
+#define __TTOR_FUNCTIONAL_EXTRA_HPP__
+
 #include <functional>
 #include <cstdlib>
 
@@ -22,3 +25,5 @@ typename fun_type<decltype(&F::operator())>::type GetStdFunction(F const &func)
 {
     return func;
 };
+
+#endif
