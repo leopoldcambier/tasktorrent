@@ -59,7 +59,7 @@ TEST(serialize,all) {
     test<float>(3.141519);
     test<float>(-3.141519);
     test<int,double,float,char>(1,2.71,-3.14,'A');
-    test<void(*)(int)>([](int i){printf("Test\n");});
+    test<void(*)(int)>([](int){printf("Test\n");});
     test<double,int,float,s1_t,s2_t>(1.23, 2, 4.32, {5, 6}, {3.14, 2.71, {-1,1}, {-2,2}});
 }
 
@@ -76,10 +76,10 @@ TEST(serialize,views) {
     auto tup = s2.read_buffer(buffer.data());
     ASSERT_EQ(get<0>(tup).size(), 5);
     ASSERT_EQ(get<1>(tup).size(), 4);
-    for(int i = 0; i < d1.size(); i++) {
+    for(int i = 0; (size_t)i < d1.size(); i++) {
         ASSERT_EQ( *(get<0>(tup).begin() + i), d1[i] );
     }
-    for(int i = 0; i < d2.size(); i++) {
+    for(int i = 0; (size_t)i < d2.size(); i++) {
         ASSERT_EQ( *(get<1>(tup).begin() + i), d2[i] );
     }
 }

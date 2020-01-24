@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <numeric>
 #include <functional>
+#include <limits>
 
 #include "util.hpp"
 
@@ -585,9 +586,9 @@ private:
     {
         assert(comm_rank() == 0);
         assert(from >= 0 && from < comm_size());
-        assert(msg_rcvd.size() == comm_size());
-        assert(msg_sent.size() == comm_size());
-        assert(msg_rcv_snt_uptd.size() == comm_size());
+        assert(msg_rcvd.size() == (size_t)comm_size());
+        assert(msg_sent.size() == (size_t)comm_size());
+        assert(msg_rcv_snt_uptd.size() == (size_t)comm_size());
         assert(n_msg_rcvd >= 0);
         assert(n_msg_sent >= 0);
 
@@ -834,7 +835,7 @@ public:
     // If task cannot be found in the task map, create a new entry.
     // If it exists, reduce by 1 the dependency count.
     // If count == 0, insert the task in the ready queue.
-    void fulfill_promise(K k, double priority = 1.0)
+    void fulfill_promise(K k)
     {
         // Shortcut: if indegree == 1, we can insert the
         // task immediately.
@@ -853,7 +854,7 @@ public:
         Task *t = new Task();
         t->fulfill = []() {};
         t->name = "dep_map_intern_" + to_string(where);
-        t->priority = priority;
+        t->priority = std::numeric_limits<double>::max();
 
         t->run = [this, where, k]() {
             auto &dmk = this->dep_map[where];

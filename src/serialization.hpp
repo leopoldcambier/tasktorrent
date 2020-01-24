@@ -49,7 +49,7 @@ private:
         size_t total;
         for_size_buffer() : total(0) {}
         template <typename T>
-        void operator()(T &t)
+        void operator()(T&)
         {
             total += sizeof(T);
         }
@@ -143,8 +143,8 @@ class Serializer<>
 {
 public:
     int size() { return 0; };
-    void write_buffer(char *buffer){};
-    std::tuple<> read_buffer(char *buffer) { return {}; };
+    void write_buffer(char *){};
+    std::tuple<> read_buffer(char *) { return {}; };
 };
 
 void print_bytes(const void *ptr, int size);
