@@ -57,7 +57,7 @@ TEST(ttor, mini_v0)
     comm.set_logger(&log);
 
     assert(indegree.size() == out_deps.size());
-    assert(indegree.size() == 2);
+    assert(indegree.size() == (size_t)2);
 
     vector<int> task_completed(indegree.size(), 0);
 
@@ -88,7 +88,7 @@ TEST(ttor, mini_v0)
 
     tp.join();
 
-    for (int t = 0; t < task_completed.size(); ++t)
+    for (int t = 0; (size_t)t < task_completed.size(); ++t)
         ASSERT_EQ(task_completed[t], 1);
 
     MPI_Barrier(MPI_COMM_WORLD); // This is required in case we call this function repeatedly
@@ -115,7 +115,7 @@ TEST(ttor, mini_v1)
           assert(k >= 0 && k < n_threads);
           return k;
       })
-        .set_indegree([&](int k) {
+        .set_indegree([&](int) {
             return 1;
         })
         .set_task([&](int k) {
@@ -126,12 +126,12 @@ TEST(ttor, mini_v1)
             return "mini_v1_Task_" + to_string(k) + "_" + to_string(rank);
         });
 
-    for (int t = 0; t < task_completed.size(); ++t)
+    for (int t = 0; (size_t)t < task_completed.size(); ++t)
         tf.fulfill_promise(t);
 
     tp.join();
 
-    for (int t = 0; t < task_completed.size(); ++t)
+    for (int t = 0; (size_t)t < task_completed.size(); ++t)
         ASSERT_EQ(task_completed[t], 1);
 
     MPI_Barrier(MPI_COMM_WORLD); // This is required in case we call this function repeatedly
@@ -285,10 +285,10 @@ TEST(ttor, critical1)
             assert(k >= 0);
             return map(k);
         })
-        .set_binding([&](int k) {
+        .set_binding([&](int) {
             return true;
         })
-        .set_indegree([&](int k) {
+        .set_indegree([&](int) {
             return 1;
         })
         .set_task([&](int k) {
@@ -307,10 +307,10 @@ TEST(ttor, critical1)
             assert(k >= 0);
             return map(k);
         })
-        .set_binding([&](int k) {
+        .set_binding([&](int) {
             return true;
         })
-        .set_indegree([&](int k) {
+        .set_indegree([&](int) {
             return 1;
         })
         .set_task([&](int k) {
@@ -354,10 +354,10 @@ TEST(ttor, critical2)
             assert(k >= 0);
             return k % n_threads;
         })
-        .set_binding([&](int k) {
+        .set_binding([&](int) {
             return false;
         })
-        .set_indegree([&](int k) {
+        .set_indegree([&](int) {
             return 1;
         })
         .set_task([&](int k) {
@@ -367,16 +367,16 @@ TEST(ttor, critical2)
             return "critical_tf0_" + to_string(k) + "_" + to_string(rank);
         });
 
-    tf_1.set_mapping([&](int k) {
+    tf_1.set_mapping([&](int) {
             return 0;
         })
-        .set_binding([&](int k) {
+        .set_binding([&](int) {
             return true;
         })
-        .set_indegree([&](int k) {
+        .set_indegree([&](int) {
             return 1;
         })
-        .set_task([&](int k) {
+        .set_task([&](int) {
             ++atomic_count;
         })
         .set_name([&](int k) {
@@ -483,7 +483,7 @@ void test_sparse_graph(int n_tasks_per_rank, bool self)
             return indegree[k];
         })
         .set_task([&](int k) {
-            assert(k >= 0 && k < task_completed.size());
+            assert(k >= 0 && (size_t)k < task_completed.size());
 
             for (int k_ : out_deps[k])
             {
@@ -573,10 +573,10 @@ TEST(ttor, ring)
             recvf.fulfill_promise(round);
         });
 
-    recvf.set_mapping([](int round) {
+    recvf.set_mapping([](int) {
              return 0;
          })
-        .set_indegree([&](int round) {
+        .set_indegree([&](int) {
             return 1;
         })
         .set_task([&](int round) {
@@ -586,14 +586,14 @@ TEST(ttor, ring)
             if (rank > 0 || rounds < n_rounds)
                 sendf.fulfill_promise(rank > 0 ? round : round + 1);
         })
-        .set_name([rank](int i) {
+        .set_name([rank](int) {
             return ("Recv_" + to_string(rank));
         });
 
-    sendf.set_mapping([](int round) {
+    sendf.set_mapping([](int) {
              return 0;
          })
-        .set_indegree([rank](int round) {
+        .set_indegree([](int) {
             return 1;
         })
         .set_task([&](int round) {
@@ -604,7 +604,7 @@ TEST(ttor, ring)
 
             am->send(dest, round, rank);
         })
-        .set_name([rank](int round) {
+        .set_name([rank](int) {
             return ("Send_" + to_string(rank));
         });
 
@@ -654,7 +654,7 @@ TEST(ttor, pingpong)
     ppf.set_mapping([&](int round) {
            return (round % n_threads);
        })
-        .set_indegree([&](int round) {
+        .set_indegree([&](int) {
             return 1;
         })
         .set_task([&](int round) {
@@ -689,6 +689,8 @@ int main(int argc, char **argv)
     MPI_Init_thread(NULL, NULL, req, &prov);
     assert(prov == req);
 
+    ::testing::InitGoogleTest(&argc, argv);
+
     if (argc >= 2)
     {
         n_threads_ = atoi(argv[1]);
@@ -700,8 +702,7 @@ int main(int argc, char **argv)
         VERB = atoi(argv[2]);
         cout << "Verbosity level set to " << VERB << "\n";
     }
-
-    ::testing::InitGoogleTest(&argc, argv);
+    
     const int return_flag = RUN_ALL_TESTS();
     assert(return_flag == 0);
 

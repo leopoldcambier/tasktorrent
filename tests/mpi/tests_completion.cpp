@@ -41,7 +41,7 @@ TEST(completion, mini)
     tf.set_mapping([&](int k) {
           return (k % n_threads);
       })
-        .set_indegree([&](int k) {
+        .set_indegree([&](int) {
             return 1;
         })
         .set_task([&](int k) {
@@ -75,6 +75,8 @@ int main(int argc, char **argv)
 
     assert(prov == req);
 
+    ::testing::InitGoogleTest(&argc, argv);
+
     if (argc >= 2)
     {
         n_threads = atoi(argv[1]);
@@ -84,8 +86,6 @@ int main(int argc, char **argv)
     {
         verb = atoi(argv[2]);
     }
-
-    ::testing::InitGoogleTest(&argc, argv);
 
     const int return_flag = RUN_ALL_TESTS();
 
