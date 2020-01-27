@@ -175,7 +175,7 @@ void cholesky(int n_threads, int verb, int n, int nb)
             return ((ij[0]*nb+ij[1]) % n_threads);
         })
         .set_priority([&](int2 ij) {
-            return nb*nb-ij[0]*(ij[0]-1)+ij[1[]];
+            return nb*nb-ij[0]*(ij[0]-1)+ij[1[];
         })
         .set_name([&](int2 ij) { // This is just for debugging and profiling
             return "TRSM_" + to_string(ij[0]) + "_" + to_string(ij[1]) + "_" +to_string(rank);
