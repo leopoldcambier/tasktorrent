@@ -156,7 +156,9 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
         })
         .set_priority([&](int2 ki) {
-            return 3*(nb-ij[0])+2*(ij[0]-ij[1]);
+            int k=ki[0];
+            int i=ki[1];
+            return 3*(nb-i)+2*(i-k);
         })
         .set_name([&](int2 ki) { // This is just for debugging and profiling
             int k=ki[0];
