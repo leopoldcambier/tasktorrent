@@ -9,5 +9,5 @@ install:
   - wget http://bitbucket.org/eigen/eigen/get/3.3.7.tar.bz2 -O eigen-3.3.7.tar.bz2 && tar -xvf eigen-3.3.7.tar.bz2
 script:
   - cd tutorial      && make clean     && make run && cd ..
-  - TTOR_ROOT=$(HOME)/build/leopoldcambier/tasktorrent ./tests/shared/run_tests_travis.sh
-  - TTOR_ROOT=$(HOME)/build/leopoldcambier/tasktorrent ./tests/mpi/run_tests_travis.sh
+  - TTOR_ROOT=${HOME}/build/leopoldcambier/tasktorrent ./tests/shared/run_tests_travis.sh
+  - TTOR_ROOT=${HOME}/build/leopoldcambier/tasktorrent ./tests/mpi/run_tests_travis.sh
