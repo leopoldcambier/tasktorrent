@@ -134,6 +134,9 @@ def make_plot(whos, data, min_start = 0, max_end = 1e100, plot_ss=False, plot_co
                     else:
                         extra_lines[orig_uuid] = {'x1':end, 't1':tid}
 
+                if details[0].startswith('dep_map_intern'):
+                    color = 'black'
+
                 rect_data['left'].append(start)
                 rect_data['right'].append(end)
                 rect_data['top'].append(top)
@@ -206,6 +209,6 @@ if __name__ == "__main__":
 
     datas = [load(f) for f in args.files]
     whos, data = combine(datas)
-    text_filter, p = make_plot(whos, data, min_start=args.start, max_end=args.end, plot_ss=args.plot_ss, plot_comm=args.plot_comm)    
+    text_filter, p = make_plot(whos, data, min_start=args.start, max_end=args.end, plot_ss=args.plot_ss, plot_comm=args.plot_comm)
     output_file(args.output)
     show(p)
