@@ -103,7 +103,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
         })
         .set_priority([&](int k) {
             //return 3.0;
-            return 3*(nb-j);
+            return 3*(nb-k);
         })
         .set_name([&](int k) { // This is just for debugging and profiling
             return "POTRF" + to_string(k) + "_" + to_string(rank);
