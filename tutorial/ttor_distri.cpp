@@ -116,6 +116,9 @@ void cholesky(int n_threads, int verb, int n, int nb)
         .set_mapping([&](int j) {
             return (j % n_threads);
         })
+        .set_priority([&](int j) {
+            return nb*nb-j*(j-1)/2;
+        })
         .set_name([&](int j) { // This is just for debugging and profiling
             return "POTRF_" + to_string(j) + "_" + to_string(rank);
         });
@@ -171,6 +174,9 @@ void cholesky(int n_threads, int verb, int n, int nb)
         .set_mapping([&](int2 ij) {
             return ((ij[0]*nb+ij[1]) % n_threads);
         })
+        .set_priority([&](int2 ij) {
+            return nb*nb-ij[0]*(ij[0]-1)+ij[1[]];
+        })
         .set_name([&](int2 ij) { // This is just for debugging and profiling
             return "TRSM_" + to_string(ij[0]) + "_" + to_string(ij[1]) + "_" +to_string(rank);
         });
@@ -206,6 +212,9 @@ void cholesky(int n_threads, int verb, int n, int nb)
         })
         .set_mapping([&](int3 kij) {
             return ((kij[0]*nb*nb+kij[1]+kij[2]*nb) % n_threads);
+        })
+        .set_priority([&](int3 kij) {
+            return nb*nb-kij[1]*(kij[1]-1)/2+kij[2];
         })
         .set_name([&](int3 kij) { // This is just for debugging and profiling
             return "GEMM_" + to_string(kij[0]) + "_" + to_string(kij[1])+"_"+to_string(kij[2])+"_"+to_string(comm_rank());
