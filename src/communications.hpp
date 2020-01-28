@@ -128,12 +128,13 @@ class Communicator
 {
 
 private:
-    int verb;
+    const int verb;
     Logger *logger;
     bool log;
+    const int tag;
     std::vector<unique_ptr<ActiveMsgBase>> active_messages;
-    std::atomic<int> messages_sent; // queued (or sent) messages
-    std::atomic<int> messages_rcvd; // received and processed messages
+    std::atomic<int> messages_queued; // queued messages
+    std::atomic<int> messages_processed; // received and processed messages
 
     /** Small messages                        
      *  This class maintains three lists to handle "small" messages, for which we allocate memory internally.
@@ -142,7 +143,6 @@ private:
      *  messages_Isent is a list containing all messages sent (Isent called, message pending). This is only manipulated by the master thread
      *  messages_Ircvd is a list containing all messages recv (Irecv called, message pending). This is only manipulated by the master thread
      */
-    std::atomic<int> uuid;
     list<unique_ptr<message>> messages_rdy;
     std::mutex messages_rdy_mtx;
     list<unique_ptr<message>> messages_Isent;
@@ -177,16 +177,12 @@ public:
     unique_ptr<message> make_active_message(ActiveMsgBase *am, int dest, int size);
 
 public:
-    mutex recv_count;
-    /* Used by Threadpool to ensure that 
-     * comm->get_n_msg_rcvd()
-     * returns the value we need. */
 
     /**
      * Creates an Communicator
      * - verb_ is the verbose level: 0 = no printing. 4 = lots of printing.
      */
-    Communicator(int verb_ = 0);
+    Communicator(int verb_ = 0, int tag_ = 0);
 
     /**
      * Creates an active message tied to function fun
@@ -252,12 +248,12 @@ public:
     /**
      * Returns the number of received and processed messages
      */
-    int get_n_msg_rcvd();
+    int get_n_msg_processed();
 
     /**
      * Returns the number of queued (or sent) messages
      */
-    int get_n_msg_sent();
+    int get_n_msg_queued();
 };
 
 /**
@@ -338,7 +334,7 @@ template <typename... Ps>
 void Communicator::queue_named_message(string name, unique_ptr<message> m)
 {
     // Increment message counter
-    messages_sent++;
+    messages_queued++;
 
     unique_ptr<Event> e;
     if (log)
@@ -371,7 +367,7 @@ template <typename... Ps>
 void Communicator::blocking_send(unique_ptr<message> m)
 {
     // Increment message counter
-    messages_sent++;
+    messages_queued++;
 
     Isend_message(m);
     int err = MPI_Wait(&m->request, MPI_STATUS_IGNORE);

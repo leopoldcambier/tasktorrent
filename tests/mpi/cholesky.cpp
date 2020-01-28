@@ -98,7 +98,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
             [&](view<double> &Lkk, int& j, view<int>& is) {
                 Mat.at({j,j}) = Map<MatrixXd>(Lkk.data(), n, n);
                 for(auto& i: is) {
-                    trsm_tf.fulfill_promise({i,j}, 5.0);
+                    trsm_tf.fulfill_promise({i,j});
                 }
             });
 
@@ -110,7 +110,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                     int gi = ij[0];
                     int gj = ij[1];
                     int gk = j;
-                    gemm_tf.fulfill_promise({gi,gj,gk}, 5.0);
+                    gemm_tf.fulfill_promise({gi,gj,gk});
                 }
             });
 
@@ -118,7 +118,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
         potf_tf.set_mapping([&](int j) {
                 return (j % n_threads);
             })
-            .set_indegree([](int j) {
+            .set_indegree([](int) {
                 return 1;
             })
             .set_task([&](int j) {
@@ -141,7 +141,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                     // Task is local. Just fulfill.
                     if(r == rank) {
                         for(auto& i: p.second) {
-                            trsm_tf.fulfill_promise({i,j}, 5.0);
+                            trsm_tf.fulfill_promise({i,j});
                         }
                     // Task is remote. Send data and fulfill.
                     } else {
@@ -154,7 +154,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
             .set_name([](int j) {
                 return "potf_" + to_string(j);
             })
-            .set_priority([](int j) {
+            .set_priority([](int) {
                 return 3.0;
             });
 
@@ -203,7 +203,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                             int gi = ij[0];
                             int gj = ij[1];
                             int gk = j;
-                            gemm_tf.fulfill_promise({gi,gj,gk}, 5.0);
+                            gemm_tf.fulfill_promise({gi,gj,gk});
                         }
                     // Task is remote. Send data and fulfill.
                     } else {
@@ -216,7 +216,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
             .set_name([](int2 ij) {
                 return "trsm_" + to_string(ij[0]) + "_" + to_string(ij[1]);
             })
-            .set_priority([](int2 ij) {
+            .set_priority([](int2) {
                 return 2.0;
             });
 
@@ -243,21 +243,21 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                 int k = ijk[2];
                 if (k + 1 == i && k + 1 == j)
                 {
-                    potf_tf.fulfill_promise(k+1, 5.0); // same node, no comms
+                    potf_tf.fulfill_promise(k+1); // same node, no comms
                 }
                 else if (k + 1 == j)
                 {
-                    trsm_tf.fulfill_promise({i, k + 1}, 5.0); // same node, no comms
+                    trsm_tf.fulfill_promise({i, k + 1}); // same node, no comms
                 }
                 else
                 {
-                    gemm_tf.fulfill_promise({i, j, k + 1}, 5.0); // same node, no comms
+                    gemm_tf.fulfill_promise({i, j, k + 1}); // same node, no comms
                 }
             })
             .set_name([](int3 ijk) {
                 return "gemm_" + to_string(ijk[0]) + "_" + to_string(ijk[1]) + "_" + to_string(ijk[2]);
             })
-            .set_priority([](int3 ijk) {
+            .set_priority([](int3) {
                 return 1.0;
             });
 
@@ -295,7 +295,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
         gather_tf.set_mapping([&](int2 ij) {
                 return ( (ij[0] + ij[1]) % n_threads );
             })
-            .set_indegree([](int2 ij) {
+            .set_indegree([](int2) {
                 return 1;
             })
             .set_task([&](int2 ij) {
@@ -315,7 +315,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
         for(int i = 0; i < N; i++) {
             for(int j = 0; j <= i; j++) {
                 if(block2rank({i,j}) == rank) {
-                    gather_tf.fulfill_promise({i,j}, 5.0);
+                    gather_tf.fulfill_promise({i,j});
                 }
             }
         }
@@ -360,8 +360,6 @@ TEST(cholesky, one)
 
 int main(int argc, char **argv)
 {
-    ::testing::InitGoogleTest(&argc, argv);
-
     int req = MPI_THREAD_FUNNELED;
     int prov = -1;
 
@@ -369,6 +367,7 @@ int main(int argc, char **argv)
 
     assert(prov == req);
 
+    ::testing::InitGoogleTest(&argc, argv);
 
     if (argc >= 2)
     {

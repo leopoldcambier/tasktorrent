@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <numeric>
 #include <functional>
+#include <limits>
 
 #include "util.hpp"
 
@@ -138,7 +139,7 @@ class Threadpool_shared
 {
 public:
     atomic<int> tasks_in_flight; // Counts the number of tasks currently live in the thread pool
-    atomic<int> join_status;     // Used to signal that the threadpool should stop
+    atomic<bool> done;           // Used to signal that the threadpool should stop
     // Verbosity level
     // TODO: clarify the intent for the different levels of verbosity
     int verb;
@@ -165,7 +166,7 @@ private:
 public:
     Threadpool_shared(int n_threads, int verb_ = 0, string basename_ = "Wk_", bool start_immediately = true)
         : tasks_in_flight(0),     // number of tasks in flight
-          join_status(0),         // used to signal completion
+          done(false),         // used to signal completion
           verb(verb_), // verbosity level
           basename(basename_),
           threads(n_threads),     // number of threads
@@ -220,12 +221,12 @@ private:
     }
 
     // test_completion() is overloaded by Threadpool_mpi
-    virtual void test_completion()
+    void test_completion()
     {
         if (tasks_in_flight.load() != 0)
             return; // quick test to return
 
-        join_status.store(2); // 2 == signals that the calculation is now complete
+        done.store(true);
     }
 
 public:
@@ -337,15 +338,6 @@ public:
                             return;
                         }
 
-                        if (self == 0) /* only one worker thread on each rank can do that */
-                        {
-                            test_completion();
-                            // Check whether the DAG has been completely executed and no comms are left.
-                            // Send number of msg received and sent to master rank.
-                            // Returns immediately if tasks_in_flight != 0.
-                            // The master rank will check whether the total number of messages sent and received
-                            // matches across all ranks.
-                        }
                         std::this_thread::sleep_for(std::chrono::microseconds(10));
                     }
                 }
@@ -390,15 +382,19 @@ public:
     void join()
     {
         assert(tasks_in_flight.load() > 0);
-        --tasks_in_flight;
         // We can safely decrement tasks_in_flight.
         // All tasks have been seeded by the main thread.
+        --tasks_in_flight;
+        while(! is_done()) {
+            test_completion();
+            std::this_thread::sleep_for(std::chrono::microseconds(1000));
+        }
         all_threads_join();
     }
 
     bool is_done()
     {
-        return join_status.load() == 2;
+        return done.load();
     }
 
     void set_logger(Logger *logger_)
@@ -418,69 +414,179 @@ public:
 class Threadpool_mpi : public Threadpool_shared
 {
 private:
-    vector<int> msg_count_status; // Used to avoid sending multiple completion messages that are identical
-    int join_tag;                 // We count the number of rounds to make sure obsolete information is ignored
-    mutex join_status_mtx;
 
     // Multi-rank quiescence
     // Global count of all the messages sent and received
-    vector<int> msg_rcvd;
-    vector<int> msg_sent;
-    // Tracks whether message information from a given rank
-    // has been received or not
-    vector<bool> msg_rcv_snt_uptd;
-    Communicator *comm; // used to communicate
+    // Only used and valid on rank 0
+    vector<int>  msgs_queued;       // msgs_queued[from]: user's comm queued rpcs from rank from
+    vector<int>  msgs_processed;    // msgs_processed[from]: user's comm processed lpcs from rank from
+    vector<int>  intern_msg_queued; // intern_msg_queued[from]: internal comm queued rpcs from rank from
+    vector<int>  tags;              // tags[from]: the greatest ever received confirmation tag
+
+    // Count the number of queued and proceeds AM's used in the join()
+    int intern_queued;     // the number of internal queued rpcs
+    int intern_processed;  // the number of internal processed lpcs
+
+    // The last information used/send
+    // Use on all ranks
+    int last_sent_nqueued;    // the last sent value of user's queued rpcs
+    int last_sent_nprocessed; // the last sent value of usue's processed lpcs
+
+    // Last sum
+    // Only used and valid on rank 0
+    int last_sum;  // the last sum_r queued(r) == sum_r processed(r) value
+    
+    // Used by user to communicate
+    Communicator *comm;
+    std::string name;
 
     // Active messages used to determine whether quiescence has been reached
-    ActiveMsg<int, int, int, int> *am_notify_master; // use to count messages sent and received from all ranks
-    ActiveMsg<int> *am_notify_workers;               // signal all ranks when done
+    ActiveMsg<int, int, int>    *am_set_msg_counts_master;   // Send msg count to master
+    ActiveMsg<int, int, int>    *am_ask_confirmation;        // Ask worker for confirmation
+    ActiveMsg<int, int>         *am_send_confirmation;       // Send confirmation back to master
+    ActiveMsg<>                 *am_shutdown_tf;             // Shutdown TF (last message from master to worker)
+    ActiveMsg<int, int>         *am_quiet;                   // Indicate rank is now quiet  (last message from worker to master)
 
-    // This routine is not thread-sage; it needs to be protected by a mutex
-    // This is done outside of this routine.
-    void join_status_set(int status)
-    {
-        join_status.store(status); // 0, 1 or 2
-        ++join_tag;                // Next round of messages
-        if (status == 0)           // Beginning of new round
-        {
-            msg_count_status[0] = -1; // Reset value
-            msg_count_status[1] = -1;
+    // Used to synchronize workers
+    // Master increment this every time he sends a new confirmation request
+    // Worker reply with the tag
+    // We wait for the moment where all workers reply with the latest confirmation_tag, meaning they all confirmed the latest confirmation request
+    int confirmation_tag;
+
+    // Debug only
+    // Check we enter 
+    bool shutdown_lpc_done;
+
+    // Update counts on master
+    // We use step, provided by the worker, to update msg_queued and msg_processed with the latest information
+    void set_msg_counts_master(int from, int msg_queued, int msg_processed) {
+        if (verb > 0) {
+            printf("[%s] Receiving message counts (from %d, step %d, queued %d processed %d)\n", name.c_str(), from, 0, msg_queued, msg_processed);
         }
+        assert(comm_rank() == 0);
+        assert(from >= 0 && from < comm_size());
+        assert(msgs_queued[from] >= -1);
+        assert(msgs_processed[from] >= -1);
+        msgs_queued[from] = std::max(msgs_queued[from], msg_queued);
+        msgs_processed[from] = std::max(msgs_processed[from], msg_processed);
+    }
+
+    // Ask confirmation on worker
+    // If step is the latest information send, and if we're still idle and there were no new messages in between, reply with the tag
+    void ask_confirmation(int msg_queued, int msg_processed, int tag) {
+        if(tasks_in_flight.load() == 0)
+        {
+            int nq = comm->get_n_msg_queued() - intern_queued;
+            int np = comm->get_n_msg_processed() - intern_processed;
+            assert(nq >= 0);
+            assert(np >= 0);
+            // printf("[%d] Confirmation (B) %d %d\n", comm_rank(), nq, np);
+            if(nq == msg_queued && np == msg_processed) {
+                if (verb > 1) {
+                    printf("[%s] -> 0 Confirmation YES tag %d (%d %d)\n", name.c_str(), tag, nq, np);
+                }
+                int from = comm_rank();
+                intern_queued++;
+                am_send_confirmation->send(0, from, tag);
+            } else {
+                if (verb > 1) {
+                    printf("[%s] -> 0 NO Confirmation tag %d (%d %d) != (%d %d)\n", name.c_str(), tag, msg_queued, msg_processed, nq, np);
+                }
+            }
+        } else {
+            if (verb > 1) {
+                printf("[%s] -> 0 No Confirmation tag %d (%d %d), busy\n", name.c_str(), tag, msg_queued, msg_processed);
+            }
+        }
+    }
+
+    // Update tags on master with the latest confirmation tag
+    void confirm(int from, int tag) {
+        if (verb > 1) {
+            printf("[%s] <- %d, Confirmation OK tag %d\n", name.c_str(), from, tag);
+        }
+        assert(from >= 0 && from < comm_size());
+        tags[from] = std::max(tags[from], tag);
+    }
+
+    // Shut down the TF
+    void shutdown_tf() {
+        if (verb > 0) {
+            printf("[%s] Shutting down tf\n", name.c_str());
+        }
+        assert(! shutdown_lpc_done);
+        assert(tasks_in_flight.load() == 0);
+        done.store(true);
+        shutdown_lpc_done = true;
+    }
+    
+    void is_quiet(int from, int nq) {
+        if (verb > 0) {
+            printf("[%s] %d now quiet, intern queued = %d\n", name.c_str(), from, nq);
+        }
+        assert(from >= 0 && from < comm_size());
+        assert(intern_msg_queued[from] == -1);
+        intern_msg_queued[from] = nq;
     }
 
 public:
     Threadpool_mpi(int n_threads, Communicator *comm_, int verb_ = 0, string basename_ = "Wk_", bool start_immediately = true)
         : Threadpool_shared(n_threads, verb_, basename_, false),
-          msg_count_status(2, -1),       // To avoid sending identical completion messages multiple times
-          join_tag(0),                   // Number of completion signals sent
-          msg_rcvd(comm_size()),         // number of messages sent
-          msg_sent(comm_size()),         // number of messages received
-          msg_rcv_snt_uptd(comm_size()), // vector of boolean; whether msg count info has been received or not
+
+          msgs_queued(comm_size(), -1),       // -1 means no count received yet             [rank 0 only]
+          msgs_processed(comm_size(), -1),    // -1 means no count received yet             [rank 0 only]
+          intern_msg_queued(comm_size(), -1), // -1 means no count received yet             [rank 0 only]
+          tags(comm_size(), -1),              // -1 means no confirmation tag received yet  [rank 0 only]
+          intern_queued(0),
+          intern_processed(0),
+          last_sent_nqueued(-1),    // -1 means no value sent yet
+          last_sent_nprocessed(-1), // -1 means no value sent yet   
+          last_sum(-1),             // -1 means no sum computed yet [rank 0 only]
           comm(comm_),
-          am_notify_master(nullptr), // AM to send msg received and sent
-          am_notify_workers(nullptr) // AM to signal completion
+          name(basename + "MPI_MASTER"),
+          am_set_msg_counts_master(nullptr), // AM to send msg received and sent
+          am_ask_confirmation(nullptr),
+          am_send_confirmation(nullptr),
+          am_shutdown_tf(nullptr), // AM to shut down the worker threads
+          am_quiet(nullptr),
+          confirmation_tag(0),
+          // DEBUG
+          shutdown_lpc_done(false)
     {
-        // Call function join_set_msg_counts
-        am_notify_master = comm->make_active_msg(
-            [&](int &from, int &msg_rcvd, int &msg_sent, int &tag) {
-                string name = basename + "MPI_MASTER";
-                if (verb > 1)
-                    printf("[%s] Receiving message counts (from %d, rcvd %d sent %d)\n", name.c_str(), from, msg_rcvd, msg_sent);
-                join_set_msg_counts(from, msg_rcvd, msg_sent, tag);
+        // Update message counts on master
+        am_set_msg_counts_master = comm->make_active_msg(
+            [&](int &from, int &msg_queued, int &msg_processed) {
+                set_msg_counts_master(from, msg_queued, msg_processed);
+                intern_processed++;
             });
 
-        // Set join_status to new value
-        am_notify_workers = comm->make_active_msg(
-            [&](int &status) {
-                string name = basename + "MPI_MASTER";
-                if (verb > 1)
-                    printf("[%s] Receiving status signal %d\n", name.c_str(), status);
-                lock_guard<mutex> lock(join_status_mtx);
-                join_status_set(status);
+        // Ask worker for confirmation on the latest count
+        am_ask_confirmation = comm->make_active_msg(
+            [&](int &msg_queued, int &msg_processed, int &tag) {
+                ask_confirmation(msg_queued, msg_processed, tag);
+                intern_processed++;
             });
 
-        for (int i = 0; i < comm_size(); i++)
-            msg_rcv_snt_uptd[i] = false;
+        // Send confirmation to master
+        am_send_confirmation = comm->make_active_msg(
+            [&](int& from, int &tag) {
+                confirm(from, tag);
+                intern_processed++;
+            });
+
+        // Shutdown worker or master
+        am_shutdown_tf = comm->make_active_msg(
+            [&]() {
+                shutdown_tf();
+                intern_processed++;
+            });
+
+        // Indicate quiet
+        am_quiet = comm->make_active_msg(
+            [&](int &from, int& nq) {
+                is_quiet(from, nq);
+                intern_processed++;
+            });
 
         // Now it is safe to call start()
         if (start_immediately)
@@ -494,230 +600,166 @@ public:
         // We can safely decrement tasks_in_flight.
         // All tasks have been seeded by the main thread.
 
-        while (!is_done() || !comm->is_done())
+        // We first exhaust all the TFs
+        while (! is_done())
         {
-            comm->progress();
+            // We do as much progress as possible, on both the user and internal comm's
+            do {
+                comm->progress();
+            } while (! comm->is_done());
+            // If there is nothing to do, we check for completion
+            // We may or not be done by now
+            if ( (! is_done()) && tasks_in_flight.load() == 0 ) {
+                test_completion();
+            }
         }
+        assert(tasks_in_flight.load() == 0);
+        assert(is_done());
 
+        // Now we notify rank 0 to stop
+        wait_quiet();
+
+        // All threads join
         all_threads_join();
+
+        // We are now completely done
+        assert(comm->is_done());
     }
 
 private:
-    void test_completion() override
+
+    /**
+     * join() overview strategy
+     * 
+     * (1a) Periodically, when there are no tasks in flight in the taskflow, the MPI thread (i.e., the only thread active at this point)
+     *      on rank != 0 sends to rank 0 the total count of USER queued rpcs and processed lpcs
+     *      This is done by counting the join()'s rpcs/lpcs and substracting that number from the above
+     * (1b) Periodically, when there are no tasks in flight in the taskflow, the MPI thread on rank 0
+     *      sums all queued/processed numbers. When the sum_r queued(r) == sum_r processed(r), we MAY have reached completion
+     * (2a) When that happens, MPI thread on rank 0 sends a confirmation to all ranks != 0
+     * (2b) Ranks != 0 received confirmations. If the queued/processed numbers haven't changed, it means nothing happened in the meantime, 
+     *      and they reply to rank 0 that yes, nothing happened in the meantime
+     * (2c) If all ranks reply that nothing happened, the TF is now done. Then, rank 0 sends a shutdown message to all thread
+     *      This terminates the TF on all ranks
+     * (3a) When rank != 0 are terminated, they:
+     *      - Finish processing all their comms, to terminate all messages from rank 0. Since shutdown is the last message from 0, 
+     *        once it is received, no more message follow
+     *      - Send a last message to 0, indicating the total number of internal queued message
+     *      - They are finished
+     * (3b) When rank 0 is terminated, it keeps progressing, until the total number of internal processed message == what it received from all other ranks
+     *      It is then finished
+     */
+
+    // Return the number of internal queued rpcs
+    int get_intern_n_msg_queued() {
+        int nq = comm->get_n_msg_queued() - intern_queued;
+        assert(nq >= 0);
+        return nq;
+    }
+
+    // Return the number of internal processed lpcs
+    int get_intern_n_msg_processed() {
+        int np = comm->get_n_msg_processed() - intern_processed;
+        assert(np >= 0);
+        return np;
+    }
+
+    // Only MPI Master thread runs this function, on all ranks
+    // When done, this function set done to true and is_done() now returns true
+    void test_completion()
     {
-        if (tasks_in_flight.load() != 0)
-            return; // quick test to return
-
-        int from = comm_rank();
-        int n_msg_rcvd, n_msg_sent, status;
-        bool send_counts;
-        {
-            lock_guard<mutex> lock_recv(comm->recv_count);
-            /* This lock is somewhat optional; it prevents the situation where the MPI thread is running 
-             join_set_msg_counts() but then stops before incrementing messages_rcvd;
-             in that case, when thread worker 0 runs join_set_msg_counts() we are missing one rcvd message.  */
-
-            lock_guard<mutex> lock_status(join_status_mtx);
-
-            // It is critical that we save the number of messages received before
-            // checking tasks_in_flight.
-            n_msg_rcvd = comm->get_n_msg_rcvd();
-
-            if (tasks_in_flight.load() != 0)
-                return;
-
-            status = join_status.load();
-            assert(status >= 0 && status <= 2);
-            if (status == 2)
-                return;
-            // The value for status was changed to 2 after calling is_done(); we return and terminate
-
-            n_msg_sent = comm->get_n_msg_sent();
-            assert(n_msg_sent >= 0);
-
-            assert(msg_count_status[0] >= -1);
-            assert(msg_count_status[1] >= -1);
-
-            // Stage 0: we are updating the number of received messages
-            // Stage 1: we are updating the number of sent messages
-            bool recv_stage_0 = (status == 0 && msg_count_status[0] < n_msg_rcvd);
-            bool send_stage_1 = (status == 1 && msg_count_status[1] < n_msg_sent);
-
-            send_counts = (recv_stage_0 || send_stage_1);
-
-            assert(msg_count_status[0] <= n_msg_rcvd);
-            assert(msg_count_status[1] <= n_msg_sent);
-
-            if (send_counts && from != 0)
-                ++n_msg_sent;
-            // We add 1 here; we are sending a message and it needs to be counted
-
-            // Save the current values for the next call
-            if (status == 0)
-                msg_count_status[0] = n_msg_rcvd;
-            else
-                msg_count_status[1] = n_msg_sent;
-        }
-
-        if (send_counts)
-        {
-            // Send message
-            string name = basename + std::to_string(0);
-
-            if (from == 0)
-            {
-                if (verb > 1)
-                    printf("[%s] Local rank 0 msg counts update [status %d]: rcvd = %d sent = %d \n", name.c_str(), status, n_msg_rcvd, n_msg_sent);
-                join_set_msg_counts(0, n_msg_rcvd, n_msg_sent, join_tag);
+        int my_rank = comm_rank();
+        assert(! shutdown_lpc_done);
+        assert(! is_done());
+        assert(tasks_in_flight.load() == 0);
+        // No tasks are running in the threadpool so noone can queue rpcs
+        // MPI thread is the one running comm->progress(), so it can check is_done() properly, no race conditions here
+        if(my_rank == 0) { // Rank 0 test queues/processed global counts
+            // STEP A: check the previously received confirmation tags
+            // When they all match, we have a synchronization point where all TF are empty with no more user comms, so we shutdown
+            const bool all_tags_ok = std::all_of(tags.begin(), tags.end(), [&](int t){return t == confirmation_tag;});
+            if(all_tags_ok) {
+                if (verb > 1) {
+                    printf("[%s] all tags OK\n", name.c_str());
+                }
+                for(int r = 1; r < comm_size(); r++) {
+                    intern_queued++;
+                    am_shutdown_tf->send(r);
+                }
+                shutdown_tf();
             }
-            else
-            {
-                if (verb > 1)
-                    printf("[%s] Send msg counts update [status %d]: from %d, rcvd = %d sent = %d\n", name.c_str(), status, from, n_msg_rcvd, n_msg_sent);
-
-                am_notify_master->send(0, from, n_msg_rcvd, n_msg_sent, join_tag);
+            // STEP B: check the nqueued and nprocessed, send confirmations
+            // If they match, send messages to workers for confirmation
+            else {
+                int nq = get_intern_n_msg_queued();
+                int np = get_intern_n_msg_processed();
+                if(msgs_queued[0] != nq || msgs_processed[0] != np) {
+                    set_msg_counts_master(0, nq, np);
+                }
+                const int queued_sum    = std::accumulate(msgs_queued.begin(),    msgs_queued.end(), 0, std::plus<int>());
+                const int processed_sum = std::accumulate(msgs_processed.begin(), msgs_processed.end(), 0, std::plus<int>());
+                const bool all_updated  = std::all_of(msgs_queued.begin(), msgs_queued.end(), [](int i){return i >= 0;});
+                // If they match and we have a new count, ask worker for confirmation (== synchronization)
+                if(all_updated && processed_sum == queued_sum && last_sum != processed_sum) {
+                    confirmation_tag++;
+                    if (verb > 0) {
+                        printf("[%s] processed_sum == queued_sum == %d, asking confirmation %d\n", name.c_str(), processed_sum, confirmation_tag);
+                    }
+                    for(int r = 1; r < comm_size(); r++) {
+                        intern_queued++;
+                        am_ask_confirmation->send(r, msgs_queued[r], msgs_processed[r], confirmation_tag);
+                    }
+                    tags[0] = confirmation_tag;
+                    last_sum = processed_sum;
+                }
+            }
+        } else { // We send to 0 our updated counts
+            int nq = get_intern_n_msg_queued();
+            int np = get_intern_n_msg_processed();
+            bool new_values = (nq != last_sent_nqueued || np != last_sent_nprocessed);
+            if(new_values) {
+                intern_queued++;
+                am_set_msg_counts_master->send(0, my_rank, nq, np);
+                last_sent_nqueued = nq;
+                last_sent_nprocessed = np;
+                if (verb > 1) {
+                    printf("[%d] -> 0 tif %d done %d sending %d %d\n", comm_rank(), tasks_in_flight.load(), (int)comm->is_done(), nq, np);
+                }
             }
         }
     }
 
-    // Only rank 0 runs this function
-    void join_set_msg_counts(int from, int n_msg_rcvd, int n_msg_sent, int tag)
-    {
-        assert(comm_rank() == 0);
-        assert(from >= 0 && from < comm_size());
-        assert(msg_rcvd.size() == comm_size());
-        assert(msg_sent.size() == comm_size());
-        assert(msg_rcv_snt_uptd.size() == comm_size());
-        assert(n_msg_rcvd >= 0);
-        assert(n_msg_sent >= 0);
-
-        const bool remote_count(from != 0);
-
-        lock_guard<mutex> lock(join_status_mtx);
-        /* Two different threads may be running this function: MPI_MASTER and worker 0.
-         * We need a lock to prevent a race condition.
-         */
-
-        const int status = join_status.load();
-        assert(status >= 0 && status <= 2);
-
-        if (status == 2 /* we are done; just return */ || tag < join_tag /* data is obsolete */)
-            return;
-
-        string info = (remote_count ? "MPI_MASTER" : "0");
-
-        const string name = basename + info;
-
-        if (status == 0) // message recv count
-        {
-            msg_rcvd[from] = n_msg_rcvd;
-            msg_rcv_snt_uptd[from] = true;
-
-            if (from == 0)
-                // We need to adjust for messages from ranks that we have not received yet
-                msg_rcvd[0] += std::count(msg_rcv_snt_uptd.begin(), msg_rcv_snt_uptd.end(), false);
-
-            const bool all_uptd = std::accumulate(msg_rcv_snt_uptd.begin(), msg_rcv_snt_uptd.end(), true, std::logical_and<bool>());
-
-            if (!all_uptd)
-                return; // Not all entries have been received
-
-            // Messages that will be sent during stage 1 by all ranks except 0
-            msg_rcvd[0] += comm_size() - 1;
-
-            // The message from rank 0 at stage 1 is not counted by the other ranks
-            for (int i = 1; i < comm_size(); ++i)
-                ++msg_rcvd[i];
-
-            if (verb > 1)
-            {
-                // Print information about messages received and sent
-                for (int i = 0; i < comm_size(); ++i)
-                {
-                    printf("[%s] Msg count update [stage 0]: from %d rcvd = %d sent = %d \n",
-                           name.c_str(), i,
-                           msg_rcvd[i],
-                           msg_sent[i]);
-                }
+    void wait_quiet() {
+        assert(shutdown_lpc_done);
+        assert(tasks_in_flight.load() == 0);
+        assert(is_done());
+        int my_rank = comm_rank();
+        if(my_rank == 0) { // Rank 0 test queues/processed global counts
+            bool all_done = false;
+            is_quiet(0, 0);
+            while(! all_done) {
+                comm->progress();
+                int other_intern_queued = std::accumulate(intern_msg_queued.begin(), intern_msg_queued.end(), 0, std::plus<int>());
+                all_done = (other_intern_queued == intern_processed);
             }
-
-            // Go on to next stage
-            for (int i = 0; i < comm_size(); i++)
-                msg_rcv_snt_uptd[i] = false;
-
-            notify_workers(1, info);
-
-            return;
-        }
-        else if (status == 1) // message sent count
-        {
-            msg_sent[from] = n_msg_sent;
-            msg_rcv_snt_uptd[from] = true;
-
-            const bool all_uptd = std::accumulate(msg_rcv_snt_uptd.begin(), msg_rcv_snt_uptd.end(), true, std::logical_and<bool>());
-
-            if (!all_uptd)
-                return; // Not all entries have been received
-
-            const int rcvd_sum = std::accumulate(msg_rcvd.begin(), msg_rcvd.end(), 0, std::plus<int>());
-            const int sent_sum = std::accumulate(msg_sent.begin(), msg_sent.end(), 0, std::plus<int>());
-
-            if (verb > 1)
-            {
-                // Print information about messages received and sent
-                for (int i = 0; i < comm_size(); ++i)
-                {
-                    printf("[%s] Msg count update [stage 1]: from %d rcvd = %d sent = %d \n",
-                           name.c_str(), i,
-                           msg_rcvd[i],
-                           msg_sent[i]);
-                }
-                printf("[%s] Msg count update: sent - rcvd = %d \n",
-                       name.c_str(), sent_sum - rcvd_sum);
+            if (verb > 1) {
+                printf("[%s] All other ranks are quiet and queued match intern processed %d, shutting down\n", name.c_str(), intern_processed);
             }
-
-            assert(rcvd_sum <= sent_sum);
-
-            if (rcvd_sum == sent_sum)
-            {
-                // We signal completion; done!
-                notify_workers(2, info); // status 2 = dag complete; join()
-                return;
+        } else {
+            while(! comm->is_done()) { 
+                comm->progress();
             }
-            else
-            {
-                // Go back to stage 0; the number of messages sent does not match the received
-                for (int i = 0; i < comm_size(); i++)
-                    msg_rcv_snt_uptd[i] = false;
-
-                notify_workers(0, info);
-                return;
+            int nq = intern_queued + 1;
+            assert(nq >= 0);
+            am_quiet->send(0, my_rank, nq);
+            while(! comm->is_done()) { 
+                comm->progress();
             }
         }
-        else
-        {
-            assert("Invalid value for status" && false);
+        if (verb > 1) {
+            printf("[%s] Shutting down comms\n", name.c_str());
         }
-    }
-
-    void notify_workers(int status, string info)
-    {
-        // Only rank 0 can do this
-        assert(comm_rank() == 0);
-        assert(status >= 0 && status <= 2);
-
-        string name = basename + info;
-
-        if (verb > 1)
-            printf("[%s] Signaling all ranks with status %d\n", name.c_str(), status);
-
-        // Send signal to all ranks
-        for (int r = 1; r < static_cast<int>(msg_rcvd.size()); ++r)
-            am_notify_workers->send(r, status);
-
-        /* We need to be careful when completing; the main thread needs to keep making
-           progress on communications before the final join(). */
-        join_status_set(status);
+        assert(comm->is_done());
     }
 };
 
@@ -834,7 +876,7 @@ public:
     // If task cannot be found in the task map, create a new entry.
     // If it exists, reduce by 1 the dependency count.
     // If count == 0, insert the task in the ready queue.
-    void fulfill_promise(K k, double priority = 1.0)
+    void fulfill_promise(K k)
     {
         // Shortcut: if indegree == 1, we can insert the
         // task immediately.
@@ -853,7 +895,7 @@ public:
         Task *t = new Task();
         t->fulfill = []() {};
         t->name = "dep_map_intern_" + to_string(where);
-        t->priority = priority;
+        t->priority = std::numeric_limits<double>::max();
 
         t->run = [this, where, k]() {
             auto &dmk = this->dep_map[where];

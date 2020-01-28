@@ -49,7 +49,9 @@ PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic> random_perm(int n)
 {
     PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic> perm(n);
     perm.setIdentity();
-    std::random_shuffle(perm.indices().data(), perm.indices().data() + perm.indices().size());
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(perm.indices().data(), perm.indices().data() + perm.indices().size(), g);
     return perm;
 }
 
@@ -157,10 +159,10 @@ TEST(reduction, concurrent)
     reduction_tf.set_mapping([&](int2 ij) {
                     return ij[0] % n_threads;
                 })
-        .set_binding([&](int2 ij) {
+        .set_binding([&](int2) {
             return true;
         })
-        .set_indegree([](int2 ij) {
+        .set_indegree([](int2) {
             return 1;
         })
         .set_task([&](int2 ij) {
@@ -216,16 +218,16 @@ TEST(reduction, reduc)
             return "TF_" + to_string(i);
         });
 
-    tr.set_mapping([&](int i) {
+    tr.set_mapping([&](int) {
           return 0;
       })
-        .set_binding([&](int i) {
+        .set_binding([&](int) {
             return true;
         })
-        .set_indegree([](int i) {
+        .set_indegree([](int) {
             return 1;
         })
-        .set_task([&](int i) {
+        .set_task([&](int) {
             assert(!is_running.load());
             is_running.store(true);
             assert(is_running.load());
@@ -298,7 +300,7 @@ TEST(graph, randomdag)
                         }
                     });
 
-                for (int i = 0; i < indegree.size(); i++)
+                for (int i = 0; (size_t)i < indegree.size(); i++)
                     if (indegree[i] == 0)
                         rand_graph_tf.fulfill_promise(i);
 
@@ -335,7 +337,7 @@ void gemm(int n_threads, int n, int N)
     gemm_tf.set_mapping([n_threads, N](int3 id) {
                return ((id[0] + N * id[1]) % n_threads);
            })
-        .set_indegree([](int3 id) {
+        .set_indegree([](int3) {
             return 1;
         })
         .set_task([&A, &B, &C, n, N, &gemm_tf](int3 id) {
@@ -416,7 +418,7 @@ void cholesky(int n_threads, int n, int N)
     potf_tf.set_mapping([&](int k) {
                return (k % n_threads);
            })
-        .set_indegree([](int k) {
+        .set_indegree([](int) {
             return 1;
         })
         .set_task([&](int k) {
@@ -434,7 +436,7 @@ void cholesky(int n_threads, int n, int N)
         .set_name([](int k) {
             return "potf_" + to_string(k);
         })
-        .set_priority([](int k) {
+        .set_priority([](int) {
             return 3.0;
         });
 
@@ -467,7 +469,7 @@ void cholesky(int n_threads, int n, int N)
         .set_name([](int2 ki) {
             return "trsm_" + to_string(ki[0]) + "_" + to_string(ki[1]);
         })
-        .set_priority([](int2 k) {
+        .set_priority([](int2) {
             return 2.0;
         });
 
@@ -512,7 +514,7 @@ void cholesky(int n_threads, int n, int N)
         .set_name([](int3 kij) {
             return "gemm_" + to_string(kij[0]) + "_" + to_string(kij[1]) + "_" + to_string(kij[2]);
         })
-        .set_priority([](int3 k) {
+        .set_priority([](int3) {
             return 1.0;
         });
 
@@ -614,7 +616,7 @@ TEST(ttor, mapreduce)
     mf.set_mapping([&](int k) {
           return (k % n_threads);
       })
-        .set_indegree([&](int k) {
+        .set_indegree([&](int) {
             return 1;
         })
         .set_task([&](int k) {
@@ -632,7 +634,7 @@ TEST(ttor, mapreduce)
     rf.set_mapping([&](int k) {
           return (k % n_threads);
       })
-        .set_indegree([&](int k) {
+        .set_indegree([&](int) {
             return reduce_deps;
         })
         .set_task([&](int k) {
