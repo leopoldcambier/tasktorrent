@@ -96,7 +96,7 @@ void ddot(int n_threads, int block_size)
         .set_name([&](int k) {
             return "ddot_" + to_string(k) + "_" + to_string(rank);
         })
-        .set_indegree([](int k) {
+        .set_indegree([](int) {
             return 1;
         })
         .set_task([&](int k) {
@@ -115,16 +115,16 @@ void ddot(int n_threads, int block_size)
             dlog.add_event(DepsEvent(dot_tf.name(k), add_tf.name(0)));
         });
 
-    add_tf.set_mapping([&](int k) {
+    add_tf.set_mapping([&](int) {
               return 0;
           })
         .set_name([&](int k) {
             return "add_" + to_string(k) + "_" + to_string(rank);
         })
-        .set_indegree([&](int k) {
+        .set_indegree([&](int) {
             return n_threads;
         })
-        .set_task([&](int k) {
+        .set_task([&](int) {
             partial_sum = z.sum();
         })
         .set_fulfill([&](int k) {
