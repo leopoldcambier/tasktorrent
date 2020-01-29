@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Tutorial test
+
+printf "\nTesting tutorial\n"
 dir=$1
 cd $dir/tutorial
 
@@ -11,7 +14,16 @@ then
     exit 1
 fi
 
-cd ../tests/mpi
+# Distributed test
+
+printf "\nTesting distributed mode\n"
+mkdir -p $dir/build
+cd $dir/build
+rm -rf ./*
+cmake .. -DTTOR_SHARED=OFF
+cmake --build .
+cp $dir/tests/mpi/run_tests.sh $dir/build/tests/mpi/run_tests.sh
+cd $dir/build/tests/mpi
 
 ./run_tests.sh
 
@@ -20,9 +32,17 @@ then
     exit 1
 fi
 
-cd ../shared
+# Shared test
 
-make clean
+printf "\nTesting shared memory mode\n"
+mkdir -p $dir/build
+cd $dir/build
+rm -rf ./*
+cmake .. -DTTOR_SHARED=ON
+cmake --build .
+cp $dir/tests/shared/run_tests.sh $dir/build/tests/shared/run_tests.sh
+cd $dir/build/tests/shared
+
 ./run_tests.sh
 
 if [ $? != "0" ]

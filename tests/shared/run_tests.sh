@@ -1,7 +1,5 @@
 #!/bin/bash
 
-(make clean && make all) || exit 1
-
 ./tests_serialize
 
 if [ $? != "0" ]
