@@ -6,11 +6,8 @@ language: cpp
 compiler:
   - gcc
 install:
-  - wget http://bitbucket.org/eigen/eigen/get/3.3.7.tar.bz2 -O eigen-3.3.7.tar.bz2 && tar -xvf eigen-3.3.7.tar.bz2
-  - git clone https://github.com/google/googletest.git && cd googletest && mkdir build && cd build && cmake .. && make && cd ../../
-  - cp Makefile.conf-examples/Makefile.shared.travis tests/shared/Makefile.conf
-  - cp Makefile.conf-examples/Makefile.mpi.travis    tests/mpi/Makefile.conf
+  - wget http://bitbucket.org/eigen/eigen/get/3.3.7.tar.bz2 -O eigen-3.3.7.tar.bz2 && mkdir eigen && tar -xvf eigen-3.3.7.tar.bz2 -C eigen --strip-components 1
 script:
-  - cd tutorial      && make clean     && make run   && cd ../
-  - cd tests/shared/ && ./run_tests.sh && cd ../../
-  - cd tests/mpi     && ./run_tests.sh && cd ../../
+  - cd tutorial      && make clean     && make run && cd ..
+  - TTOR_ROOT=${HOME}/build/leopoldcambier/tasktorrent ./tests/shared/run_tests_travis.sh
+  - TTOR_ROOT=${HOME}/build/leopoldcambier/tasktorrent ./tests/mpi/run_tests_travis.sh
