@@ -1,7 +1,7 @@
 #!/bin/bash
 
 cd ${TTOR_ROOT}/build
-cmake .. -DEIGEN_INCLUDE_DIRS=${TTOR_ROOT}/eigen-eigen-323c052e1731/ -DTTOR_SHARED=OFF
+cmake .. -DEIGEN_INCLUDE_DIRS=${TTOR_ROOT}/eigen/ -DTTOR_SHARED=OFF
 make
 cd ${TTOR_ROOT}/build/tests/mpi
 
