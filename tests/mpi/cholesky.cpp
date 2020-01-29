@@ -40,12 +40,21 @@ void cholesky(int n_threads, int n, int N, int p, int q)
     assert(q >= 1);
 
     // Form the matrix : let every node have a copy of A for now
-    // std::default_random_engine gen;
-    // std::uniform_int_distribution<> dist(-1, 1);
-    auto rnd = [&](int i, int j) { return i == j ? 1e12 : i+j; };
-    MatrixXd A_ = MatrixXd::NullaryExpr(N * n, N * n, rnd);
-    // MatrixXd A = A_ * A_.transpose();
-    MatrixXd A = A_;
+    auto gen = [&](int i, int j) { 
+        if(i == j) {
+            return static_cast<double>(N*n+2);
+        } else {
+            int k = (i+j)%3;
+            if(k == 0) {
+                return 0.0;
+            } else if (k == 1) {
+                return 0.5;
+            } else {
+                return 1.0;
+            }
+        }
+    };
+    MatrixXd A = MatrixXd::NullaryExpr(N * n, N * n, gen);
     MatrixXd Aref = A;
     A = A.triangularView<Lower>();
 
@@ -58,6 +67,14 @@ void cholesky(int n_threads, int n, int N, int p, int q)
         int r = ii + jj * p;
         assert(r <= n_ranks);
         return r;
+    };
+
+    // Gives the priority
+    auto block2prio = [&](int2 ij) {
+        int i = ij[0]+1;
+        int j = ij[1]+1;
+        assert(i >= j);
+        return static_cast<double>(N*N - ((i*(i-1))/2 + j));
     };
 
     // Block the matrix for every node
@@ -123,6 +140,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
             })
             .set_task([&](int j) {
                 LLT<Ref<MatrixXd>> llt(Mat.at({j,j}));
+                assert(llt.info() == Eigen::Success);
             })
             .set_fulfill([&](int j) {
                 // Dependencies
@@ -154,8 +172,8 @@ void cholesky(int n_threads, int n, int N, int p, int q)
             .set_name([](int j) {
                 return "potf_" + to_string(j);
             })
-            .set_priority([](int) {
-                return 3.0;
+            .set_priority([&](int j) {
+                return block2prio({j,j});
             });
 
         // trsm
@@ -216,8 +234,8 @@ void cholesky(int n_threads, int n, int N, int p, int q)
             .set_name([](int2 ij) {
                 return "trsm_" + to_string(ij[0]) + "_" + to_string(ij[1]);
             })
-            .set_priority([](int2) {
-                return 2.0;
+            .set_priority([&](int2 ij) {
+                return block2prio(ij);
             });
 
         // gemm
@@ -257,8 +275,8 @@ void cholesky(int n_threads, int n, int N, int p, int q)
             .set_name([](int3 ijk) {
                 return "gemm_" + to_string(ijk[0]) + "_" + to_string(ijk[1]) + "_" + to_string(ijk[2]);
             })
-            .set_priority([](int3) {
-                return 1.0;
+            .set_priority([&](int3 ijk) {
+                return block2prio({ijk[0], ijk[1]});
             });
 
             if(rank == 0) printf("Starting Cholesky\n");
