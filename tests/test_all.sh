@@ -14,40 +14,37 @@ then
     exit 1
 fi
 
-# Distributed test
+# Shared and distributed tests
+for SHARED in OFF ON
+do
+    # With and without sanitizers
+    for SAN in OFF ADDRESS THREAD UB
+    do
+        printf "\n\nTesting SHARED = ${SHARED}, SAN = ${SAN}\n\n"
+        mkdir -p $dir/build
+        cd $dir/build
+        rm -rf ./*
 
-printf "\nTesting distributed mode\n"
-mkdir -p $dir/build
-cd $dir/build
-rm -rf ./*
-cmake .. -DTTOR_SHARED=OFF
-cmake --build .
-cp $dir/tests/mpi/run_tests.sh $dir/build/tests/mpi/run_tests.sh
-cd $dir/build/tests/mpi
+        printf "Building ...\n"
+        cmake -DTTOR_SHARED=${SHARED} -DCMAKE_BUILD_TYPE=Debug -DTTOR_SAN=${SAN} ..
+        cmake --build .
+        if [[ $SHARED -eq "OFF" ]]
+        then
+            cp $dir/tests/mpi/run_tests.sh $dir/build/tests/mpi/run_tests.sh
+            cd $dir/build/tests/mpi
+        else
+            cp $dir/tests/shared/run_tests.sh $dir/build/tests/shared/run_tests.sh
+            cd $dir/build/tests/shared
+        fi
 
-./run_tests.sh
+        printf "Testing ...\n"
+        ./run_tests.sh
 
-if [ $? != "0" ]
-then
-    exit 1
-fi
+        if [ $? != "0" ]
+        then
+            exit 1
+        fi
+    done
+done
 
-# Shared test
-
-printf "\nTesting shared memory mode\n"
-mkdir -p $dir/build
-cd $dir/build
-rm -rf ./*
-cmake .. -DTTOR_SHARED=ON
-cmake --build .
-cp $dir/tests/shared/run_tests.sh $dir/build/tests/shared/run_tests.sh
-cd $dir/build/tests/shared
-
-./run_tests.sh
-
-if [ $? != "0" ]
-then
-    exit 1
-fi
-
-printf "\nAll test runs are complete\n"
+printf "\n\nAll test runs are complete\n"
