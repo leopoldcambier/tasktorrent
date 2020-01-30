@@ -48,7 +48,7 @@ do
     printf "Building in ${builddir}...\n"
     cmake -DTTOR_SHARED=${SHARED} -DCMAKE_BUILD_TYPE=Debug -DTTOR_SAN=${SAN} ..
     cmake --build .
-    if [[ $SHARED -eq "OFF" ]]
+    if [ ${SHARED} == "OFF" ]
     then
         cp $dir/tests/mpi/run_tests.sh $builddir/tests/mpi/run_tests.sh
         cd $builddir/tests/mpi
