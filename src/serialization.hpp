@@ -9,18 +9,6 @@
 
 #include "views.hpp"
 
-template <std::size_t... Ns, typename... Ts>
-constexpr auto tail_impl(std::index_sequence<Ns...>, std::tuple<Ts...> t)
-{
-    return std::make_tuple(std::get<Ns + 1u>(t)...);
-}
-
-template <typename... Ts>
-constexpr auto tail(std::tuple<Ts...> t)
-{
-    return tail_impl(std::make_index_sequence<sizeof...(Ts) - 1u>(), t);
-}
-
 namespace ttor
 {
 

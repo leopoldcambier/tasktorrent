@@ -60,7 +60,7 @@ unique_ptr<message> Communicator::make_active_message(ActiveMsgBase *am, int des
 void Communicator::Isend_message(const unique_ptr<message> &m)
 {
     if (verb > 1)
-        printf("[%2d] -> %d: sending msg [tag %d], %lu B, rqst %p\n", comm_rank(), m->other, m->tag, m->buffer.size(), &(m->request));
+        printf("[%2d] -> %d: sending msg [tag %d], %lu B, rqst %p\n", comm_rank(), m->other, m->tag, m->buffer.size(), (void*)&(m->request));
 
     int err = MPI_Isend(m->buffer.data(), m->buffer.size(), MPI_BYTE, m->other, m->tag, MPI_COMM_WORLD, &(m->request));
     assert(err == MPI_SUCCESS);
@@ -107,7 +107,7 @@ void Communicator::test_Isent_messages()
         if (flag) // operation completed
         {
             if (verb > 1)
-                printf("[%2d] -> %d: msg [tag %d] sent, rqst %p completed\n", comm_rank(), m->other, m->tag, &m->request);
+                printf("[%2d] -> %d: msg [tag %d] sent, rqst %p completed\n", comm_rank(), m->other, m->tag, (void*)&m->request);
         }
         else
             messages_Isent_new.push_back(move(m));
@@ -137,7 +137,7 @@ bool Communicator::probe_Irecv_message(unique_ptr<message> &m)
     m->buffer.resize(size);
     m->tag = mpi_tag;
     if (verb > 1)
-        printf("[%2d] <- %d: receiving msg [tag %d], %d B, rqst %p\n", comm_rank(), source, mpi_tag, size, &m->request);
+        printf("[%2d] <- %d: receiving msg [tag %d], %d B, rqst %p\n", comm_rank(), source, mpi_tag, size, (void*)&m->request);
 
     err = MPI_Irecv(m->buffer.data(), m->buffer.size(), MPI_BYTE, source, mpi_tag, MPI_COMM_WORLD, &m->request);
     assert(err == MPI_SUCCESS);
@@ -166,7 +166,7 @@ void Communicator::process_Ircvd_messages()
         if (flag)
         { // Message has completed
             if (verb > 1)
-                printf("[%2d] -> %d: msg [tag %d] received, rqst %p complete\n", comm_rank(), m->other, m->tag, &m->request);
+                printf("[%2d] -> %d: msg [tag %d] received, rqst %p complete\n", comm_rank(), m->other, m->tag, (void*)&m->request);
 
             unique_ptr<Event> e;
             if (log)
