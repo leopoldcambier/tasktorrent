@@ -86,7 +86,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             {
                 int dest = task_2_rank(p); // defined above
 
-                trsm.fulfill_promise({k,p}, 5.0);
+                trsm.fulfill_promise({k,p});
 
             }
         })
@@ -189,14 +189,14 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             int i=kij[1];
             int j=kij[2];
             if (k<j-1) {
-                gemm.fulfill_promise({k+1, i, j}, 5.0);
+                gemm.fulfill_promise({k+1, i, j});
             }
             else {
                 if (i==j) {
-                    potrf.fulfill_promise(i, 5.0);
+                    potrf.fulfill_promise(i);
                 }
                 else {
-                    trsm.fulfill_promise({j,i}, 5.0);
+                    trsm.fulfill_promise({j,i});
                 }
             }
             
@@ -241,7 +241,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     
 
     // Seed initial tasks
-    potrf.fulfill_promise(0, 5.0);
+    potrf.fulfill_promise(0);
 
     // Other ranks do nothing
     // Run until completion
