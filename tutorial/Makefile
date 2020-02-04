@@ -25,6 +25,9 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(OBJ)
 tuto: tuto.cpp $(OBJ1)
 	$(GCC) $(CFLAGS1) -o $@ $^ $(INCLUDE) $(LFLAGS)
 
+MultiLapack: MultiLapack.cpp $(OBJ1)
+	$(GCC) $(CFLAGS1) -o $@ $^ $(INCLUDE) $(LFLAGS)
+
 ttor_distri: ttor_distri.cpp $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LFLAGS)
 
