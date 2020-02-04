@@ -49,13 +49,8 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
 
     timer t0 = wctime();
-    LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, A.data(), n);
+    LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, L.data(), n);
     timer t1 = wctime();
-    for (int ii=0; ii<nb; ii++) {
-        for (int jj=0; jj<nb; jj++) {
-            L.block(ii*n,jj*n,n,n)=*blocs[ii+jj*nb];
-        }
-    }
     auto L1=L.triangularView<Lower>();
     cout<<"Elapsed time: "<<elapsed(t0,t1)<<endl;
 
