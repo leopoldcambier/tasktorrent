@@ -49,7 +49,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
 
     timer t0 = wctime();
-    LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, L.data(), n);
+    LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n*nb, L.data(), n*nb);
     timer t1 = wctime();
     auto L1=L.triangularView<Lower>();
     cout<<"Elapsed time: "<<elapsed(t0,t1)<<endl;
