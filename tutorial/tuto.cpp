@@ -102,8 +102,8 @@ void tuto_1(int n_threads, int verb, int n, int nb)
 
         })
         .set_priority([&](int k) {
-            //return 3.0;
-            return 3*(nb-k);
+            return 3.0;
+            //return 3*(nb-k);
         })
         .set_name([&](int k) { // This is just for debugging and profiling
             return "POTRF" + to_string(k) + "_" + to_string(rank);
@@ -158,7 +158,8 @@ void tuto_1(int n_threads, int verb, int n, int nb)
         .set_priority([&](int2 ki) {
             int k=ki[0];
             int i=ki[1];
-            return 3*(nb-i)+2*(i-k);
+            //return 3*(nb-i)+2*(i-k);
+            return 2.0;
         })
         .set_name([&](int2 ki) { // This is just for debugging and profiling
             int k=ki[0];
@@ -223,7 +224,8 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             return ((k*n*n+i+j*n)  % n_threads);
         })
         .set_priority([&](int3 kij) {
-            return 3*(nb-kij[1])+2*(kij[1]-kij[2]-1)+1;
+            return 1.0;
+            //return 3*(nb-kij[1])+2*(kij[1]-kij[2]-1)+1;
 
         })
         .set_binding([&](int3 kij) {
