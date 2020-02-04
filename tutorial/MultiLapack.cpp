@@ -31,15 +31,7 @@ typedef array<int, 3> int3;
 //Test Test2
 void tuto_1(int n_threads, int verb, int n, int nb)
 {
-    int rank = 0;
-    double gemm_t=0;
-    double potrf_t=0;
-    double trsm_t=0;
-    double syrk_t=0;
 
-
-    // Number of tasks
-    int n_tasks_per_rank = 2;
 
 
     auto val = [&](int i, int j) { return 1/(float)((i-j)*(i-j)+1); };
@@ -55,196 +47,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
         }
     }
 
-    // Outgoing dependencies for each task
 
-
-    // Map tasks to rank
-    auto task_2_rank = [&](int k) {
-        return k / n_tasks_per_rank;
-    };
-
-    // Initialize the runtime structures
-    Threadpool tp(n_threads, verb, "WkTuto_" + to_string(rank) + "_");
-    Taskflow<int> potrf(&tp, verb);
-    Taskflow<int2> trsm(&tp, verb);
-    Taskflow<int3> gemm(&tp, verb);
-    DepsLogger dlog(1000000);
-    Logger logger(1000000);                
-    //Threadpool_shared tp(ttor_threads, 0);
-    tp.set_logger(&logger);
-
-    // Create active message
-
-
-    // Define the task flow
-    potrf.set_task([&](int k) {
-          LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, blocs[k+k*nb]->data(), n);
-
-      })
-        .set_fulfill([&](int k) {
-            for (int p = k+1; p<nb; p++) // Looping through all outgoing dependency edges
-            {
-                int dest = task_2_rank(p); // defined above
-
-                trsm.fulfill_promise({k,p}, 5.0);
-
-            }
-        })
-        .set_indegree([&](int k) {
-            return 1;
-        })
-        .set_mapping([&](int k) {
-
-            return (k % n_threads);
-        })
-        .set_binding([&](int k) {
-            return false;
-
-        })
-        .set_priority([&](int k) {
-            //return 3.0;
-            return 3*(nb-k);
-        })
-        .set_name([&](int k) { // This is just for debugging and profiling
-            return "POTRF" + to_string(k) + "_" + to_string(rank);
-        });
-
-
-
-    trsm.set_task([&](int2 ki) {
-        int k=ki[0];
-        int i=ki[1];
-
-        cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, n, n, 1.0, blocs[k+k*nb]->data(),n, blocs[i+k*nb]->data(), n);
-
-      })
-        .set_fulfill([&](int2 ki) {
-            int k=ki[0];
-            int i=ki[1];
-            for (int j=k+1; j<nb;j++) // Looping through all outgoing dependency edges
-            {
-
-                if (j<i) {
-                    gemm.fulfill_promise({k,i,j}, 5.0);
-                }
-                else {
-                    gemm.fulfill_promise({k,j,i}, 5.0);
-                }
-
-            }
-        })
-        .set_indegree([&](int2 ki) {
-            int k=ki[0];
-            int i=ki[1];
-            if (k==0) {
-                return 1;
-            }
-            else {
-                return 2;
-            }
-        })
-        .set_mapping([&](int2 ki) {
-            int k=ki[0];
-            int i=ki[1];
-
-            return ((k*n+i) % n_threads);
-        })
-        .set_binding([&](int2 ki) {
-            int k=ki[0];
-            int i=ki[1];
-            return false;
-
-        })
-        .set_priority([&](int2 ki) {
-            int k=ki[0];
-            int i=ki[1];
-            return 3*(nb-i)+2*(i-k);
-        })
-        .set_name([&](int2 ki) { // This is just for debugging and profiling
-            int k=ki[0];
-            int i=ki[1];
-            return "TRSM" + to_string(k) + "_" + to_string(i) + "_" +to_string(rank);
-        });
-
-
-
-    gemm.set_task([&](int3 kij) {
-            int k=kij[0];
-            int i=kij[1];
-            int j=kij[2];
-            if (i==j) {
-                cblas_dsyrk(CblasColMajor, CblasLower, CblasNoTrans, n, n, -1.0, blocs[i+k*nb]->data(), n, 1.0, blocs[i+j*nb]->data(), n);
-            }
-            else {
-                cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, n, n, n, -1.0,blocs[i+k*nb]->data(), n, blocs[j+k*nb]->data(), n, 1.0, blocs[i+j*nb]->data(), n);
-            }
-            
-            
-            
-            //L.block(i*n, j*n, n, n)=blocij;
-            //cout<<Temp(0,0)<<endl;
-      })
-        .set_fulfill([&](int3 kij) {
-            int k=kij[0];
-            int i=kij[1];
-            int j=kij[2];
-            if (k<j-1) {
-                gemm.fulfill_promise({k+1, i, j}, 5.0);
-            }
-            else {
-                if (i==j) {
-                    potrf.fulfill_promise(i, 5.0);
-                }
-                else {
-                    trsm.fulfill_promise({j,i}, 5.0);
-                }
-            }
-            
-
-        })
-        .set_indegree([&](int3 kij) {
-            int k=kij[0];
-            int i=kij[1];
-            int j=kij[2];
-            int t=3;
-            if (k==0) {
-                t--;
-            }
-            if (i==j) {
-                t--;
-            }
-            return t;
-        })
-        .set_mapping([&](int3 kij) {
-            int k=kij[0];
-            int i=kij[1];
-            int j=kij[2];
-
-            return ((k*n*n+i+j*n)  % n_threads);
-        })
-        .set_priority([&](int3 kij) {
-            return 3*(nb-kij[1])+2*(kij[1]-kij[2]-1)+1;
-
-        })
-        .set_binding([&](int3 kij) {
-            return false;
-
-        })
-        .set_name([&](int3 kij) { // This is just for debugging and profiling
-            int k=kij[0];
-            int i=kij[1];
-            int j=kij[2];
-            return "GEMM" + to_string(k) + "_" + to_string(i)+"_"+to_string(j);
-        });
-
-
-    
-
-    // Seed initial tasks
-    //potrf.fulfill_promise(0, 5.0);
-
-    // Other ranks do nothing
-    // Run until completion
     timer t0 = wctime();
     LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, A.data(), n);
     timer t1 = wctime();
@@ -274,10 +77,7 @@ void tuto_1(int n_threads, int verb, int n, int nb)
     L1.transpose().solveInPlace(b);
     double error = (b - x).norm() / x.norm();
     cout << "Error solve: " << error << endl;
-    //cout<<"LLT Error: "<<(A-L*L.transpose()).norm()/A.norm()<<"\n";
-    //cout<<"LLT Error for Eigen : "<<(A-L1*L1.transpose()).norm()/A.norm()<<"\n";
-    //cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, L.rows(), L.rows(), L.cols(), -1.0, L.data(), L.rows(), L.data(), L.rows(), 0.0, A.data(), L.rows());
-    //cout<<"LLT Error GT: "<<(A-LR*LR.transpose()).norm()/A.norm()<<"\n";
+
 }
 
 int main(int argc, char **argv)

@@ -125,10 +125,10 @@ void tuto_1(int n_threads, int verb, int n, int nb)
             {
 
                 if (j<i) {
-                    gemm.fulfill_promise({k,i,j}, 5.0);
+                    gemm.fulfill_promise({k,i,j});
                 }
                 else {
-                    gemm.fulfill_promise({k,j,i}, 5.0);
+                    gemm.fulfill_promise({k,j,i});
                 }
 
             }
