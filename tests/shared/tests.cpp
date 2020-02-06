@@ -430,7 +430,7 @@ void cholesky(int n_threads, int n, int N)
             for (int i = k + 1; i < N; i++)
             {
                 trsm_tf.fulfill_promise({k, i});
-                dlog.add_event(DepsEvent(potf_tf.name(k), trsm_tf.name({k, i})));
+                dlog.add_event(make_unique<DepsEvent>(potf_tf.name(k), trsm_tf.name({k, i})));
             }
         })
         .set_name([](int k) {
@@ -458,12 +458,12 @@ void cholesky(int n_threads, int n, int N)
             for (int l = k + 1; l <= i; l++)
             {
                 gemm_tf.fulfill_promise({k, i, l});
-                dlog.add_event(DepsEvent(trsm_tf.name(ki), gemm_tf.name({k, i, l})));
+                dlog.add_event(make_unique<DepsEvent>(trsm_tf.name(ki), gemm_tf.name({k, i, l})));
             }
             for (int l = i + 1; l < N; l++)
             {
                 gemm_tf.fulfill_promise({k, l, i});
-                dlog.add_event(DepsEvent(trsm_tf.name(ki), gemm_tf.name({k, l, i})));
+                dlog.add_event(make_unique<DepsEvent>(trsm_tf.name(ki), gemm_tf.name({k, l, i})));
             }
         })
         .set_name([](int2 ki) {
@@ -498,17 +498,17 @@ void cholesky(int n_threads, int n, int N)
             if (k + 1 == i && k + 1 == j)
             {
                 potf_tf.fulfill_promise(k + 1);
-                dlog.add_event(DepsEvent(gemm_tf.name(kij), potf_tf.name(k + 1)));
+                dlog.add_event(make_unique<DepsEvent>(gemm_tf.name(kij), potf_tf.name(k + 1)));
             }
             else if (k + 1 == j)
             {
                 trsm_tf.fulfill_promise({k + 1, i});
-                dlog.add_event(DepsEvent(gemm_tf.name(kij), trsm_tf.name({k + 1, i})));
+                dlog.add_event(make_unique<DepsEvent>(gemm_tf.name(kij), trsm_tf.name({k + 1, i})));
             }
             else
             {
                 gemm_tf.fulfill_promise({k + 1, i, j});
-                dlog.add_event(DepsEvent(gemm_tf.name(kij), gemm_tf.name({k + 1, i, j})));
+                dlog.add_event(make_unique<DepsEvent>(gemm_tf.name(kij), gemm_tf.name({k + 1, i, j})));
             }
         })
         .set_name([](int3 kij) {
