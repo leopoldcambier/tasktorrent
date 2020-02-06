@@ -1,0 +1,7 @@
+find_package(Eigen3 3.3 REQUIRED)
+foreach (test tests tests_serialize)
+    add_executable(${test} ${test}.cpp)
+    target_link_libraries(${test} PRIVATE TaskTorrent)
+    target_include_directories(${test} PRIVATE ${EIGEN3_INCLUDE_DIR})
+    add_gtest(${test})
+endforeach()

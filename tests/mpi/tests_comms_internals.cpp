@@ -287,7 +287,10 @@ TEST(ttor, manylarge_2)
         comm.progress();
     }
 
+    EXPECT_EQ(comm.get_n_msg_processed(), expected);
+    EXPECT_EQ(comm.get_n_msg_queued(), expected);
     EXPECT_EQ(l.done, expected);
+    
     MPI_Barrier(MPI_COMM_WORLD);
 }
 

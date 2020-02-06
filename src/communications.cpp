@@ -25,7 +25,8 @@ string processor_name()
 {
     char name[MPI_MAX_PROCESSOR_NAME];
     int size;
-    MPI_Get_processor_name(name, &size);
+    int err = MPI_Get_processor_name(name, &size);
+    assert(err == MPI_SUCCESS);
     return string(name);
 }
 
@@ -33,8 +34,14 @@ string processor_name()
  * Communicator
  */
 
-Communicator::Communicator(int verb_) : verb(verb_), logger(nullptr), log(false), messages_sent(0), messages_rcvd(0), uuid(0){};
-
+Communicator::Communicator(int verb_, int tag_) : 
+    verb(verb_), 
+    logger(nullptr), 
+    log(false), 
+    tag(tag_), 
+    messages_queued(0), 
+    messages_processed(0) {}
+    
 unique_ptr<message> Communicator::make_active_message(ActiveMsgBase *am, int dest, int size)
 {
     auto result = find_if(active_messages.begin(), active_messages.end(), [am](const unique_ptr<ActiveMsgBase> &m) { return m.get() == am; });
@@ -46,7 +53,7 @@ unique_ptr<message> Communicator::make_active_message(ActiveMsgBase *am, int des
     int id = distance(active_messages.begin(), result);
     s.write_buffer(m->buffer.data(), id);
     m->start_buffer = m->buffer.data() + sizeof(int);
-    m->tag = 0;
+    m->tag = tag;
 
     return m;
 }
@@ -54,7 +61,7 @@ unique_ptr<message> Communicator::make_active_message(ActiveMsgBase *am, int des
 void Communicator::Isend_message(const unique_ptr<message> &m)
 {
     if (verb > 1)
-        printf("[%2d] -> %d: sending msg [tag %d], %lu B, rqst %p\n", comm_rank(), m->other, m->tag, m->buffer.size(), &(m->request));
+        printf("[%2d] -> %d: sending msg [tag %d], %lu B, rqst %p\n", comm_rank(), m->other, m->tag, m->buffer.size(), (void*)&(m->request));
 
     int err = MPI_Isend(m->buffer.data(), m->buffer.size(), MPI_BYTE, m->other, m->tag, MPI_COMM_WORLD, &(m->request));
     assert(err == MPI_SUCCESS);
@@ -101,7 +108,7 @@ void Communicator::test_Isent_messages()
         if (flag) // operation completed
         {
             if (verb > 1)
-                printf("[%2d] -> %d: msg [tag %d] sent, rqst %p completed\n", comm_rank(), m->other, m->tag, &m->request);
+                printf("[%2d] -> %d: msg [tag %d] sent, rqst %p completed\n", comm_rank(), m->other, m->tag, (void*)&m->request);
         }
         else
             messages_Isent_new.push_back(move(m));
@@ -113,26 +120,27 @@ void Communicator::test_Isent_messages()
 bool Communicator::probe_Irecv_message(unique_ptr<message> &m)
 {
     if (verb > 3)
-        printf("[%2d] MPI probe\n", comm_rank());
+        printf("[%2d] MPI probe on tag %d\n", comm_rank(), tag);
 
     MPI_Status status;
     int size, flag;
-    int err = MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &flag, &status);
+    int err = MPI_Iprobe(MPI_ANY_SOURCE, tag, MPI_COMM_WORLD, &flag, &status);
     assert(err == MPI_SUCCESS);
     if (!flag)
         return false;
 
     err = MPI_Get_count(&status, MPI_BYTE, &size);
     assert(err == MPI_SUCCESS);
-    int tag = status.MPI_TAG;
+    int mpi_tag = status.MPI_TAG;
+    assert(mpi_tag == tag);
     int source = status.MPI_SOURCE;
     m = make_unique<message>(source);
     m->buffer.resize(size);
-    m->tag = tag;
+    m->tag = mpi_tag;
     if (verb > 1)
-        printf("[%2d] <- %d: receiving msg [tag %d], %d B, rqst %p\n", comm_rank(), source, tag, size, &m->request);
+        printf("[%2d] <- %d: receiving msg [tag %d], %d B, rqst %p\n", comm_rank(), source, mpi_tag, size, (void*)&m->request);
 
-    err = MPI_Irecv(m->buffer.data(), m->buffer.size(), MPI_BYTE, source, tag, MPI_COMM_WORLD, &m->request);
+    err = MPI_Irecv(m->buffer.data(), m->buffer.size(), MPI_BYTE, source, mpi_tag, MPI_COMM_WORLD, &m->request);
     assert(err == MPI_SUCCESS);
 
     return true;
@@ -159,7 +167,7 @@ void Communicator::process_Ircvd_messages()
         if (flag)
         { // Message has completed
             if (verb > 1)
-                printf("[%2d] -> %d: msg [tag %d] received, rqst %p complete\n", comm_rank(), m->other, m->tag, &m->request);
+                printf("[%2d] -> %d: msg [tag %d] received, rqst %p complete\n", comm_rank(), m->other, m->tag, (void*)&m->request);
 
             unique_ptr<Event> e;
             if (log)
@@ -181,32 +189,30 @@ void Communicator::process_message(const unique_ptr<message> &m)
 {
     Serializer<int> s;
     tuple<int> tup = s.read_buffer(m->buffer.data());
-    auto id = get<0>(tup);
-    assert(id >= 0 && id < static_cast<int>(active_messages.size()));
-    auto payload_raw = m->buffer.data() + s.size(id); // FIXME: remove id, it's weird.
+    int am_id = get<0>(tup);
+    assert(am_id >= 0 && am_id < static_cast<int>(active_messages.size()));
+    auto payload_raw = m->buffer.data() + s.size(am_id);
     if (verb > 4)
     {
-        printf("[%2d] <- %d: msg ID %d, data received: ", comm_rank(), m->other, id);
+        printf("[%2d] <- %2d: lpc() ID %d, data received: ", comm_rank(), m->other, am_id);
         print_bytes(m->buffer);
     }
     else if (verb > 1)
     {
-        printf("[%2d] <- %d: running lpc() with ID %d\n", comm_rank(), m->other, id);
+        printf("[%2d] <- %2d: running lpc() ID %d\n", comm_rank(), m->other, am_id);
     }
 
     {
-        lock_guard<mutex> lock(recv_count);
-        // This lock is used to make sure that messages_rcvd is as accurate as possible.
-
-        active_messages.at(id)->run(payload_raw); // Run the callback function in the message
+        // Run the callback function in the message
+        active_messages.at(am_id)->run(payload_raw);
 
         // This must be done strictly after running the callback function
         // This ensures that all potential new tasks have been created before we increment messages_rcvd
-        messages_rcvd++;
+        messages_processed++;
     }
 
     if (verb > 2)
-        printf("[%2d] <- %d: msg ID %d, lpc() completed, %lu B\n", comm_rank(), m->other, id, m->buffer.size());
+        printf("[%2d] <- %d: msg ID %d, lpc() completed, %lu B\n", comm_rank(), m->other, am_id, m->buffer.size());
 }
 
 void Communicator::set_logger(Logger *logger_)
@@ -263,14 +269,14 @@ bool Communicator::is_done()
     return ret;
 }
 
-int Communicator::get_n_msg_rcvd()
+int Communicator::get_n_msg_processed()
 {
-    return messages_rcvd.load();
+    return messages_processed.load();
 }
 
-int Communicator::get_n_msg_sent()
+int Communicator::get_n_msg_queued()
 {
-    return messages_sent.load();
+    return messages_queued.load();
 }
 
 } // namespace ttor
