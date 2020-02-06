@@ -440,9 +440,9 @@ private:
     int last_rcvd_conf_nqueued;
     int last_rcvd_conf_nprocessed;
 
-    // Last sum
+    // Last sum, the last sum_r queued(r) == sum_r processed(r) value checked
     // Used on rank 0
-    int last_sum;  // the last sum_r queued(r) == sum_r processed(r) value
+    int last_sum;  
     
     // Used by user to communicate
     Communicator *comm;
@@ -454,16 +454,14 @@ private:
     ActiveMsg<int, int>         *am_send_confirmation;       // Send confirmation back to master
     ActiveMsg<>                 *am_shutdown_tf;             // Shutdown TF (last message from master to worker)
 
-    // Used to synchronize workers
-    // Master increment this every time he sends a new confirmation request
-    // Worker reply with the tag
-    // We wait for the moment where all workers reply with the latest confirmation_tag, meaning they all confirmed the latest confirmation request
+    // To detect completion
+    // Used on rank 0
     int confirmation_tag;
 
     // Update counts on master
     // We use step, provided by the worker, to update msg_queued and msg_processed with the latest information
     void set_msg_counts_master(int from, int msg_queued, int msg_processed) {
-        if (verb > 0) {
+        if (verb > 1) {
             printf("[%s] <- %d, Message counts (%d %d)\n", name.c_str(), from, msg_queued, msg_processed);
         }
         assert(my_rank == 0);
@@ -631,31 +629,31 @@ private:
          * Strategy
          * 
          * We send 4 kinds of messages
-         * - Rank !=0 -> Rank 0: latest user rpcs/lpcs counts
-         * - Rank   0 -> Rank != 0: when all rpcs/lpcs counts match, sends a 'confirmation request'
-         *      We associate 'confirmation request' with a unique tag (or `round`)
-         * - Rank !=0 -> Rank 0: reply to the latest 'confirmation request' if the counts still match
+         * - Rank !=0 -> Rank 0: latest user rpcs/lpcs counts with a 'count' AM
+         * - Rank   0 -> Rank != 0: when all rpcs/lpcs counts match, sends a 'request' AM
+         *      We associate 'request' with a unique tag
+         * - Rank !=0 -> Rank 0: reply to the latest 'request' if the counts still match with a 'confirmation' AM
          *      The replies use the latest received tag
-         * - Rank   0 -> Rank != 0: when all ranks reply to the latest sent confirmation request with their confirmation, we send a shutdown signal
+         * - Rank   0 -> Rank != 0: when all ranks reply to the latest sent confirmation request with their confirmation, we send a 'shutdown' AM
          * 
          * Rank 0 can do two things:
-         * - Check reply to the latest confirmation request. If we got a positive reply from all ranks, we send a shutdown message
-         * - Otherwise, check the rpcs/lpcs counts. If they all match, we send a confirmation request to all other ranks
+         * - Check the latest 'confirmation'. If we got a positive reply from all ranks for the _latest_ request, we send a 'shutdown'
+         * - Otherwise, check the rpcs/lpcs 'count's. If they all match, we send a 'request' to all other ranks
          * 
          * Rank != 0 can do two things:
-         * - If we have a new rpcs/lpcs count, send the count
-         * - If we have a unanswered confirmation request, and if the count haven't changed in the meantime, send a confirmation back to rank 0
+         * - If we have a new rpcs/lpcs count, send the 'count'
+         * - If we have unanswered 'request', we look at the latest. If the count haven't changed in the meantime, send a 'confirmation' back to rank 0
          * 
          * Observations:
-         * - The internal comms send a finite number of messages, assuming the TF sends a finite number of messages. This solver the fairness issue (no flooding can happen)
+         * - The internal comms send a finite number of messages, assuming the TF sends a finite number of messages.
          * 
-         * - It will terminate. When the TF is empty, all count match, and the confirmation request will be positively replied to
+         * - It will terminate. When the TF is empty, all count match, and the confirmation request will be positively replied to by all ranks
          * 
-         * - When the final confirmation request is sent from rank != 0, no more message is sent from rank != 0.
-         *      - Previous counts or confirmations arrive on rank 0 before the ultimate confirmation
+         * - When the final 'confirmation' is sent from rank != 0, no more message will be sent from rank 0
+         *      - Previous 'counts' or 'confirmations' arrive on rank 0 before the ultimate confirmation
          *      - Only that final confirmation request can trigger shutdown
          *      - Hence, rank 0 can terminate with a progress-terminate loop
-         * - When that shutdown reaches rank != 0, all their message already reached rank 0
+         * - When that shutdown reaches rank != 0, all previous message already reached rank != 0
          *      - Hence, rank != 0 can terminate with a progress-terminate loop
          * 
          * Those four facts show that
@@ -669,8 +667,9 @@ private:
         int my_rank = comm_rank();
         assert(! is_done());
         assert(tasks_in_flight.load() == 0);
-        if(my_rank == 0) { // Rank 0 test queues/processed global counts
+        if(my_rank == 0) {
             // STEP A: check the previously received confirmation tags
+            // If we got an anser from all ranks for the latest confirmation_tag, we terminate
             const bool all_tags_ok = std::all_of(tags.begin(), tags.end(), [&](int t){return t == confirmation_tag;});
             if(all_tags_ok) {
                 if (verb > 1) {
@@ -683,7 +682,7 @@ private:
                 shutdown_tf();
             }
             // STEP B: check the nqueued and nprocessed, send confirmations
-            // If they match, send messages to workers for confirmation
+            // If they match, send request to workers
             else {
                 int nq = get_intern_n_msg_queued();
                 int np = get_intern_n_msg_processed();
