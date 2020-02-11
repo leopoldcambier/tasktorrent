@@ -112,7 +112,7 @@ void ddot(int n_threads, int block_size)
         })
         .set_fulfill([&](int k) {
             add_tf.fulfill_promise(0); // same rank
-            dlog.add_event(DepsEvent(dot_tf.name(k), add_tf.name(0)));
+            dlog.add_event(make_unique<DepsEvent>(dot_tf.name(k), add_tf.name(0)));
         });
 
     add_tf.set_mapping([&](int) {
@@ -129,7 +129,7 @@ void ddot(int n_threads, int block_size)
         })
         .set_fulfill([&](int k) {
             am->send(0, partial_sum);
-            dlog.add_event(DepsEvent(add_tf.name(k), "Reduce"));
+            dlog.add_event(make_unique<DepsEvent>(add_tf.name(k), "Reduce"));
         });
 
     // Seed tasks
