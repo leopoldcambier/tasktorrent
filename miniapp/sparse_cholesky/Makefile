@@ -1,29 +1,15 @@
-include Makefile.conf
-
-INCLUDE  = -I../src/ -I$(EIGEN_INCDIR)  -I$(SCOTCH_INCDIR) -I$(MMIO_INCDIR) -isystem $(GTEST_INCDIR)
-LIBS     = -L$(SCOTCH_LIBDIR) $(GTEST_LIBDIR)/libgtest.a
-LDFLAGS  = -l scotch -l scotcherr -l tbb
-SRCDIR   = ../src
-OBJDIR   = ../build
+CC       = mpicxx
+CFLAGS   = -pthread -O3 -g -std=c++14
+INCLUDE  = -I../../src/ -I/usr/local/Cellar/eigen/3.3.7/include/eigen3/ -I/Users/lcambier/Softwares/scotch_6.0.9/include/ -I/usr/local/opt/openblas/include
+LIBS     = -L/Users/lcambier/Softwares/scotch_6.0.9/lib/ -L/usr/local/opt/openblas/lib
+LDFLAGS  = -lscotch -lscotcherr -lblas -llapack
+SRCDIR   = ../../src
+OBJDIR   = ../../build
 
 .PHONY: default all clean
 
 default: all
 all: snchol
-
-ifeq ($(USE_MKL),1)
-    CFLAGS += -DUSE_MKL
-endif
-ifeq ($(USE_MKL),1)
-  INCLUDE += ${MKL_INCFLAGS}
-  LIBS    += ${MKL_LIBS} 
-  LDFLAGS += ${MKL_LDFLAGS}
-else
-  INCLUDE += -I${BLAS_INCDIR}
-  LIBS    += -L${BLAS_LIBDIR}
-  LDFLAGS += -lblas -llapack
-endif
-CFLAGS += -pthread
 
 DEPS = $(SRCDIR)/runtime.hpp $(SRCDIR)/util.hpp $(SRCDIR)/communications.hpp $(SRCDIR)/serialization.hpp $(SRCDIR)/views.hpp $(SRCDIR)/apply_functions.hpp $(SRCDIR)/functional_extra.hpp
 OBJ  = $(OBJDIR)/communications.o $(OBJDIR)/serialization.o $(OBJDIR)/util.o

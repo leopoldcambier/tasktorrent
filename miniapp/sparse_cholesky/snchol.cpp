@@ -23,7 +23,6 @@
 #include <Eigen/SparseLU>
 
 #include <scotch.h>
-#include <gtest/gtest.h>
 #include <mpi.h>
 
 #ifdef USE_MKL
@@ -55,6 +54,7 @@ int N_LEVELS = 10;
 int N_THREADS = 4;
 int BLOCK_SIZE = 10;
 string FOLDER = "./";
+int REPEAT = 1;
 
 struct range
 {
@@ -578,26 +578,11 @@ struct DistMat
 
     void factorize(int n_threads)
     {
-
-        // FIXME
-        int n_tasks = 0;
-        for (int k = 0; k < nblk; k++)
-        {
+        for (int k = 0; k < nblk; k++) {
             const auto &n = nodes.at(k);
-            if (col2rank(k) == comm_rank())
-                n_tasks++; // potf at (k,k)
-            for (auto i : n->nbrs)
-            {
-                if (col2rank(k) == comm_rank())
-                    n_tasks++; // trsm at (i,k)
-                for (auto j : n->nbrs)
-                {
-                    if (i >= j)
-                    {
-                        if (col2rank(j) == comm_rank())
-                            n_tasks++; // kth gemm at (i,j)
-                        if (col2rank(j) == comm_rank())
-                            n_tasks++; // kth acc  at (i,j)
+            for (auto i : n->nbrs) {
+                for (auto j : n->nbrs) {
+                    if (i >= j) {
                         auto &b = blocs.at({i, j});
                         b->n_accumulate++;
                     }
@@ -605,15 +590,17 @@ struct DistMat
             }
         }
 
-        printf("Rank %d starting %d threads with %d tasks\n", comm_rank(), n_threads, n_tasks);
+        MPI_Barrier(MPI_COMM_WORLD);
+        timer t0 = wctime();
+        printf("Rank %d starting w/ %d threads\n", comm_rank(), n_threads);
         Logger log(1000000);
         Communicator comm(VERB);
-
-        Threadpool tp(n_threads, n_tasks, VERB, "[" + to_string(comm_rank()) + "]_");
+        Threadpool tp(n_threads, &comm, VERB, "[" + to_string(comm_rank()) + "]_");
         Taskflow<int> pf(&tp, VERB);
         Taskflow<int2> tf(&tp, VERB);
         Taskflow<int3> gf(&tp, VERB);
-        CriticalTaskflow<int3> rf(&tp, VERB);
+        Taskflow<int3> rf(&tp, VERB);
+        const int my_rank = comm_rank();
 
         auto am_send_panel = comm.make_active_msg(
             [&](int &i, int &k, int &isize, int &ksize, view<double> &Aik, view<int> &js) {
@@ -633,22 +620,23 @@ struct DistMat
         }
 
         pf
-            .set_compute_on([&](int k) {
-                assert(col2rank(k) == comm_rank());
+            .set_mapping([&](int k) {
+                assert(col2rank(k) == my_rank);
                 return (k % n_threads);
             })
             .set_indegree([&](int k) {
-                assert(col2rank(k) == comm_rank());
-                return n_to_accumulate({k, k}); // # gemms before ?
+                assert(col2rank(k) == my_rank);
+                int ngemms = n_to_accumulate({k, k});
+                return ngemms == 0 ? 1 : ngemms; // # gemms before ?
             })
-            .set_run([&](int k) {
+            .set_task([&](int k) {
                 assert(accumulated({k, k}) == n_to_accumulate({k, k}));
-                assert(col2rank(k) == comm_rank());
+                assert(col2rank(k) == my_rank);
                 potf(k);
             })
             .set_fulfill([&](int k) {
                 assert(accumulated({k, k}) == n_to_accumulate({k, k}));
-                assert(col2rank(k) == comm_rank());
+                assert(col2rank(k) == my_rank);
                 auto &n = nodes.at(k);
                 for (auto i : n->nbrs)
                 {
@@ -656,31 +644,31 @@ struct DistMat
                 }
             })
             .set_name([&](int k) {
-                return "[" + to_string(comm_rank()) + "]_potf_" + to_string(k) + "_lvl" + to_string(depth[k]);
+                return "[" + to_string(my_rank) + "]_potf_" + to_string(k) + "_lvl" + to_string(depth[k]);
             })
             .set_priority([](int k) {
                 return 3.0;
             });
 
         tf
-            .set_compute_on([&](int2 ki) {
-                assert(col2rank(ki[0]) == comm_rank());
+            .set_mapping([&](int2 ki) {
+                assert(col2rank(ki[0]) == my_rank);
                 return (ki[0] % n_threads);
             })
             .set_indegree([&](int2 ki) {
-                assert(col2rank(ki[0]) == comm_rank());
+                assert(col2rank(ki[0]) == my_rank);
                 int k = ki[0];
                 int i = ki[1];
                 assert(i > k);
                 return n_to_accumulate({i, k}) + 1; // # gemm before + potf
             })
-            .set_run([&](int2 ki) {
-                assert(col2rank(ki[0]) == comm_rank());
+            .set_task([&](int2 ki) {
+                assert(col2rank(ki[0]) == my_rank);
                 assert(accumulated({ki[1], ki[0]}) == n_to_accumulate({ki[1], ki[0]}));
                 trsm(ki);
             })
             .set_fulfill([&](int2 ki) {
-                assert(col2rank(ki[0]) == comm_rank());
+                assert(col2rank(ki[0]) == my_rank);
                 assert(accumulated({ki[1], ki[0]}) == n_to_accumulate({ki[1], ki[0]}));
                 int k = ki[0];
                 int i = ki[1];
@@ -689,7 +677,7 @@ struct DistMat
                 for (auto j : n->nbrs)
                 {
                     int dest = col2rank(lower({k, i, j})[2]);
-                    if (dest != comm_rank())
+                    if (dest != my_rank)
                     {
                         deps[dest] = {};
                     }
@@ -697,7 +685,7 @@ struct DistMat
                 for (auto j : n->nbrs)
                 {
                     int dest = col2rank(lower({k, i, j})[2]);
-                    if (dest != comm_rank())
+                    if (dest != my_rank)
                     {
                         deps[dest].push_back(j);
                     }
@@ -721,56 +709,56 @@ struct DistMat
                 }
             })
             .set_name([&](int2 ki) {
-                return "[" + to_string(comm_rank()) + "]_trsm_" + to_string(ki[0]) + "_" + to_string(ki[1]) + "_lvl" + to_string(depth[ki[0]]);
+                return "[" + to_string(my_rank) + "]_trsm_" + to_string(ki[0]) + "_" + to_string(ki[1]) + "_lvl" + to_string(depth[ki[0]]);
             })
             .set_priority([](int2 k) {
                 return 2.0;
             });
 
         gf
-            .set_compute_on([&](int3 kij) {
-                assert(col2rank(kij[2]) == comm_rank());
+            .set_mapping([&](int3 kij) {
+                assert(col2rank(kij[2]) == my_rank);
                 return (kij[0] % n_threads);
             })
             .set_indegree([&](int3 kij) {
-                assert(col2rank(kij[2]) == comm_rank());
+                assert(col2rank(kij[2]) == my_rank);
                 int i = kij[1];
                 int j = kij[2];
                 assert(j <= i);
                 return (i == j ? 1 : 2); // Trsms
             })
-            .set_run([&](int3 kij) {
-                assert(col2rank(kij[2]) == comm_rank());
+            .set_task([&](int3 kij) {
+                assert(col2rank(kij[2]) == my_rank);
                 gemm(kij);
             })
             .set_fulfill([&](int3 kij) {
-                assert(col2rank(kij[2]) == comm_rank());
+                assert(col2rank(kij[2]) == my_rank);
                 int k = kij[0];
                 int i = kij[1];
                 int j = kij[2];
                 assert(k <= j);
                 assert(j <= i);
-                // printf("gf %d %d %d -> rf %d %d %d\n", comm_rank(), k, i, j, k, i, j);
+                // printf("gf %d %d %d -> rf %d %d %d\n", my_rank, k, i, j, k, i, j);
                 rf.fulfill_promise(kij);
             })
             .set_name([&](int3 kij) {
-                return "[" + to_string(comm_rank()) + "]_gemm_" + to_string(kij[0]) + "_" + to_string(kij[1]) + "_" + to_string(kij[2]) + "_lvl" + to_string(depth[kij[0]]);
+                return "[" + to_string(my_rank) + "]_gemm_" + to_string(kij[0]) + "_" + to_string(kij[1]) + "_" + to_string(kij[2]) + "_lvl" + to_string(depth[kij[0]]);
             })
-            .set_priority([](int3 k) {
+            .set_priority([](int3) {
                 return 1.0;
             });
 
         rf
-            .set_compute_on([&](int3 kij) {
-                assert(col2rank(kij[2]) == comm_rank());
+            .set_mapping([&](int3 kij) {
+                assert(col2rank(kij[2]) == my_rank);
                 return (kij[1] + kij[2]) % n_threads; // any i & j -> same thread. So k cannot appear in this expression
             })
             .set_indegree([&](int3 kij) {
-                assert(col2rank(kij[2]) == comm_rank());
+                assert(col2rank(kij[2]) == my_rank);
                 return 1; // The corresponding gemm
             })
-            .set_run([&](int3 kij) {
-                assert(col2rank(kij[2]) == comm_rank());
+            .set_task([&](int3 kij) {
+                assert(col2rank(kij[2]) == my_rank);
                 blocs.at({kij[1], kij[2]})->accumulated++;
                 accumulate(kij);
             })
@@ -789,41 +777,37 @@ struct DistMat
                 }
             })
             .set_name([&](int3 kij) {
-                return "[" + to_string(comm_rank()) + "]_acc_" + to_string(kij[0]) + "_" + to_string(kij[1]) + "_" + to_string(kij[2]) + "_lvl" + to_string(depth[kij[0]]);
+                return "[" + to_string(my_rank) + "]_acc_" + to_string(kij[0]) + "_" + to_string(kij[1]) + "_" + to_string(kij[2]) + "_lvl" + to_string(depth[kij[0]]);
             })
-            .set_priority([](int3 k) {
+            .set_priority([](int3) {
                 return 4.0;
+            })
+            .set_binding([](int3) {
+                return true;
             });
 
         for (int k = 0; k < nblk; k++)
         {
-            if (col2rank(k) == comm_rank())
+            if (col2rank(k) == my_rank)
             {
                 if (n_to_accumulate({k, k}) == 0)
                 {
-                    pf.seed(k);
+                    pf.fulfill_promise(k);
                 }
             }
         }
 
-        MPI_Barrier(MPI_COMM_WORLD);
-        timer t0 = wctime();
-        tp.start();
-        while (!tp.is_done() || !comm.is_done())
-        {
-            comm.progress();
-        }
-        printf("[%d] Tp & Comms done\n", comm_rank());
         tp.join();
         MPI_Barrier(MPI_COMM_WORLD);
+        printf("Tp & Comms done\n");
         timer t1 = wctime();
-        printf("[%d] Factorization done, time %3.2e s.\n", comm_rank(), elapsed(t0, t1));
-        printf("[%d] Potf %3.2e s., %3.2e s./thread\n", comm_rank(), double(potf_us / 1e6), double(potf_us / 1e6) / n_threads);
-        printf("[%d] Trsm %3.2e s., %3.2e s./thread\n", comm_rank(), double(trsm_us / 1e6), double(trsm_us / 1e6) / n_threads);
-        printf("[%d] Gemm %3.2e s., %3.2e s./thread\n", comm_rank(), double(gemm_us / 1e6), double(gemm_us / 1e6) / n_threads);
-        printf("[%d] Allo %3.2e s., %3.2e s./thread\n", comm_rank(), double(allo_us / 1e6), double(allo_us / 1e6) / n_threads);
-        printf("[%d] Scat %3.2e s., %3.2e s./thread\n", comm_rank(), double(scat_us / 1e6), double(scat_us / 1e6) / n_threads);
-        printf(">>>>%d,%d,%d,%3.2e\n", comm_rank(), comm_size(), n_threads, elapsed(t0, t1));
+        printf("Factorization done, time %3.2e s.\n", elapsed(t0, t1));
+        printf("Potf %3.2e s., %3.2e s./thread\n", double(potf_us / 1e6), double(potf_us / 1e6) / n_threads);
+        printf("Trsm %3.2e s., %3.2e s./thread\n", double(trsm_us / 1e6), double(trsm_us / 1e6) / n_threads);
+        printf("Gemm %3.2e s., %3.2e s./thread\n", double(gemm_us / 1e6), double(gemm_us / 1e6) / n_threads);
+        printf("Allo %3.2e s., %3.2e s./thread\n", double(allo_us / 1e6), double(allo_us / 1e6) / n_threads);
+        printf("Scat %3.2e s., %3.2e s./thread\n", double(scat_us / 1e6), double(scat_us / 1e6) / n_threads);
+        printf(">>>>%d,%d,%d,%3.2e\n", my_rank, comm_size(), n_threads, elapsed(t0, t1));
 
         auto am_send_pivot = comm.make_active_msg(
             [&](int &k, int &ksize, view<double> &Akk) {
@@ -839,11 +823,11 @@ struct DistMat
                 memcpy(b->A()->data(), Aik.data(), Aik.size() * sizeof(double));
             });
 
-        if (comm_rank() != 0)
+        if (my_rank != 0)
         {
             for (int k = 0; k < nblk; k++)
             {
-                if (col2rank(k) == comm_rank())
+                if (col2rank(k) == my_rank)
                 {
                     // Send column to 0
                     auto &n = nodes.at(k);
@@ -878,11 +862,15 @@ struct DistMat
             }
         }
 
+        while(! comm.is_done()) {
+            comm.progress();
+        }
+
         if (LOG > 0)
         {
             ofstream logfile;
-            string filename = FOLDER + "/snchol_" + to_string(comm_size()) + "_" + to_string(n_threads) + "_" + to_string(App.rows()) + ".log." + to_string(comm_rank());
-            printf("[%d] Logger saved to %s\n", comm_rank(), filename.c_str());
+            string filename = FOLDER + "/snchol_" + to_string(comm_size()) + "_" + to_string(n_threads) + "_" + to_string(App.rows()) + ".log." + to_string(my_rank);
+            printf("[%d] Logger saved to %s\n", my_rank, filename.c_str());
             logfile.open(filename);
             logfile << log;
             logfile.close();
@@ -955,7 +943,7 @@ struct DistMat
     }
 };
 
-TEST(snchol, one)
+void run_cholesky()
 {
     printf("[%d] Hello from %s\n", comm_rank(), processor_name().c_str());
     DistMat dm(FILENAME, N_LEVELS, BLOCK_SIZE);
@@ -966,8 +954,8 @@ TEST(snchol, one)
         VectorXd b = random(A.rows(), 2019);
         VectorXd x = dm.solve(b);
         double res = (A * x - b).norm() / b.norm();
-        ASSERT_LE(res, 1e-12);
         printf("|Ax-b|/|b| = %e\n", res);
+        assert(res <= 1e-12);
     }
 }
 
@@ -977,7 +965,9 @@ int main(int argc, char **argv)
     int prov = -1;
     int err = MPI_Init_thread(NULL, NULL, req, &prov);
     assert(err == 0 && prov == req);
-    ::testing::InitGoogleTest(&argc, argv);
+    printf("Usage ./snchol filename nlevels nthreads verb blocksize log folder repeat\n");
+    printf("filename = %s, nlevels = %d, nthreads = %d, verb = %d, blocksize = %d, log = %d, folder = %s, repeat = %d\n", 
+        FILENAME.c_str(), N_LEVELS, N_THREADS, VERB, BLOCK_SIZE, LOG, FOLDER.c_str(), REPEAT);
     if (argc >= 2)
     {
         FILENAME = argv[1];
@@ -1006,7 +996,13 @@ int main(int argc, char **argv)
     {
         FOLDER = argv[7];
     }
-    const int return_flag = RUN_ALL_TESTS();
+    if (argc >= 9)
+    {
+        REPEAT = atoi(argv[8]);
+    }
+    for(int r = 0; r < REPEAT; r++) {
+        run_cholesky();
+    }
     MPI_Finalize();
-    return return_flag;
+    return 0;
 }
