@@ -63,19 +63,20 @@ struct range
     int k;
 };
 
+// Given (k, i, j), returns (k, max(i, j), min(i, j))
 int3 lower(int3 kij)
 {
     int k = kij[0];
     int i = kij[1];
     int j = kij[2];
-    if (i >= j)
-        return kij;
-    else
-        return {k, j, i};
+    return {k, std::max(i,j), std::min(i,j)};
 };
 
 // Find the positions of c_rows into p_rows
-// This could be faster since both are sorted
+//
+// @in c_rows is a subset of p_rows
+// @in c_rows, p_rows are sorted
+// @post out[i] = j <=> c_rows[i] == p_rows[j]
 vector<int> get_subids(vector<int> &c_rows, vector<int> &p_rows)
 {
     int cn = c_rows.size();
@@ -94,6 +95,9 @@ vector<int> get_subids(vector<int> &c_rows, vector<int> &p_rows)
     return subids;
 };
 
+// Creates a random (-1, 1) vector
+// @pre size >= 0
+// @post x, st -1 <= x[i] <= 1 for all 0 <= i < size
 VectorXd random(int size, int seed)
 {
     mt19937 rng;
@@ -107,35 +111,126 @@ VectorXd random(int size, int seed)
     return x;
 }
 
+// Given a sparse matrix A, creates rowval and colptr, the CSC representation of A
+// without the self loops on the diagonal
+// @pre A is a sparse symmetrix matrix
+void get_csc_no_diag(SpMat &A, VectorXi *rowval, VectorXi *colptr) {
+    int N = A.rows();
+    int nnz = A.nonZeros();
+    *rowval = VectorXi(nnz);
+    *colptr = VectorXi(N + 1);
+    int k = 0;
+    (*colptr)[0] = 0;
+    for (int j = 0; j < N; j++)
+    {
+        for (SpMat::InnerIterator it(A, j); it; ++it)
+        {
+            int i = it.row();
+            if (i != j)
+            {
+                (*rowval)[k] = i;
+                k++;
+            }
+        }
+        (*colptr)[j + 1] = k;
+    }
+    rowval->conservativeResize(k);
+}
+
+// Algebraic partitioning
+// N is the matrix size
+// rowval, colptr is the CSC of symmetric A, without the diagonal
+// nlevels, block_size are ND and partitioning parameters
+// Outputs are
+// - permtab, the permuation 
+// - rangtab, the colptr of the clusters (cluster i goes from rangtab[i] ... rangtab[i+1] in permtab ordering)
+void algebraic_partitioning(int N, VectorXi &rowval, VectorXi &colptr, int nlevels, int block_size, VectorXi *permtab, VectorXi *rangtab, vector<int> *depth) {
+    assert(N == colptr.size() - 1);
+    SCOTCH_Graph *graph = SCOTCH_graphAlloc();
+    int err = SCOTCH_graphInit(graph);
+    assert(err == 0);
+    err = SCOTCH_graphBuild(graph, 0, N, colptr.data(), nullptr, nullptr, nullptr, rowval.size(), rowval.data(), nullptr);
+    assert(err == 0);
+    err = SCOTCH_graphCheck(graph);
+    assert(err == 0);
+    // Create strat
+    SCOTCH_Strat *strat = SCOTCH_stratAlloc();
+    err = SCOTCH_stratInit(strat);
+    assert(err == 0);
+    assert(nlevels > 0);
+    string orderingstr = "n{sep=(/levl<" + to_string(nlevels - 1) + "?g:z;),ose=b{cmin=" + to_string(block_size) + "}}";
+    cout << "Using ordering " << orderingstr << endl;
+    // string orderingstr = "n{sep=(/levl<" + to_string(nlevels-1) + "?g:z;)}";
+    err = SCOTCH_stratGraphOrder(strat, orderingstr.c_str());
+    assert(err == 0);
+    // Order with SCOTCH
+    *permtab = VectorXi::Zero(N);
+    VectorXi peritab = VectorXi::Zero(N);
+    *rangtab = VectorXi::Zero(N + 1);
+    VectorXi treetab = VectorXi::Zero(N);
+    int nblk = 0;
+    err = SCOTCH_graphOrder(graph, strat, permtab->data(), peritab.data(), &nblk, rangtab->data(), treetab.data());
+    assert(err == 0);
+    assert(nblk >= 0);
+    rangtab->conservativeResize(nblk + 1);
+    // Compute depth
+    *depth = vector<int>(nblk, 0);
+    for (int i = 0; i < nblk; i++)
+    {
+        int p = treetab[i];
+        while (p != -1)
+        {
+            p = treetab[p];
+            (*depth)[i]++;
+            assert(p == -1 || (p >= 0 && p < nblk));
+        }
+    }
+}
+
 struct Bloc
 {
+    // row irow of the block
     int i;
+    // col irow of the block
     int j;
-    unique_ptr<MatrixXd> matA; // Lower triangular part only
-    vector<int> rows;          // A subset of Node[col]
+    // the matrix block
+    unique_ptr<MatrixXd> matA;
+    // A subset of nodes[i]->start ... nodes[i]->end
+    vector<int> rows;
+    // A subset of nodes[j]->start ... nodes[j]->end
     vector<int> cols;
-    int n_accumulate;
+    // Accumulation structures
+    // number of gemm to accumulate on this block
+    int n_accumulate; 
+    // data to be accumulated
     mutex to_accumulate_mtx;
     map<int, unique_ptr<MatrixXd>> to_accumulate; // The blocs to be accumulated on this
-    /* Debugging */
+    // Debugging only
     atomic<bool> accumulating_busy;
     atomic<int> accumulated;
     Bloc(int i_, int j_) : i(i_), j(j_), matA(nullptr), n_accumulate(0), accumulating_busy(false), accumulated(0){};
-    MatrixXd *A() { return matA.get(); }
+    MatrixXd* A() { 
+        return matA.get(); 
+    }
 };
 
 struct Node
 {
+    // irow of this node
     int irow;
+    // start, end, size of this node
     int start;
     int end;
     int size;
-    set<int> rows_tmp;
-    vector<int> nbrs; // Excluding self, only nodes after (ie ancestors)
+    // nbrs, after (below the diagonal, in the column) and excluding self
+    vector<int> nbrs;
+    // used in the solve phase
     VectorXd xsol;
+    // children in the etree
     vector<int> children;
+    // parent in the etree
     int parent;
-    Node(int irow_, int s_, int l_) : irow(irow_), start(s_), size(l_)
+    Node(int irow_, int s_, int l_) : irow(irow_), start(s_), size(l_), parent(-1)
     {
         end = start + size;
     };
@@ -143,108 +238,61 @@ struct Node
 
 struct DistMat
 {
-    map<int, unique_ptr<Node>> nodes;  // nodes[i] = ith pivot (diagonal bloc)
-    map<int2, unique_ptr<Bloc>> blocs; // blocs[i,j] = non zero part of the matrix
+    // All the nodes
+    // nodes[i] = ith pivot (diagonal bloc)
+    vector<unique_ptr<Node>> nodes;
+    // blocs[i,j] = non zero part of the matrix
+    map<int2, unique_ptr<Bloc>> blocs;
+    // permutation from natural ordering
     VectorXi perm;
+    // original A
     SpMat A;
+    // App = P A P^T
     SpMat App;
+    // Super of supernodes
     int nblk;
+    // Map nodes to ranks
     vector<int> node2rank;
+    // Depth (in the ND tree) of each node
     vector<int> depth;
+    // Map col to rank
     int col2rank(int col)
     {
         assert(node2rank.size() == nblk);
         assert(col >= 0 && col < nblk);
         return node2rank[col];
     }
+    // Number of gemm to accumulate on block ij
     int n_to_accumulate(int2 ij)
     {
         return blocs.at(ij)->n_accumulate;
     }
+    // Number of gemm accumulated on block ij
     int accumulated(int2 ij)
     {
         return blocs.at(ij)->accumulated.load();
     }
+    
     // Some statistics/timings
     atomic<long long> gemm_us;
     atomic<long long> trsm_us;
     atomic<long long> potf_us;
     atomic<long long> scat_us;
     atomic<long long> allo_us;
-    DistMat(string filename, int nlevels, int block_size) : gemm_us(0), trsm_us(0), potf_us(0), scat_us(0), allo_us(0)
-    {
-        cout << "Matrix file " << filename << endl;
-        // Read matrix
-        A = mmio::sp_mmread<double, int>(filename);
-        // Initialize & prepare
-        int N = A.rows();
-        int nnz = A.nonZeros();
-        // Create rowval and colptr
-        VectorXi rowval(nnz);
-        VectorXi colptr(N + 1);
-        int k = 0;
-        colptr[0] = 0;
-        for (int j = 0; j < N; j++)
-        {
-            for (SpMat::InnerIterator it(A, j); it; ++it)
-            {
-                int i = it.row();
-                if (i != j)
-                {
-                    rowval[k] = i;
-                    k++;
-                }
-            }
-            colptr[j + 1] = k;
-        }
-        // Create SCOTCH graph
-        SCOTCH_Graph *graph = SCOTCH_graphAlloc();
-        int err = SCOTCH_graphInit(graph);
-        assert(err == 0);
-        err = SCOTCH_graphBuild(graph, 0, N, colptr.data(), nullptr, nullptr, nullptr, k, rowval.data(), nullptr);
-        assert(err == 0);
-        err = SCOTCH_graphCheck(graph);
-        assert(err == 0);
-        // Create strat
-        SCOTCH_Strat *strat = SCOTCH_stratAlloc();
-        err = SCOTCH_stratInit(strat);
-        assert(err == 0);
-        assert(nlevels > 0);
-        string orderingstr = "n{sep=(/levl<" + to_string(nlevels - 1) + "?g:z;),ose=b{cmin=" + to_string(block_size) + "}}";
-        cout << "Using ordering " << orderingstr << endl;
-        // string orderingstr = "n{sep=(/levl<" + to_string(nlevels-1) + "?g:z;)}";
-        err = SCOTCH_stratGraphOrder(strat, orderingstr.c_str());
-        assert(err == 0);
-        // Order with SCOTCH
-        VectorXi permtab(N);
-        VectorXi peritab(N);
-        VectorXi rangtab(N + 1);
-        VectorXi treetab(N);
-        err = SCOTCH_graphOrder(graph, strat, permtab.data(), peritab.data(), &nblk, rangtab.data(), treetab.data());
-        assert(err == 0);
-        assert(nblk >= 0);
-        treetab.conservativeResize(nblk);
-        rangtab.conservativeResize(nblk + 1);
-        // Compute 'depth' of every cluster
-        depth = vector<int>(nblk, 0);
-        for (int i = 0; i < nblk; i++)
-        {
-            int p = treetab[i];
-            while (p != -1)
-            {
-                p = treetab[p];
-                depth[i]++;
-                assert(p == -1 || (p >= 0 && p < nblk));
-            }
-        }
-        // Permute matrix
-        App = permtab.asPermutation() * A * permtab.asPermutation().transpose();
-        perm = permtab;
+
+    // Build all the supernodes based on rangtab
+    // Returns i2irow, mapping row -> irow
+    VectorXi build_supernodes(VectorXi& rangtab) {
+        nodes = vector<unique_ptr<Node>>(nblk);
+        int N = App.rows();
+        assert(rangtab.size() > 0);
+        assert(rangtab[0] == 0);
+        assert(nblk == rangtab.size()-1);
+        assert(rangtab(nblk) == N);
         VectorXi i2irow(N);
         double mean = 0.0;
         int mini = App.rows();
         int maxi = -1;
-        // Create all nodes
         for (int i = 0; i < nblk; i++)
         {
             nodes[i] = make_unique<Node>(i, rangtab[i], rangtab[i + 1] - rangtab[i]);
@@ -257,8 +305,21 @@ struct DistMat
             maxi = max(maxi, nodes.at(i)->size);
         }
         printf("[%d] %d blocks, min size %d, mean size %f, max size %d\n", comm_rank(), nblk, mini, mean / nblk, maxi);
-        // Compute elimination tree & neighbors [n->nbrs]
-        vector<int> roots;
+        return i2irow;
+    }
+
+    // Build elimination tree, ie, compute 
+    // - node->nbrs (irow)
+    // - node->parent (irow)
+    // - node->children (irow)
+    // - block->rows (row)
+    // - block->cols (row)
+    // row = unknowns in App
+    // irow = block #
+    // Returns roots, the roots of the elimination tree (usually 1 - not always)
+    vector<int> build_tree(VectorXi &i2irow) {
+        vector<set<int>> rows_tmp(nblk); // The mapping block -> rows under
+        vector<int> roots(0);
         for (int k = 0; k < nblk; k++)
         {
             auto &n = nodes.at(k);
@@ -270,11 +331,12 @@ struct DistMat
                     int i = it.row();
                     if (i >= n->end)
                     {
-                        n->rows_tmp.insert(i);
+                        rows_tmp.at(k).insert(i);
                     }
                 }
             }
-            vector<int> rows(n->rows_tmp.begin(), n->rows_tmp.end());
+            // Get sorted set of neighbros
+            vector<int> rows(rows_tmp.at(k).begin(), rows_tmp.at(k).end());
             sort(rows.begin(), rows.end());
             // Convert to neighbors
             set<int> nbrs_tmp;
@@ -308,11 +370,11 @@ struct DistMat
                 int prow = n->nbrs[0]; // parent in etree = first non zero in column
                 n->parent = prow;
                 auto &p = nodes.at(prow);
-                for (auto i : n->rows_tmp)
+                for (auto i : rows_tmp.at(k))
                 {
                     if (i >= p->end)
                     {
-                        p->rows_tmp.insert(i);
+                        rows_tmp.at(prow).insert(i);
                     }
                 }
                 p->children.push_back(k);
@@ -324,9 +386,14 @@ struct DistMat
                 roots.push_back(k);
             }
         }
-        printf("%lu roots (should be 1)\n", roots.size());
+        printf("%lu roots (should be 1 in general)\n", roots.size());
+        return roots;
+    }
+
+    // Fill node2rank[k] with a rank for supernode k
+    void distribute_tree(vector<int> &roots) {
         queue<int> toexplore;
-        map<int, range> node2range;
+        vector<range> node2range(nblk);
         for (auto k : roots)
         {
             node2range[k] = {0, comm_size(), 0};
@@ -388,18 +455,23 @@ struct DistMat
             }
             // if(comm_rank() == 0) printf(" childrnode2range size %d\n", node2range.size());
         }
-        node2rank.resize(nblk);
+        node2rank = vector<int>(nblk, 0);
         for (int i = 0; i < nblk; i++)
         {
             node2rank[i] = node2range.at(i).k;
             // if(comm_rank() == 0)
             // printf("[%d] Node %d - %d\n", comm_rank(), i, node2rank[i]);
         }
-        // Allocate blocs
+    }
+
+    // Allocate blocks[i,k]->A() when column k resides on this rank
+    // Fill blocks[i,k]->A() when column k resides on this rank
+    void allocate_blocks(VectorXi& i2irow) {
         for (int k = 0; k < nblk; k++)
         {
             if (col2rank(k) == comm_rank())
             {
+                // Allocate
                 auto &n = nodes.at(k);
                 auto &b = blocs.at({k, k});
                 b->matA = make_unique<MatrixXd>(n->size, n->size);
@@ -410,14 +482,6 @@ struct DistMat
                     b->matA = make_unique<MatrixXd>(b->rows.size(), n->size);
                     b->A()->setZero();
                 }
-            }
-        }
-        // Fill with A
-        for (int k = 0; k < nblk; k++)
-        {
-            if (col2rank(k) == comm_rank())
-            {
-                auto &n = nodes.at(k);
                 // Fill
                 for (int j = n->start; j < n->end; j++)
                 {
@@ -438,8 +502,38 @@ struct DistMat
                         }
                     }
                 }
+
             }
         }
+    }
+
+    DistMat(std::string filename, int nlevels, int block_size) : nblk(-1), gemm_us(0), trsm_us(0), potf_us(0), scat_us(0), allo_us(0)
+    {
+        std::cout << "Reading matrix file " << filename << std::endl;
+        // Read matrix
+        A = mmio::sp_mmread<double, int>(filename);
+        // Initialize & prepare
+        int N = A.rows();
+        VectorXi colptr, rowval;
+        get_csc_no_diag(A, &rowval, &colptr);
+        // Partition the matrix
+        VectorXi rangtab;
+        algebraic_partitioning(N, rowval, colptr, nlevels, block_size, &perm, &rangtab, &depth);
+        assert(rangtab.size() > 0);
+        assert(perm.size() == N);
+        nblk = rangtab.size()-1;
+        // Permute matrix
+        App = perm.asPermutation() * A * perm.asPermutation().transpose();
+        // Create all supernodes
+        // i2irow maps row/col -> irow (row/col -> block)
+        VectorXi i2irow = build_supernodes(rangtab);
+        // Compute elimination tree & neighbors
+        // roots are the etree roots
+        vector<int> roots = build_tree(i2irow);
+        // Distribute the tree
+        distribute_tree(roots);
+        // Allocate blocs
+        allocate_blocks(i2irow);
     }
 
     void print()
@@ -547,24 +641,24 @@ struct DistMat
         t0 = wctime();
         if (jrow == irow)
         { // Aii_ = -Ais Ais^T
-            auto I = get_subids(blocs.at({irow, krow})->rows, blocs.at({irow, jrow})->rows);
+            auto Iids = get_subids(blocs.at({irow, krow})->rows, blocs.at({irow, jrow})->rows);
             for (int j = 0; j < Aij_acc->cols(); j++)
             {
                 for (int i = j; i < Aij_acc->rows(); i++)
                 {
-                    (*Aij)(I[i], I[j]) += (*Aij_acc)(i, j);
+                    (*Aij)(Iids[i], Iids[j]) += (*Aij_acc)(i, j);
                 }
             }
         }
         else
         { // Aij_ = -Ais Ajs^T
-            auto I = get_subids(blocs.at({irow, krow})->rows, blocs.at({irow, jrow})->rows);
-            auto J = get_subids(blocs.at({jrow, krow})->rows, blocs.at({irow, jrow})->cols);
+            auto Iids = get_subids(blocs.at({irow, krow})->rows, blocs.at({irow, jrow})->rows);
+            auto Jids = get_subids(blocs.at({jrow, krow})->rows, blocs.at({irow, jrow})->cols);
             for (int j = 0; j < Aij_acc->cols(); j++)
             {
                 for (int i = 0; i < Aij_acc->rows(); i++)
                 {
-                    (*Aij)(I[i], J[j]) += (*Aij_acc)(i, j);
+                    (*Aij)(Iids[i], Jids[j]) += (*Aij_acc)(i, j);
                 }
             }
         }
@@ -644,7 +738,7 @@ struct DistMat
                 }
             })
             .set_name([&](int k) {
-                return "[" + to_string(my_rank) + "]_potf_" + to_string(k) + "_lvl" + to_string(depth[k]);
+                return "[" + to_string(my_rank) + "]_potf_" + to_string(k) + "_lvl" + to_string(depth.at(k));
             })
             .set_priority([](int k) {
                 return 3.0;
@@ -903,10 +997,10 @@ struct DistMat
                 // xn = -Lns xs
                 cblas_dgemv(CblasColMajor, CblasNoTrans, Lns->rows(), Lns->cols(), -1.0, Lns->data(), Lns->rows(), k->xsol.data(), 1, 0.0, xn.data(), 1);
                 // Reduce into xn
-                auto I = get_subids(blocs.at({irow, krow})->rows, blocs.at({irow, irow})->cols);
+                auto Iids = get_subids(blocs.at({irow, krow})->rows, blocs.at({irow, irow})->cols);
                 for (int i = 0; i < xn.size(); i++)
                 {
-                    n->xsol(I[i]) += xn(i);
+                    n->xsol(Iids[i]) += xn(i);
                 }
             }
         }
@@ -921,10 +1015,10 @@ struct DistMat
                 MatrixXd *Lns = blocs.at({irow, krow})->A();
                 VectorXd xn(Lns->rows());
                 // Fetch from xn
-                auto I = get_subids(blocs.at({irow, krow})->rows, blocs.at({irow, irow})->cols);
+                auto Iids = get_subids(blocs.at({irow, krow})->rows, blocs.at({irow, irow})->cols);
                 for (int i = 0; i < xn.size(); i++)
                 {
-                    xn(i) = n->xsol(I[i]);
+                    xn(i) = n->xsol(Iids[i]);
                 }
                 // xs -= Lns^T xn
                 cblas_dgemv(CblasColMajor, CblasTrans, Lns->rows(), Lns->cols(), -1.0, Lns->data(), Lns->rows(), xn.data(), 1, 1.0, k->xsol.data(), 1);
@@ -955,7 +1049,12 @@ void run_cholesky()
         VectorXd x = dm.solve(b);
         double res = (A * x - b).norm() / b.norm();
         printf("|Ax-b|/|b| = %e\n", res);
-        assert(res <= 1e-12);
+        if(res <= 1e-12) {
+            printf("Test ok!");
+        } else {
+            printf("Error!");
+            exit(1);
+        }
     }
 }
 
