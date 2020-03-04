@@ -101,7 +101,11 @@ void gemm(const int matrix_size, const int n_threads, const int verb, const bool
         assert(rank_k == 0);
         ttor::view<double> A_view = make_view(&A_ij);
         int dest = rank_ijk_to_rank(rank_i, rank_j, rank_j);
-        send_Aij_am->send(dest, A_view);
+        if(dest != rank) {
+            send_Aij_am->send(dest, A_view);
+        } else {
+            bcst_Aij.fulfill_promise(0);
+        }
     }).set_indegree([&](int ijk) {
         return 1;
     }).set_mapping([&](int ijk) {
@@ -113,7 +117,11 @@ void gemm(const int matrix_size, const int n_threads, const int verb, const bool
         assert(rank_k == 0);
         ttor::view<double> B_view = make_view(&B_ij);
         int dest = rank_ijk_to_rank(rank_i, rank_j, rank_i);
-        send_Bij_am->send(dest, B_view);
+        if(dest != rank) {
+            send_Bij_am->send(dest, B_view);
+        } else {
+            bcst_Bij.fulfill_promise(0);
+        }
     }).set_indegree([&](int ijk) {
         return 1;
     }).set_mapping([&](int ijk) {
@@ -138,7 +146,11 @@ void gemm(const int matrix_size, const int n_threads, const int verb, const bool
         ttor::view<double> A_view = make_view(&A_ij);
         for(int k = 0; k < n_ranks_1d; k++) {
             int dest = rank_ijk_to_rank(rank_i, k, rank_j);
-            bcst_Aij_am->send(dest, A_view);
+            if(dest != rank) {
+                bcst_Aij_am->send(dest, A_view);
+            } else {
+                gemm_Cijk.fulfill_promise(0);
+            }
         }
     }).set_indegree([&](int ij) {
         return 1;
@@ -152,7 +164,11 @@ void gemm(const int matrix_size, const int n_threads, const int verb, const bool
         ttor::view<double> B_view = make_view(&B_ij);
         for(int k = 0; k < n_ranks_1d; k++) {
             int dest = rank_ijk_to_rank(k, rank_j, rank_i);
-            bcst_Bij_am->send(dest, B_view);
+            if(dest != rank) {
+                bcst_Bij_am->send(dest, B_view);
+            } else {
+                gemm_Cijk.fulfill_promise(0);
+            }
         }
     }).set_indegree([&](int ijk) {
         return 1;
@@ -163,8 +179,7 @@ void gemm(const int matrix_size, const int n_threads, const int verb, const bool
     /** GEMM **/
 
     auto accu_Cijk_am = comm.make_active_msg([&](ttor::view<double>& Cijk) {
-        Eigen::MatrixXd C_ijk_tmp = make_from_view(Cijk, block_size);
-        C_ij += C_ijk_tmp;
+        C_ij += make_from_view(Cijk, block_size);
     });
 
     // (i,j,k) compute C_ijk = A_ik * B_kj
@@ -215,9 +230,12 @@ void gemm(const int matrix_size, const int n_threads, const int verb, const bool
         if(rank == 0) {
             Eigen::MatrixXd A_ref = Eigen::MatrixXd::NullaryExpr(matrix_size, matrix_size, val_global);
             Eigen::MatrixXd B_ref = Eigen::MatrixXd::NullaryExpr(matrix_size, matrix_size, val_global);
+            ttor::timer t0 = ttor::wctime();
             Eigen::MatrixXd C_ref = A_ref * B_ref;
+            ttor::timer t1 = ttor::wctime();
             double error = (C_ref - C_test).norm() / C_ref.norm();
             printf("GEMM error %e\n", error);
+            printf("Reference code took %e\n", ttor::elapsed(t0, t1));
             assert(error <= 1e-12);
         }
     }
