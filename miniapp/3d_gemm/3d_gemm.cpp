@@ -95,6 +95,7 @@ void gemm(const int matrix_size, const int verb, const bool test)
     }
     Eigen::MatrixXd C_ijk = Eigen::MatrixXd::Zero(block_size, block_size);
     vector<Eigen::MatrixXd> C_ijks(n_ranks_1d, Eigen::MatrixXd::Zero(block_size, block_size));
+    MPI_Barrier(MPI_COMM_WORLD);
 
     /**
      * Initialize the runtime structures
@@ -262,25 +263,23 @@ void gemm(const int matrix_size, const int verb, const bool test)
         return true;
     }).set_name([&](int ijk) { return "accu_C_" + to_string(rank_ijk); });
 
-    MPI_Barrier(MPI_COMM_WORLD);
-    if(rank == 0) printf("Starting 3D Gemm...\n");
+    printf("Starting 3D Gemm...\n");
     ttor::timer t0 = ttor::wctime();
     if(rank_k == 0) {
         send_Aij.fulfill_promise(0);
         send_Bij.fulfill_promise(0);
     }
     tp.join();
-    MPI_Barrier(MPI_COMM_WORLD);
     ttor::timer t1 = ttor::wctime();
-    if(rank == 0) printf("Done\n");
-    if(rank == 0) printf("Elapsed time: %e\n", ttor::elapsed(t0, t1));
-
+    printf("Done\n");
+    printf("total_time,%e\n", ttor::elapsed(t0, t1));
     printf("gemm,%e\n", gemm_us_t.load() * 1e-6);
     printf("accu,%e\n", accu_us_t.load() * 1e-6);
     printf("send_copy,%e\n", send_copy_us_t.load() * 1e-6);
     printf("bcst_copy,%e\n", bcst_copy_us_t.load() * 1e-6);
     printf("accu_copy,%e\n", accu_copy_us_t.load() * 1e-6);
 
+    MPI_Barrier(MPI_COMM_WORLD);
     if(test && rank_k == 0) {
         // Send all to 0
         int n_received = 0;
