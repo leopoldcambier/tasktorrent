@@ -14,7 +14,7 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(DEPS)
 	$(CC) -o $@ -c $< $(CFLAGS) $(INCLUDE)
 
 3d_gemm: 3d_gemm.cpp $(OBJ)
-	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LFLAGS) -DEIGEN_USE_LAPACKE
+	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LFLAGS)
 
 clean:
 	rm -f 3d_gemm
