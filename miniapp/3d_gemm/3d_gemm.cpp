@@ -31,6 +31,19 @@ Eigen::MatrixXd make_from_view(ttor::view<double> A, int nrows) {
     return Add;
 }
 
+void copy_from_view(Eigen::MatrixXd* dest, const ttor::view<double> A) {
+    assert(dest->size() == A.size());
+    memcpy(dest->data(), A.data(), sizeof(double) * A.size());
+}
+
+void accumulate(Eigen::MatrixXd* dest, const Eigen::MatrixXd* src) {
+    assert(dest->size() == src->size());
+    #pragma omp parallel for
+    for(int k = 0; k < dest->size(); k++) {
+        (*dest)(k) += (*src)(k);
+    }
+}
+
 std::string to_string(int2 ij) {
     return to_string(ij[0]) + "_" + to_string(ij[1]);
 }
@@ -39,8 +52,9 @@ std::string to_string(int3 ijk) {
     return to_string(ijk[0]) + "_" + to_string(ijk[1]) + "_" + to_string(ijk[2]);
 }
 
-void gemm(const int matrix_size, const int n_threads, const int verb, const bool test)
+void gemm(const int matrix_size, const int verb, const bool test)
 {
+    const int n_threads = 1; // Shared memory parallelism is in BLAS 
     const int rank = ttor::comm_rank();
     const int n_ranks = ttor::comm_size();
     const int n_ranks_1d = static_cast<int>(round(pow(n_ranks, 1.0/3.0)));
@@ -59,21 +73,32 @@ void gemm(const int matrix_size, const int n_threads, const int verb, const bool
     assert(rank_ijk_to_rank(rank_i, rank_j, rank_k) == rank);
 
     /**
-     *  Initializes the matrix
+     * Record timings
      **/
-    Eigen::MatrixXd A_ij;
-    Eigen::MatrixXd B_ij;
-    Eigen::MatrixXd C_ij;
+    std::atomic<long long int> send_copy_us_t(0);
+    std::atomic<long long int> bcst_copy_us_t(0);
+    std::atomic<long long int> accu_copy_us_t(0);
+    std::atomic<long long int> gemm_us_t(0);
+    std::atomic<long long int> accu_us_t(0);
+
+    /**
+     *  Initializes the matrices
+     **/
+    Eigen::MatrixXd A_ij = Eigen::MatrixXd::Zero(block_size, block_size);
+    Eigen::MatrixXd B_ij = Eigen::MatrixXd::Zero(block_size, block_size);
+    Eigen::MatrixXd C_ij = Eigen::MatrixXd::Zero(block_size, block_size);
     auto val_global = [](int i, int j) { return static_cast<double>(1 + i + j); };
     if(rank_k == 0) {
         auto val = [&](int i, int j) { return val_global(rank_i * block_size + i, rank_j * block_size + j); };
         A_ij = Eigen::MatrixXd::NullaryExpr(block_size, block_size, val);
         B_ij = Eigen::MatrixXd::NullaryExpr(block_size, block_size, val);
-        C_ij = Eigen::MatrixXd::Zero(block_size, block_size);
     }
-    Eigen::MatrixXd C_ijk;
+    Eigen::MatrixXd C_ijk = Eigen::MatrixXd::Zero(block_size, block_size);
+    vector<Eigen::MatrixXd> C_ijks(n_ranks_1d, Eigen::MatrixXd::Zero(block_size, block_size));
 
-    // Initialize the runtime structures
+    /**
+     * Initialize the runtime structures
+     **/
     ttor::Communicator comm(verb);
     ttor::Threadpool tp(n_threads, &comm, verb, "Wk_Gemm_" + to_string(rank) + "_");
     ttor::Taskflow<int> send_Aij(&tp, verb);  // (i,j,0) sends A_ij to (i,j,j) for all i,j
@@ -81,16 +106,25 @@ void gemm(const int matrix_size, const int n_threads, const int verb, const bool
     ttor::Taskflow<int> bcst_Aij(&tp, verb);  // (i,j,j) sends A_ij along j to all (i,*,j) for all i,j
     ttor::Taskflow<int> bcst_Bij(&tp, verb);  // (i,j,i) sends B_ij along i to all (*,j,i) for all i,j
     ttor::Taskflow<int> gemm_Cijk(&tp, verb); // (i,j,k) compute C_ijk = A_ik * B_kj, send for reduction on (i,j,0)
+    ttor::Taskflow<int> accu_Cijk(&tp, verb); // (i,j,0) accumulates C_ijk
 
-    /** Send **/
+    /** 
+     * Send
+     **/
 
     auto send_Aij_am = comm.make_active_msg([&](ttor::view<double>& Aij) {
-        A_ij = make_from_view(Aij, block_size);
+        ttor::timer t0 = ttor::wctime();
+        copy_from_view(&A_ij, Aij);
+        ttor::timer t1 = ttor::wctime();
+        send_copy_us_t += 1e6 * ttor::elapsed(t0, t1);
         bcst_Aij.fulfill_promise(0);
     });
 
     auto send_Bij_am = comm.make_active_msg([&](ttor::view<double>& Bij) {
-        B_ij = make_from_view(Bij, block_size);
+        ttor::timer t0 = ttor::wctime();
+        copy_from_view(&B_ij, Bij);
+        ttor::timer t1 = ttor::wctime();
+        send_copy_us_t += 1e6 * ttor::elapsed(t0, t1);
         bcst_Bij.fulfill_promise(0);
     });
 
@@ -126,16 +160,24 @@ void gemm(const int matrix_size, const int n_threads, const int verb, const bool
         return 0;
     }).set_name([&](int ijk) { return "send_B_" + to_string(rank_ijk); });
 
-    /** Broadcast **/
+    /** 
+     * Broadcast
+     **/
 
     auto bcst_Aij_am = comm.make_active_msg([&](ttor::view<double>& Aij) {
-        A_ij = make_from_view(Aij, block_size);
+        ttor::timer t0 = ttor::wctime();
+        copy_from_view(&A_ij, Aij);
         gemm_Cijk.fulfill_promise(0);
+        ttor::timer t1 = ttor::wctime();
+        bcst_copy_us_t += 1e6 * ttor::elapsed(t0, t1);
     });
 
     auto bcst_Bij_am = comm.make_active_msg([&](ttor::view<double>& Bij) {
-        B_ij = make_from_view(Bij, block_size);
+        ttor::timer t0 = ttor::wctime();
+        copy_from_view(&B_ij, Bij);
         gemm_Cijk.fulfill_promise(0);
+        ttor::timer t1 = ttor::wctime();
+        bcst_copy_us_t += 1e6 * ttor::elapsed(t0, t1);
     });
 
     // (i,j,j) sends A_ij along j to all (i,*,j) for all i,j
@@ -174,25 +216,51 @@ void gemm(const int matrix_size, const int n_threads, const int verb, const bool
         return 0;
     }).set_name([&](int ijk) { return "bcast_B_" + to_string(rank_ijk); });
 
-    /** GEMM **/
+    /** 
+     * GEMM
+     **/
 
-    auto accu_Cijk_am = comm.make_active_msg([&](ttor::view<double>& Cijk) {
-        C_ij += make_from_view(Cijk, block_size);
+    auto accu_Cijk_am = comm.make_active_msg([&](ttor::view<double>& Cijk, int& k) {
+        ttor::timer t0 = ttor::wctime();
+        copy_from_view(&C_ijks[k], Cijk);
+        accu_Cijk.fulfill_promise(k);
+        ttor::timer t1 = ttor::wctime();
+        accu_copy_us_t += 1e6 * ttor::elapsed(t0, t1);
     });
 
     // (i,j,k) compute C_ijk = A_ik * B_kj
     gemm_Cijk.set_task([&](int ijk){
         // A_ij is actually A_(rank_i, rank_k) now
         // B_ij is actually B_(rank_k, rank_j) now
-        Eigen::MatrixXd C_ijk = A_ij * B_ij; 
+        ttor::timer t0 = ttor::wctime();
+        C_ijk.noalias() += A_ij * B_ij;
+        ttor::timer t1 = ttor::wctime();
+        gemm_us_t += 1e6 * ttor::elapsed(t0, t1);
         auto C_ijk_view = make_view(&C_ijk);
         int dest = rank_ijk_to_rank(rank_i, rank_j, 0);
-        accu_Cijk_am->send(dest, C_ijk_view);
+        int k = rank_k;
+        accu_Cijk_am->send(dest, C_ijk_view, k);
     }).set_indegree([&](int ij) {
         return 2;
     }).set_mapping([&](int ij) {
         return 0;
     }).set_name([&](int ijk) { return "gemm_C_" + to_string(rank_ijk); });
+
+    /** 
+     * ACCUMULATE
+     **/
+    accu_Cijk.set_task([&](int k){
+        ttor::timer t0 = ttor::wctime();
+        accumulate(&C_ij, &C_ijks[k]);
+        ttor::timer t1 = ttor::wctime();
+        accu_us_t += 1e6 * ttor::elapsed(t0, t1);
+    }).set_indegree([&](int ij) {
+        return 1;
+    }).set_mapping([&](int ij) {
+        return 0;
+    }).set_binding([&](int k) {
+        return true;
+    }).set_name([&](int ijk) { return "accu_C_" + to_string(rank_ijk); });
 
     MPI_Barrier(MPI_COMM_WORLD);
     if(rank == 0) printf("Starting 3D Gemm...\n");
@@ -206,6 +274,12 @@ void gemm(const int matrix_size, const int n_threads, const int verb, const bool
     ttor::timer t1 = ttor::wctime();
     if(rank == 0) printf("Done\n");
     if(rank == 0) printf("Elapsed time: %e\n", ttor::elapsed(t0, t1));
+
+    printf("gemm,%e\n", gemm_us_t.load() * 1e-6);
+    printf("accu,%e\n", accu_us_t.load() * 1e-6);
+    printf("send_copy,%e\n", send_copy_us_t.load() * 1e-6);
+    printf("bcst_copy,%e\n", bcst_copy_us_t.load() * 1e-6);
+    printf("accu_copy,%e\n", accu_copy_us_t.load() * 1e-6);
 
     if(test && rank_k == 0) {
         // Send all to 0
@@ -249,7 +323,6 @@ int main(int argc, char **argv)
     assert(prov == req);
 
     int matrix_size = 128;
-    int n_threads = 2;
     int verb = 0;
     bool test = true;
 
@@ -258,25 +331,20 @@ int main(int argc, char **argv)
         matrix_size = atoi(argv[1]);
         assert(matrix_size > 0);
     }
-
-    if (argc >= 3) {
-        n_threads = atoi(argv[2]);
-        assert(n_threads > 0);
-    }
     
-    if (argc >= 4) {
-        verb = atoi(argv[3]);
+    if (argc >= 3) {
+        verb = atoi(argv[2]);
         assert(verb >= 0);
     }
 
-    if (argc >= 5) {
-        test = static_cast<bool>(atoi(argv[4]));
+    if (argc >= 4) {
+        test = static_cast<bool>(atoi(argv[3]));
     }
 
-    if(ttor::comm_rank() == 0) printf("Usage: ./3d_gemm matrix_size n_threads verb test\n");
-    if(ttor::comm_rank() == 0) printf("Arguments: matrix_size (global matrix size) %d, n_threads %d, verb %d, test %d\n", matrix_size, n_threads, verb, test);
+    if(ttor::comm_rank() == 0) printf("Usage: ./3d_gemm matrix_size verb test\n");
+    if(ttor::comm_rank() == 0) printf("Arguments: matrix_size (global matrix size) %d, verb %d, test %d\n", matrix_size, verb, test);
 
-    gemm(matrix_size, n_threads, verb, test);
+    gemm(matrix_size, verb, test);
 
     MPI_Finalize();
 }
