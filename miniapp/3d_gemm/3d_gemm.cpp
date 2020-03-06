@@ -308,17 +308,22 @@ void gemm(const int N, const int Nt, const int n_threads, const int verb, const 
     if(test && rank_k == 0) {
         // Send all to 0
         int n_received = 0;
-        int n_expected = (rank == 0 ? n_ranks_1d * n_ranks_1d : 0);
+        int n_expected = (rank == 0 ? n * n * n_ranks_1d * n_ranks_1d : 0);
         Eigen::MatrixXd C_test = Eigen::MatrixXd::Zero(N, N);
         ttor::Communicator comm(verb);
-        auto am = comm.make_active_msg([&](ttor::view<double>& A, int& rank_i_from, int& rank_j_from){
-            C_test.block(rank_i_from * Nr, rank_j_from * Nr, Nr, Nr) = make_from_view(A, Nr);
+        auto am = comm.make_active_msg([&](ttor::view<double>& A, int& rank_i_from, int& rank_j_from, int& sub_i, int& sub_j){
+            C_test.block(rank_i_from * Nr + sub_i * Nt, rank_j_from * Nr + sub_j * Nt, Nt, Nt) = make_from_view(A, Nt);
             n_received++;
         });
-        auto C_view = make_view(&C_ij);
         int rank_i_from = rank_i;
         int rank_j_from = rank_j;
-        am->send(0, C_view, rank_i_from, rank_j_from);
+        for(int sub_i = 0; sub_i < n; sub_i++) {
+            for(int sub_j = 0; sub_j < n; sub_j++) {
+                Eigen::MatrixXd C_ij_tmp = C_ij.block(sub_i * Nt, sub_j * Nt, Nt, Nt);
+                auto C_view = make_view(&C_ij_tmp);
+                am->send(0, C_view, rank_i_from, rank_j_from, sub_i, sub_j);
+            }
+        }
         while((!comm.is_done()) || (n_received < n_expected)) {
             comm.progress();
         }
@@ -330,7 +335,7 @@ void gemm(const int N, const int Nt, const int n_threads, const int verb, const 
             Eigen::MatrixXd C_ref = A_ref * B_ref;
             ttor::timer t1 = ttor::wctime();
             double error = (C_ref - C_test).norm() / C_ref.norm();
-            printf("GEMM error %e\n", error);
+            printf("\n==> GEMM error %e\n\n", error);
             printf("Reference code took %e\n", ttor::elapsed(t0, t1));
             assert(error <= 1e-12);
         }
