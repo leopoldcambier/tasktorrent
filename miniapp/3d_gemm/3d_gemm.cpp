@@ -161,6 +161,7 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     ttor::Logger log(1000000);
     if(logfile.size() > 0) {
         tp.set_logger(&log);
+        comm.set_logger(&log);
     }
 
     /** 
@@ -197,6 +198,8 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
         return 1;
     }).set_mapping([&](int2 sub_ij) {
         return (sub_ij[0] + n * sub_ij[1]) % n_threads;
+    }).set_priority([&](int2){
+        return 3.0;
     }).set_name([&](int2 sub_ij) { return "send_A_" + to_string(sub_ij) + "_" + to_string(rank_ijk); });
 
     // (i,j,0) sends B_ij to (i,j,i) for all i,j
@@ -217,6 +220,8 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
         return 1;
     }).set_mapping([&](int2 sub_ij) {
         return (sub_ij[0] + n * sub_ij[1]) % n_threads;
+    }).set_priority([&](int2){
+        return 3.0;
     }).set_name([&](int2 sub_ij) { return "send_B_" + to_string(sub_ij) + "_" + to_string(rank_ijk); });
 
     /** 
@@ -257,6 +262,8 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
         return 1;
     }).set_mapping([&](int2 sub_ij) {
         return (sub_ij[0] + n * sub_ij[1]) % n_threads;
+    }).set_priority([&](int2){
+        return 2.0;
     }).set_name([&](int2 sub_ij) { return "bcast_A_" + to_string(sub_ij) + "_" + to_string(rank_ijk); });
 
     // (i,j,i) sends B_ij along i to all (*,j,i) for all i,j
@@ -279,6 +286,8 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
         return 1;
     }).set_mapping([&](int2 sub_ij) {
         return (sub_ij[0] + n * sub_ij[1]) % n_threads;
+    }).set_priority([&](int2){
+        return 2.0;
     }).set_name([&](int2 sub_ij) { return "bcast_B_" + to_string(sub_ij) + "_" + to_string(rank_ijk); });
 
     /** 
@@ -318,6 +327,8 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
         return sub_ijk[2] == 0 ? 2 : 3; // 2 A_ik and B_kj blocks, + previous gemm
     }).set_mapping([&](int3 sub_ijk) {
         return (sub_ijk[0] + sub_ijk[1] * n + sub_ijk[2] * n * n) % n_threads;
+    }).set_priority([&](int3){
+        return 1.0;
     }).set_name([&](int3 sub_ijk) { return "gemm_C_" + to_string(sub_ijk) + "_" + to_string(rank_ijk); });
 
     // (i,j,k) compute C_ijk = A_ik * B_kj
@@ -333,6 +344,8 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
         return (sub_ij_from[0] + n * sub_ij_from[1]) % n_threads;
     }).set_binding([&](int3) {
         return true;
+    }).set_priority([&](int3){
+        return 0.0;
     }).set_name([&](int3 sub_ij_from) { return "accu_C_" + to_string(sub_ij_from) + "_" + to_string(rank_ijk); });
 
     printf("Starting 3D Gemm...\n");
