@@ -74,7 +74,7 @@ std::string to_string(int3 ijk) {
  * 
  * There are n sub blocks on a given rank
  */
-void gemm(const int N, const int Nt, const int n_threads, const int verb, const bool test)
+void gemm(const int N, const int Nt, const int n_threads, std::string logfile, const int verb, const bool test)
 {
     const int rank = ttor::comm_rank();
     const int n_ranks = ttor::comm_size();
@@ -143,6 +143,12 @@ void gemm(const int N, const int Nt, const int n_threads, const int verb, const 
     ttor::Taskflow<int2> bcst_Bij(&tp, verb);  // (i,j,i) sends B_ij along i to all (*,j,i) for all i,j
     // gemm is indexed by int3, which are the sub blocks
     ttor::Taskflow<int3> gemm_Cijk(&tp, verb); // (i,j,k) compute C_ijk = A_ik * B_kj, send for accumulation reduction on (i,j,0)
+
+    ttor::Logger log(1000000);
+    if(logfile.size() > 0) {
+        tp.set_logger(&log);
+    }
+
     /** 
      * Send
      **/
@@ -303,6 +309,14 @@ void gemm(const int N, const int Nt, const int n_threads, const int verb, const 
     printf("gemm_copy_us_t,%e\n",gemm_copy_us_t.load() * 1e-6);
     printf("accu_am_us_t,%e\n",accu_am_us_t.load() * 1e-6);
 
+    if(logfile.size() > 0) {
+        std::ofstream logstream;
+        std::string filename = logfile + ".log." + to_string(rank);
+        printf("Saving log to %s\n", filename.c_str());
+        logstream.open(filename);
+        logstream << log;
+        logstream.close();
+    }
 
     MPI_Barrier(MPI_COMM_WORLD);
     if(test && rank_k == 0) {
@@ -356,6 +370,7 @@ int main(int argc, char **argv)
     int n_threads = 1;
     int verb = 0;
     bool test = true;
+    std::string logfile = "";
 
     if (argc >= 2)
     {
@@ -375,18 +390,22 @@ int main(int argc, char **argv)
     }
 
     if (argc >= 5) {
-        verb = atoi(argv[4]);
-        assert(verb >= 0);
+        logfile = argv[4];
     }
 
     if (argc >= 6) {
-        test = static_cast<bool>(atoi(argv[5]));
+        verb = atoi(argv[5]);
+        assert(verb >= 0);
     }
 
-    if(ttor::comm_rank() == 0) printf("Usage: ./3d_gemm N Nt n_threads verb test\n");
-    if(ttor::comm_rank() == 0) printf("Arguments: N (global matrix size) %d, Nt (smallest block size) %d, n_threads %d, verb %d, test %d\n", N, Nt, n_threads, verb, test);
+    if (argc >= 7) {
+        test = static_cast<bool>(atoi(argv[6]));
+    }
 
-    gemm(N, Nt, n_threads, verb, test);
+    if(ttor::comm_rank() == 0) printf("Usage: ./3d_gemm N Nt n_threads logfile verb test\n");
+    if(ttor::comm_rank() == 0) printf("Arguments: N (global matrix size) %d, Nt (smallest block size) %d, n_threads %d, logfile %s, verb %d, test %d\n", N, Nt, n_threads, logfile.c_str(), verb, test);
+
+    gemm(N, Nt, n_threads, logfile, verb, test);
 
     MPI_Finalize();
 }
