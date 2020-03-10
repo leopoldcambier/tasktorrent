@@ -8,16 +8,14 @@ namespace ttor
 int comm_rank()
 {
     int world_rank;
-    int err = MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-    assert(err == MPI_SUCCESS);
+    TASKTORRENT_MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &world_rank));
     return world_rank;
 }
 
 int comm_size()
 {
     int world_size;
-    int err = MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-    assert(err == MPI_SUCCESS);
+    TASKTORRENT_MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &world_size));
     return world_size;
 }
 
@@ -25,8 +23,7 @@ string processor_name()
 {
     char name[MPI_MAX_PROCESSOR_NAME];
     int size;
-    int err = MPI_Get_processor_name(name, &size);
-    assert(err == MPI_SUCCESS);
+    TASKTORRENT_MPI_CHECK(MPI_Get_processor_name(name, &size));
     return string(name);
 }
 
@@ -63,8 +60,7 @@ void Communicator::Isend_message(const unique_ptr<message> &m)
     if (verb > 1)
         printf("[%2d] -> %d: sending msg [tag %d], %lu B, rqst %p\n", comm_rank(), m->other, m->tag, m->buffer.size(), (void*)&(m->request));
 
-    int err = MPI_Isend(m->buffer.data(), m->buffer.size(), MPI_BYTE, m->other, m->tag, MPI_COMM_WORLD, &(m->request));
-    assert(err == MPI_SUCCESS);
+    TASKTORRENT_MPI_CHECK(MPI_Isend(m->buffer.data(), m->buffer.size(), MPI_BYTE, m->other, m->tag, MPI_COMM_WORLD, &(m->request)));
 
     if (verb > 4)
         print_bytes(m->buffer);
@@ -103,8 +99,7 @@ void Communicator::test_Isent_messages()
     for (auto &m : messages_Isent)
     {
         int flag = 0;
-        int err = MPI_Test(&m->request, &flag, MPI_STATUS_IGNORE);
-        assert(err == MPI_SUCCESS);
+        TASKTORRENT_MPI_CHECK(MPI_Test(&m->request, &flag, MPI_STATUS_IGNORE));
         if (flag) // operation completed
         {
             if (verb > 1)
@@ -124,13 +119,11 @@ bool Communicator::probe_Irecv_message(unique_ptr<message> &m)
 
     MPI_Status status;
     int size, flag;
-    int err = MPI_Iprobe(MPI_ANY_SOURCE, tag, MPI_COMM_WORLD, &flag, &status);
-    assert(err == MPI_SUCCESS);
+    TASKTORRENT_MPI_CHECK(MPI_Iprobe(MPI_ANY_SOURCE, tag, MPI_COMM_WORLD, &flag, &status));
     if (!flag)
         return false;
 
-    err = MPI_Get_count(&status, MPI_BYTE, &size);
-    assert(err == MPI_SUCCESS);
+    TASKTORRENT_MPI_CHECK(MPI_Get_count(&status, MPI_BYTE, &size));
     int mpi_tag = status.MPI_TAG;
     assert(mpi_tag == tag);
     int source = status.MPI_SOURCE;
@@ -140,8 +133,7 @@ bool Communicator::probe_Irecv_message(unique_ptr<message> &m)
     if (verb > 1)
         printf("[%2d] <- %d: receiving msg [tag %d], %d B, rqst %p\n", comm_rank(), source, mpi_tag, size, (void*)&m->request);
 
-    err = MPI_Irecv(m->buffer.data(), m->buffer.size(), MPI_BYTE, source, mpi_tag, MPI_COMM_WORLD, &m->request);
-    assert(err == MPI_SUCCESS);
+    TASKTORRENT_MPI_CHECK(MPI_Irecv(m->buffer.data(), m->buffer.size(), MPI_BYTE, source, mpi_tag, MPI_COMM_WORLD, &m->request));
 
     return true;
 }
@@ -156,8 +148,7 @@ void Communicator::process_Ircvd_messages()
         if (m->other != self)
         {
             /* Real remote message */
-            int err = MPI_Test(&m->request, &flag, MPI_STATUS_IGNORE);
-            assert(err == MPI_SUCCESS);
+            TASKTORRENT_MPI_CHECK(MPI_Test(&m->request, &flag, MPI_STATUS_IGNORE));
         }
         else
         {
@@ -232,8 +223,7 @@ void Communicator::recv_process()
         if (success)
         {
             // (2) Wait and then process message
-            int err = MPI_Wait(&m->request, MPI_STATUS_IGNORE);
-            assert(err == MPI_SUCCESS);
+            TASKTORRENT_MPI_CHECK(MPI_Wait(&m->request, MPI_STATUS_IGNORE));
             process_message(m);
             break;
         }
