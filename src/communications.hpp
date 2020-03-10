@@ -30,8 +30,8 @@
 #define TASKTORRENT_MPI_CHECK( call ) do { \
     int err = call; \
     if (err != MPI_SUCCESS) { \
-        fprintf(stderr, "TaskTorrent: MPI error %d in file %s at line %i\n", \
-              err, __FILE__, __LINE__); \
+        fprintf(stderr, "TaskTorrent: MPI error %d in file %s at line %i in function %s\n", \
+              err, __FILE__, __LINE__, __func__); \
         MPI_Finalize(); \
         exit(1); \
     }   } while(0)
