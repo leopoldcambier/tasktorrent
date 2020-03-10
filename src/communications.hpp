@@ -314,7 +314,7 @@ void ActiveMsg<Ps...>::named_send(int dest, string name, Ps &... ps)
 }
 
 template <typename... Ps>
-ActiveMsg<Ps...>::~ActiveMsg(){};
+ActiveMsg<Ps...>::~ActiveMsg(){}
 
 template <typename... Ps>
 ActiveMsg<Ps...> *Communicator::make_active_msg(function<void(Ps &...)> fun)
