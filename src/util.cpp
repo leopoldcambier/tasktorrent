@@ -40,8 +40,8 @@ namespace ttor {
         end = wctime();
     }
 
-    Logger::Logger(int N) : origin(wctime()), printed_warning(false), i(0), events(N) {};
-    Logger::Logger() : origin(wctime()), printed_warning(false), i(0), events(0) {};
+    Logger::Logger(int N) : origin(wctime()), printed_warning(false), i(0), events(N) {}
+    Logger::Logger() : origin(wctime()), printed_warning(false), i(0), events(0) {}
     void Logger::add_event(std::unique_ptr<Event> e) {
         int id = (i++); // atomic
         if(id < int(events.size())) {
@@ -75,9 +75,9 @@ namespace ttor {
         self_name = s;
         out_deps_name = o;
     }
-    DepsEvent::DepsEvent() {};
-    DepsLogger::DepsLogger(int N) : i(0), printed_warning(false), events(N) {};
-    DepsLogger::DepsLogger() : i(0), printed_warning(false), events(0) {};
+    DepsEvent::DepsEvent() {}
+    DepsLogger::DepsLogger(int N) : i(0), printed_warning(false), events(N) {}
+    DepsLogger::DepsLogger() : i(0), printed_warning(false), events(0) {}
     void DepsLogger::add_event(std::unique_ptr<DepsEvent> e) {
         int id = (i++); // atomic
         if(id < int(events.size())) {

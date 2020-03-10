@@ -24,6 +24,6 @@ template<typename F>
 typename fun_type<decltype(&F::operator())>::type GetStdFunction(F const &func)
 {
     return func;
-};
+}
 
 #endif

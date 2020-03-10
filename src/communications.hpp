@@ -27,6 +27,15 @@
 #include "apply_functions.hpp"
 #include "functional_extra.hpp"
 
+#define TASKTORRENT_MPI_CHECK( call ) do { \
+    int err = call; \
+    if (err != MPI_SUCCESS) { \
+        fprintf(stderr, "TaskTorrent: MPI error %d in file %s at line %i in function %s\n", \
+              err, __FILE__, __LINE__, __func__); \
+        MPI_Finalize(); \
+        exit(1); \
+    }   } while(0)
+
 namespace ttor
 {
 
@@ -305,7 +314,7 @@ void ActiveMsg<Ps...>::named_send(int dest, string name, Ps &... ps)
 }
 
 template <typename... Ps>
-ActiveMsg<Ps...>::~ActiveMsg(){};
+ActiveMsg<Ps...>::~ActiveMsg(){}
 
 template <typename... Ps>
 ActiveMsg<Ps...> *Communicator::make_active_msg(function<void(Ps &...)> fun)
@@ -370,8 +379,7 @@ void Communicator::blocking_send(unique_ptr<message> m)
     messages_queued++;
 
     Isend_message(m);
-    int err = MPI_Wait(&m->request, MPI_STATUS_IGNORE);
-    assert(err == MPI_SUCCESS);
+    TASKTORRENT_MPI_CHECK(MPI_Wait(&m->request, MPI_STATUS_IGNORE));
 }
 
 } // namespace ttor
