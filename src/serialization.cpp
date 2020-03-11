@@ -2,9 +2,9 @@
 
 namespace ttor {
    
-    void print_bytes(const void* ptr, int size) {
+    void print_bytes(const void* ptr, size_t size) {
         const char* ptr_bytes = reinterpret_cast<const char*>(ptr);
-        for(int i = 0; i < size; i++){
+        for(size_t i = 0; i < size; i++){
             printf("%02X ", (unsigned char)ptr_bytes[i]);
         }
         printf("\n");

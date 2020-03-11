@@ -8,9 +8,9 @@ namespace ttor {
     {
         private:
             T* start_; 
-            int size_;
+            size_t size_;
         public:
-            view(T* start, int size) : start_(start), size_(size) {};
+            view(T* start, size_t size) : start_(start), size_(size) {};
             view() : start_(nullptr), size_(0) {};
             T* begin() const {
                 return start_;
