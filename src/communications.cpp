@@ -39,7 +39,7 @@ Communicator::Communicator(int verb_, int tag_) :
     messages_queued(0), 
     messages_processed(0) {}
     
-unique_ptr<message> Communicator::make_active_message(ActiveMsgBase *am, int dest, int size)
+unique_ptr<message> Communicator::make_active_message(ActiveMsgBase *am, int dest, size_t size)
 {
     auto result = find_if(active_messages.begin(), active_messages.end(), [am](const unique_ptr<ActiveMsgBase> &m) { return m.get() == am; });
     assert(result != active_messages.end());
@@ -60,7 +60,13 @@ void Communicator::Isend_message(const unique_ptr<message> &m)
     if (verb > 1)
         printf("[%2d] -> %d: sending msg [tag %d], %lu B, rqst %p\n", comm_rank(), m->other, m->tag, m->buffer.size(), (void*)&(m->request));
 
-    TASKTORRENT_MPI_CHECK(MPI_Isend(m->buffer.data(), m->buffer.size(), MPI_BYTE, m->other, m->tag, MPI_COMM_WORLD, &(m->request)));
+    size_t max_size = static_cast<size_t>(std::numeric_limits<int>::max());
+    if(m->buffer.size() > max_size) {
+        printf("Error in Communicator::Isend_message: requested message size of %zd larger than maximum int %d\n", m->buffer.size(), std::numeric_limits<int>::max());
+        MPI_Finalize();
+        exit(1);
+    }
+    TASKTORRENT_MPI_CHECK(MPI_Isend(m->buffer.data(), static_cast<int>(m->buffer.size()), MPI_BYTE, m->other, m->tag, MPI_COMM_WORLD, &(m->request)));
 
     if (verb > 4)
         print_bytes(m->buffer);
@@ -118,7 +124,7 @@ bool Communicator::probe_Irecv_message(unique_ptr<message> &m)
         printf("[%2d] MPI probe on tag %d\n", comm_rank(), tag);
 
     MPI_Status status;
-    int size, flag;
+    int size, flag; // MPI uses int for message count (size)
     TASKTORRENT_MPI_CHECK(MPI_Iprobe(MPI_ANY_SOURCE, tag, MPI_COMM_WORLD, &flag, &status));
     if (!flag)
         return false;

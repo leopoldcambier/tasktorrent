@@ -116,7 +116,7 @@ private:
     };
 
 public:
-    int size(Values &... vals)
+    size_t size(Values &... vals)
     {
         for_size_buffer sizer;
         auto tup = std::make_tuple(vals...);
@@ -142,12 +142,12 @@ template <>
 class Serializer<>
 {
 public:
-    int size() { return 0; };
+    size_t size() { return 0; };
     void write_buffer(char *){};
     std::tuple<> read_buffer(char *) { return {}; };
 };
 
-void print_bytes(const void *ptr, int size);
+void print_bytes(const void *ptr, size_t size);
 void print_bytes(std::vector<char> buffer);
 } // namespace ttor
 
