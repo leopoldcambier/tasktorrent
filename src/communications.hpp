@@ -183,7 +183,7 @@ public:
      * Message can later be filled with the data to be sent
      * TODO: This should be hidden from public
      */
-    unique_ptr<message> make_active_message(ActiveMsgBase *am, int dest, int size);
+    unique_ptr<message> make_active_message(ActiveMsgBase *am, int dest, size_t size);
 
 public:
 
@@ -287,7 +287,7 @@ template <typename... Ps>
 unique_ptr<message> ActiveMsg<Ps...>::make_message(int dest, Ps &... ps)
 {
     Serializer<Ps...> s;
-    int size = s.size(ps...);
+    size_t size = s.size(ps...);
     unique_ptr<message> m = comm_->make_active_message(this, dest, size);
     s.write_buffer(m->start_buffer, ps...);
     return m;
