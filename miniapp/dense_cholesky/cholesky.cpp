@@ -23,7 +23,7 @@ using namespace ttor;
 typedef array<int, 2> int2;
 typedef array<int, 3> int3;
 
-enum PrioKind { no = 0, row = 1, cp = 2};
+enum PrioKind { no = 0, row = 1, cp = 2, cp_row=3};
 
 void cholesky(const int n_threads, const int verb, const int n, const int nb, const int nprows, const int npcols, 
               const PrioKind prio_kind, const bool log, const bool deps_log, const bool test, const int accumulate_parallel)
@@ -73,34 +73,48 @@ void cholesky(const int n_threads, const int verb, const int n, const int nb, co
     };
 
     // Set priorities
-    auto potf_block_2_prio = [&](int j) { // Pivot is located at A[j,j]
-        if(prio_kind == PrioKind::cp) {
-            return (double)(9*(nb - j));
-        } else if(prio_kind == PrioKind::row) {
+    auto potf_block_2_prio = [&](int j) {
+        if (prio_kind == PrioKind::cp_row) {
+            return (double)(9*(nb - j)-1) + 18 * nb * nb;
+        }
+        else if(prio_kind == PrioKind::cp) {
+            return (double)(9*(nb - j)-1);
+        } 
+        else if(prio_kind == PrioKind::row) {
             return 3.0*(double)(nb-j);
-        } else {
+        } 
+        else {
             return 3.0;
         }
     };
-    auto trsm_block_2_prio = [&](int2 ij) { // Pivot at A[j,j] and block at A[i,j]
-        if(prio_kind == PrioKind::cp) {
+    auto trsm_block_2_prio = [&](int2 ij) {
+        if (prio_kind == PrioKind::cp_row) {
+            return (double)((nb - ij[0]) + nb * (9.0 * nb - 9.0 * ij[1] - 2.0) + 9 * nb * nb);
+        }
+        else if(prio_kind == PrioKind::cp) {
             return (double)(9*(nb - ij[1])-2);
-        } else if(prio_kind == PrioKind::row) {
+        } 
+        else if(prio_kind == PrioKind::row) {
             return 2.0*(double)(nb - ij[0]);
-        } else {
+        } 
+        else {
             return 2.0;
         }
     };
-    auto gemm_block_2_prio = [&](int3 kij) { // Gemm at A[i,j] -= A[i,k] * A[j,k]^T
-        if(prio_kind == PrioKind::cp) {
+    auto gemm_block_2_prio = [&](int3 kij) {
+        if (prio_kind == PrioKind::cp_row) {
+            return (double)(nb - kij[1]) + nb * (9.0 * nb - 9.0 * kij[2] - 2.0);
+        }
+        else if(prio_kind == PrioKind::cp) {
             return (double)(9*nb-9*kij[2]-2);
-        } else if(prio_kind == PrioKind::row) {
+        } 
+        else if(prio_kind == PrioKind::row) {
             return (double)(nb - kij[1]);
-        } else {
+        } 
+        else {
             return 1.0;
         }
     };
-
     // Names
     auto potrf_name = [](int j, int r) {
         return "POTRF_" + to_string(j) + "_r" + to_string(r);
