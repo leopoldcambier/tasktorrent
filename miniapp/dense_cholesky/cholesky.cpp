@@ -103,7 +103,12 @@ void cholesky(const int n_threads, const int verb, const int n, const int nb, co
     };
     auto gemm_block_2_prio = [&](int3 kij) {
         if (prio_kind == PrioKind::cp_row) {
-            return (double)(nb - kij[1]) + nb * (9.0 * nb - 9.0 * kij[2] - 2.0);
+            if (accumulate_parallel) {
+                return (double)(nb - kij[1]) + nb * (9.0 * nb - 9.0 * kij[2] - 2.0);
+            }
+            else {
+                return (double)(nb - kij[1]) + nb * (9.0 * nb - 3.0 * kij[2] - 6.0 * kij[0] - 2.0);
+            }
         }
         else if(prio_kind == PrioKind::cp) {
             return (double)(9*nb-9*kij[2]-2);
