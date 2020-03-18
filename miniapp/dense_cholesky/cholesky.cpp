@@ -23,7 +23,7 @@ using namespace ttor;
 typedef array<int, 2> int2;
 typedef array<int, 3> int3;
 
-enum PrioKind { no = 0, row = 1, cp = 2, cp_row=3};
+enum PrioKind { no = 0, row = 1, cp = 2, cp_row = 3};
 
 void cholesky(const int n_threads, const int verb, const int n, const int nb, const int nprows, const int npcols, 
               const PrioKind prio_kind, const bool log, const bool deps_log, const bool test, const int accumulate_parallel)
@@ -158,13 +158,20 @@ void cholesky(const int n_threads, const int verb, const int n, const int nb, co
             printf("\n");
         }
         printf("Gemm -> Priority\n");
-        for(int i = 0; i < min(nbmax, nb); i++) {
-            for(int j = 0; j < min(nbmax, nb); j++) {
-                if(i >= j) {
-                    printf("%5f ", gemm_block_2_prio({0,i,j}));
+        for(int k = 0; k < min(nbmax, nb); k++) {
+            printf("k = %d\n", k);
+            for(int i = 0; i < min(nbmax, nb); i++) {
+                for(int j = 0; j < min(nbmax, nb); j++) {
+                    if(i >= j) {
+                        if(k < j) {
+                            printf("%5f ", gemm_block_2_prio({k,i,j}));
+                        } else {
+                            printf(".     ");
+                        }
+                    }
                 }
+                printf("\n");
             }
-            printf("\n");
         }
     }
     for(int r = 0; r < ttor::comm_size(); r++) {
@@ -610,7 +617,7 @@ int main(int argc, char **argv)
     }
 
     if (argc >= 8) {
-        assert(atoi(argv[7]) >= 0 && atoi(argv[7]) < 3);
+        assert(atoi(argv[7]) >= 0 && atoi(argv[7]) < 4);
         kind = (PrioKind)atoi(argv[7]);
     }
 
