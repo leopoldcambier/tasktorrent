@@ -2,8 +2,13 @@
 #include "runtime.hpp"
 #include "util.hpp"
 #include "complex.h"
+#ifdef USE_MKL
 #include <mkl_cblas.h>
 #include <mkl_lapacke.h>
+#else
+#include <cblas.h>
+#include <lapacke.h>
+#endif
 #include <Eigen/Core>
 #include <Eigen/Cholesky>
 #include <fstream>
@@ -558,6 +563,7 @@ void cholesky(const int n_threads, const int verb, const int n, const int nb, co
             cout << "Error solve: " << error << endl;
             if(error > 1e-10) {
                 printf("\n\nERROR: error is too large!\n\n");
+                exit(1);
             }
         }
     }
@@ -574,14 +580,14 @@ int main(int argc, char **argv)
 
     int n_threads = 2;
     int verb = 0; // Can be changed to vary the verbosity of the messages
-    int n = 50;
-    int nb = 4;
+    int n = 5;
+    int nb = 10;
     int nprows = 1;
     int npcols = ttor::comm_size();
     PrioKind kind = PrioKind::no;
     bool log = false;
     bool depslog = false;
-    bool test = false;
+    bool test = true;
     bool accumulate = false;
 
     if (argc >= 2)
