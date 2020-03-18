@@ -69,7 +69,6 @@ TEST(serialize,views) {
     auto v1 = view<int>(d1.data(), d1.size());
     auto v2 = view<double>(d2.data(), d2.size());
     Serializer<view<int>, view<double>> s1;
-    // , ;
     Serializer<view<int>, view<double>> s2;
     vector<char> buffer(s1.size(v1, v2));
     s1.write_buffer(buffer.data(), v1, v2);
@@ -82,6 +81,32 @@ TEST(serialize,views) {
     for(int i = 0; (size_t)i < d2.size(); i++) {
         ASSERT_EQ( *(get<1>(tup).begin() + i), d2[i] );
     }
+}
+
+/**
+ * Check that we can serialize message of more than 2^31 (limit of int) bytes
+ * We should be able to serialize up to std::numeric_limits<size_t>::max() bytes
+ */
+TEST(serialize,large) {
+    size_t size = static_cast<size_t>(std::numeric_limits<int>::max()) + static_cast<size_t>(478569);
+    char* data = (char*)malloc( size * sizeof(char) );
+    for(size_t i = 0; i < size; i += static_cast<size_t>(1e5)) {
+        data[i] = (i / static_cast<size_t>(17)) % static_cast<size_t>(478965)  + static_cast<size_t>(49); // Anything, really
+    }
+    ASSERT_TRUE(data != nullptr);
+    auto vdata = view<char>(data, size);
+    Serializer<view<char>> s;
+    char* output = (char*)malloc( s.size(vdata) * sizeof(char) );
+    ASSERT_TRUE(output != nullptr);
+    s.write_buffer(output, vdata);
+    auto tup = s.read_buffer(output);
+    view<char>& voutput = get<0>(tup);
+    ASSERT_EQ(voutput.size(), vdata.size());
+    for(size_t i = 0; i < vdata.size(); i += static_cast<size_t>(1e5)) { // Too slow otherwise
+        ASSERT_EQ(vdata.data()[i], voutput.data()[i]);
+    }
+    free(data);
+    free(output);
 }
 
 int main(int argc, char** argv) {

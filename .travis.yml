@@ -1,16 +1,15 @@
 sudo: required
-dist: xenial
+dist: bionic
 before_install:
   - sudo apt-get install openmpi-bin libopenmpi-dev
+  - sudo apt-get install libscotch-dev
+  - sudo apt-get install libopenblas-dev liblapacke-dev
+  - wget http://bitbucket.org/eigen/eigen/get/3.3.7.tar.bz2 -O eigen-3.3.7.tar.bz2 && mkdir eigen && tar -xvf eigen-3.3.7.tar.bz2 -C eigen --strip-components 1
 language: cpp
 compiler:
-  - gcc
+  - g++
 install:
-  - wget http://bitbucket.org/eigen/eigen/get/3.3.7.tar.bz2 -O eigen-3.3.7.tar.bz2 && tar -xvf eigen-3.3.7.tar.bz2
-  - git clone https://github.com/google/googletest.git && cd googletest && mkdir build && cd build && cmake .. && make && cd ../../
-  - cp Makefile.conf-examples/Makefile.shared.travis tests/shared/Makefile.conf
-  - cp Makefile.conf-examples/Makefile.mpi.travis    tests/mpi/Makefile.conf
 script:
-  - cd tutorial      && make clean     && make run   && cd ../
-  - cd tests/shared/ && ./run_tests.sh && cd ../../
-  - cd tests/mpi     && ./run_tests.sh && cd ../../
+  - cd ${HOME}/build/leopoldcambier/tasktorrent/miniapp/3d_gemm && cp Makefile.conf.travis Makefile.conf && make clean && make 3d_gemm && mpirun --oversubscribe -n 8 ./3d_gemm
+  - cd ${HOME}/build/leopoldcambier/tasktorrent/miniapp/sparse_cholesky && cp Makefile.conf.travis Makefile.conf && make clean && make snchol && mpirun -n 2 ./snchol neglapl_2_32.mm 10 2 0 5 0 NONE 5
+  - cd ${HOME}/build/leopoldcambier/tasktorrent && EIGEN3_ROOT=${HOME}/build/leopoldcambier/tasktorrent/eigen ./tests/test_all.sh $(pwd) OFF

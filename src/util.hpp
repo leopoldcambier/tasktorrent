@@ -69,10 +69,12 @@ struct DepsEvent
 struct DepsLogger
 {
     std::atomic<int> i;
-    std::vector<DepsEvent> events;
+    std::atomic<bool> printed_warning;
+    std::vector<std::unique_ptr<DepsEvent>> events;
     DepsLogger(int N);
     DepsLogger();
-    void add_event(DepsEvent e);
+    void add_event(std::unique_ptr<DepsEvent> e);
+    bool was_full() const;
 };
 
 std::ostream &operator<<(std::ostream &os, ttor::DepsLogger &t);

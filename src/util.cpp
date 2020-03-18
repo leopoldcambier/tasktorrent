@@ -40,8 +40,8 @@ namespace ttor {
         end = wctime();
     }
 
-    Logger::Logger(int N) : origin(wctime()), printed_warning(false), i(0), events(N) {};
-    Logger::Logger() : origin(wctime()), printed_warning(false), i(0), events(0) {};
+    Logger::Logger(int N) : origin(wctime()), printed_warning(false), i(0), events(N) {}
+    Logger::Logger() : origin(wctime()), printed_warning(false), i(0), events(0) {}
     void Logger::add_event(std::unique_ptr<Event> e) {
         int id = (i++); // atomic
         if(id < int(events.size())) {
@@ -75,25 +75,34 @@ namespace ttor {
         self_name = s;
         out_deps_name = o;
     }
-    DepsEvent::DepsEvent() {};
-    DepsLogger::DepsLogger(int N) : i(0), events(N) {};
-    DepsLogger::DepsLogger() : i(0), events(0) {};
-    void DepsLogger::add_event(DepsEvent e) {
+    DepsEvent::DepsEvent() {}
+    DepsLogger::DepsLogger(int N) : i(0), printed_warning(false), events(N) {}
+    DepsLogger::DepsLogger() : i(0), printed_warning(false), events(0) {}
+    void DepsLogger::add_event(std::unique_ptr<DepsEvent> e) {
         int id = (i++); // atomic
         if(id < int(events.size())) {
-            events[id] = e;
+            events[id] = move(e);
         } else {
+            printed_warning.store(true);
             printf("DepsLogger::add_event buffer full\n");
         }
     }
 
+    bool DepsLogger::was_full() const {
+        return printed_warning.load();
+    }
+
     std::ostream &operator << (std::ostream &os, ttor::DepsLogger &t)  {
-        os << "digraph g{\n";
-        for(int i = 0; i < std::min(int(t.events.size()), t.i.load()); i++) {
-            auto e = t.events[i];
-            os << e.self_name << " -> " << e.out_deps_name << ";\n";
+        if(t.was_full()) {
+            printf("Warning: buffer was full at some point during the profiling\n");
         }
-        os << "}\n";
+        // os << "digraph g{\n";
+        for(int i = 0; i < std::min(int(t.events.size()), t.i.load()); i++) {
+            auto e = t.events[i].get();
+            // os << e->self_name << " -> " << e->out_deps_name << ";\n";
+            os << e->self_name << "," << e->out_deps_name << "\n";
+        }
+        // os << "}\n";
         return os;
     }
 

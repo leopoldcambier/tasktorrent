@@ -1,7 +1,7 @@
 # TaskTorrent 
 [![Build Status](https://travis-ci.org/leopoldcambier/tasktorrent.svg?branch=master)](https://travis-ci.org/leopoldcambier/tasktorrent)
 
-_A parallel runtime library for executing concurrent directed acyclic graphs of tasks with a focus on speed, portability, light weight, and user friendly interface_
+_A parallel runtime library for executing concurrent directed acyclic graphs of computational tasks with a focus on a very low-overhead when executing micro-tasks, speed, portability, light weight, and user friendly interface_
 
 ## Tutorial
 
@@ -307,7 +307,7 @@ To build this example, you will need
 - An [MPI](https://www.mpi-forum.org/) implementation (see the [MPI Forum](https://www.mpi-forum.org/docs/) for MPI documentation). There are many options: [MPICH](https://www.mpich.org/), [MVAPICH](http://mvapich.cse.ohio-state.edu/), [Open MPI](https://www.open-mpi.org/), [Cray MPICH](https://pubs.cray.com/content/S-2529/17.05/xctm-series-programming-environment-user-guide-1705-s-2529/mpt), [Intel MPI](https://software.intel.com/en-us/mpi-library), [IBM Spectrum MPI](https://www.ibm.com/us-en/marketplace/spectrum-mpi), [Microsoft MPI](https://docs.microsoft.com/en-us/message-passing-interface/microsoft-mpi)
   * On MacOS/Linux, you can also use [Homebrew](https://brew.sh/). For instance, to install MPICH: `brew install mpich`
 - If you are running on a single node only, and do not use MPI for communication, you can compile the code with the option `-DTTOR_SHARED`. This will comment out the components of the library that depend on MPI. You can then compile the code with a standard C++ compiler instead of [mpicxx](https://www.open-mpi.org/doc/v4.0/man1/mpicxx.1.php) for example.
-- The code contains a lot of [assert](https://en.cppreference.com/w/cpp/error/assert) statements. In production/benchmark runs, we recommend compiling with the option [-DNDEBUG](https://en.cppreference.com/w/cpp/error/assert). This will disable all the assert checks.
+- The code contains a lot of [assert](https://en.cppreference.com/w/cpp/error/assert) statements. In production/benchmark runs, we recommend compiling with the option [-DNDEBUG](https://en.cppreference.com/w/cpp/error/assert). This will disable all the assert checks. This doesn't disable MPI error checking ; those are always checked.
 
 Once you have this:
 - First, navigate to the `tutorial` folder

@@ -1,0 +1,3 @@
+INCLUDE = -I${HOME}/build/leopoldcambier/tasktorrent/eigen -I/usr/include/ -I/usr/include/x86_64-linux-gnu/
+LIBS    = -L/usr/lib/x86_64-linux-gnu/
+LDFLAGS = -lblas -llapacke
