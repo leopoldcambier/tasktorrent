@@ -38,10 +38,7 @@ void copy_from_view(Eigen::MatrixXd* dest, const ttor::view<double> A) {
 
 void accumulate(Eigen::MatrixXd* dest, const Eigen::MatrixXd* src) {
     assert(dest->size() == src->size());
-    #pragma omp parallel for
-    for(int k = 0; k < dest->size(); k++) {
-        (*dest)(k) += (*src)(k);
-    }
+    (*dest) += (*src);
 }
 
 std::string to_string(int2 ij) {
