@@ -2,8 +2,13 @@
 #include "runtime.hpp"
 #include "util.hpp"
 #include "complex.h"
+#ifdef USE_MKL
 #include <mkl_cblas.h>
 #include <mkl_lapacke.h>
+#else
+#include <cblas.h>
+#include <lapacke.h>
+#endif
 #include <Eigen/Core>
 #include <Eigen/Cholesky>
 #include <fstream>
@@ -23,7 +28,7 @@ using namespace ttor;
 typedef array<int, 2> int2;
 typedef array<int, 3> int3;
 
-enum PrioKind { no = 0, row = 1, cp = 2};
+enum PrioKind { no = 0, row = 1, cp = 2, cp_row = 3};
 
 void cholesky(const int n_threads, const int verb, const int n, const int nb, const int nprows, const int npcols, 
               const PrioKind prio_kind, const bool log, const bool deps_log, const bool test, const int accumulate_parallel)
@@ -73,34 +78,53 @@ void cholesky(const int n_threads, const int verb, const int n, const int nb, co
     };
 
     // Set priorities
-    auto potf_block_2_prio = [&](int j) { // Pivot is located at A[j,j]
-        if(prio_kind == PrioKind::cp) {
-            return (double)(9*(nb - j));
-        } else if(prio_kind == PrioKind::row) {
+    auto potf_block_2_prio = [&](int j) {
+        if (prio_kind == PrioKind::cp_row) {
+            return (double)(9*(nb - j)-1) + 18 * nb * nb;
+        }
+        else if(prio_kind == PrioKind::cp) {
+            return (double)(9*(nb - j)-1);
+        } 
+        else if(prio_kind == PrioKind::row) {
             return 3.0*(double)(nb-j);
-        } else {
+        } 
+        else {
             return 3.0;
         }
     };
-    auto trsm_block_2_prio = [&](int2 ij) { // Pivot at A[j,j] and block at A[i,j]
-        if(prio_kind == PrioKind::cp) {
+    auto trsm_block_2_prio = [&](int2 ij) {
+        if (prio_kind == PrioKind::cp_row) {
+            return (double)((nb - ij[0]) + nb * (9.0 * nb - 9.0 * ij[1] - 2.0) + 9 * nb * nb);
+        }
+        else if(prio_kind == PrioKind::cp) {
             return (double)(9*(nb - ij[1])-2);
-        } else if(prio_kind == PrioKind::row) {
+        } 
+        else if(prio_kind == PrioKind::row) {
             return 2.0*(double)(nb - ij[0]);
-        } else {
+        } 
+        else {
             return 2.0;
         }
     };
-    auto gemm_block_2_prio = [&](int3 kij) { // Gemm at A[i,j] -= A[i,k] * A[j,k]^T
-        if(prio_kind == PrioKind::cp) {
+    auto gemm_block_2_prio = [&](int3 kij) {
+        if (prio_kind == PrioKind::cp_row) {
+            if (accumulate_parallel) {
+                return (double)(nb - kij[1]) + nb * (9.0 * nb - 9.0 * kij[2] - 2.0);
+            }
+            else {
+                return (double)(nb - kij[1]) + nb * (9.0 * nb - 3.0 * kij[2] - 6.0 * kij[0] - 2.0);
+            }
+        }
+        else if(prio_kind == PrioKind::cp) {
             return (double)(9*nb-9*kij[2]-2);
-        } else if(prio_kind == PrioKind::row) {
+        } 
+        else if(prio_kind == PrioKind::row) {
             return (double)(nb - kij[1]);
-        } else {
+        } 
+        else {
             return 1.0;
         }
     };
-
     // Names
     auto potrf_name = [](int j, int r) {
         return "POTRF_" + to_string(j) + "_r" + to_string(r);
@@ -139,13 +163,20 @@ void cholesky(const int n_threads, const int verb, const int n, const int nb, co
             printf("\n");
         }
         printf("Gemm -> Priority\n");
-        for(int i = 0; i < min(nbmax, nb); i++) {
-            for(int j = 0; j < min(nbmax, nb); j++) {
-                if(i >= j) {
-                    printf("%5f ", gemm_block_2_prio({0,i,j}));
+        for(int k = 0; k < min(nbmax, nb); k++) {
+            printf("k = %d\n", k);
+            for(int i = 0; i < min(nbmax, nb); i++) {
+                for(int j = 0; j < min(nbmax, nb); j++) {
+                    if(i >= j) {
+                        if(k < j) {
+                            printf("%5f ", gemm_block_2_prio({k,i,j}));
+                        } else {
+                            printf(".     ");
+                        }
+                    }
                 }
+                printf("\n");
             }
-            printf("\n");
         }
     }
     for(int r = 0; r < ttor::comm_size(); r++) {
@@ -532,6 +563,7 @@ void cholesky(const int n_threads, const int verb, const int n, const int nb, co
             cout << "Error solve: " << error << endl;
             if(error > 1e-10) {
                 printf("\n\nERROR: error is too large!\n\n");
+                exit(1);
             }
         }
     }
@@ -548,14 +580,14 @@ int main(int argc, char **argv)
 
     int n_threads = 2;
     int verb = 0; // Can be changed to vary the verbosity of the messages
-    int n = 50;
-    int nb = 4;
+    int n = 5;
+    int nb = 10;
     int nprows = 1;
     int npcols = ttor::comm_size();
     PrioKind kind = PrioKind::no;
     bool log = false;
     bool depslog = false;
-    bool test = false;
+    bool test = true;
     bool accumulate = false;
 
     if (argc >= 2)
@@ -591,7 +623,7 @@ int main(int argc, char **argv)
     }
 
     if (argc >= 8) {
-        assert(atoi(argv[7]) >= 0 && atoi(argv[7]) < 3);
+        assert(atoi(argv[7]) >= 0 && atoi(argv[7]) < 4);
         kind = (PrioKind)atoi(argv[7]);
     }
 
