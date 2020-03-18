@@ -67,3 +67,4 @@ tests/mpi/ddot_test
 tests/mpi/output\.txt
 
 tests/mpi/cholesky
+tutorial/tuto.cpp

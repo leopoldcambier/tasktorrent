@@ -1,7 +1,7 @@
 include Makefile.conf
 
 CC       = mpicxx
-CFLAGS   = -pthread -O0 -g -std=c++14 -DEIGEN_USE_LAPACKE -fsanitize=thread
+CFLAGS   += -pthread -O3 -g -std=c++14 -DEIGEN_NO_DEBUG -DEIGEN_USE_LAPACKE
 INCLUDE  += -I../../src/
 LIBS     += 
 LDFLAGS  += 
