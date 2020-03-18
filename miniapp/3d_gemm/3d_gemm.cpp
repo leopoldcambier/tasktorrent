@@ -38,10 +38,7 @@ void copy_from_view(Eigen::MatrixXd* dest, const ttor::view<double> A) {
 
 void accumulate(Eigen::MatrixXd* dest, const Eigen::MatrixXd* src) {
     assert(dest->size() == src->size());
-    #pragma omp parallel for
-    for(int k = 0; k < dest->size(); k++) {
-        (*dest)(k) += (*src)(k);
-    }
+    (*dest) += (*src);
 }
 
 std::string to_string(int2 ij) {
@@ -93,6 +90,8 @@ int gemm(const int matrix_size, const int verb, const bool test)
         A_ij = Eigen::MatrixXd::NullaryExpr(block_size, block_size, val);
         B_ij = Eigen::MatrixXd::NullaryExpr(block_size, block_size, val);
     }
+    Eigen::MatrixXd A_ik = Eigen::MatrixXd::Zero(block_size, block_size);
+    Eigen::MatrixXd B_kj = Eigen::MatrixXd::Zero(block_size, block_size);
     Eigen::MatrixXd C_ijk = Eigen::MatrixXd::Zero(block_size, block_size);
     vector<Eigen::MatrixXd> C_ijks(n_ranks_1d, Eigen::MatrixXd::Zero(block_size, block_size));
 
@@ -166,7 +165,7 @@ int gemm(const int matrix_size, const int verb, const bool test)
 
     auto bcst_Aij_am = comm.make_active_msg([&](ttor::view<double>& Aij) {
         ttor::timer t0 = ttor::wctime();
-        copy_from_view(&A_ij, Aij);
+        copy_from_view(&A_ik, Aij);
         gemm_Cijk.fulfill_promise(0);
         ttor::timer t1 = ttor::wctime();
         bcst_copy_us_t += 1e6 * ttor::elapsed(t0, t1);
@@ -174,7 +173,7 @@ int gemm(const int matrix_size, const int verb, const bool test)
 
     auto bcst_Bij_am = comm.make_active_msg([&](ttor::view<double>& Bij) {
         ttor::timer t0 = ttor::wctime();
-        copy_from_view(&B_ij, Bij);
+        copy_from_view(&B_kj, Bij);
         gemm_Cijk.fulfill_promise(0);
         ttor::timer t1 = ttor::wctime();
         bcst_copy_us_t += 1e6 * ttor::elapsed(t0, t1);
@@ -189,6 +188,7 @@ int gemm(const int matrix_size, const int verb, const bool test)
             if(dest != rank) {
                 bcst_Aij_am->send(dest, A_view);
             } else {
+                copy_from_view(&A_ik, A_view);
                 gemm_Cijk.fulfill_promise(0);
             }
         }
@@ -207,6 +207,7 @@ int gemm(const int matrix_size, const int verb, const bool test)
             if(dest != rank) {
                 bcst_Bij_am->send(dest, B_view);
             } else {
+                copy_from_view(&B_kj, B_view);
                 gemm_Cijk.fulfill_promise(0);
             }
         }
@@ -230,10 +231,8 @@ int gemm(const int matrix_size, const int verb, const bool test)
 
     // (i,j,k) compute C_ijk = A_ik * B_kj
     gemm_Cijk.set_task([&](int ijk){
-        // A_ij is actually A_(rank_i, rank_k) now
-        // B_ij is actually B_(rank_k, rank_j) now
         ttor::timer t0 = ttor::wctime();
-        C_ijk.noalias() += A_ij * B_ij;
+        C_ijk.noalias() += A_ik * B_kj;
         ttor::timer t1 = ttor::wctime();
         gemm_us_t += 1e6 * ttor::elapsed(t0, t1);
         auto C_ijk_view = make_view(&C_ijk);
