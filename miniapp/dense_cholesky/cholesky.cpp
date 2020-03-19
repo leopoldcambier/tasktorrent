@@ -28,6 +28,16 @@ using namespace ttor;
 typedef array<int, 2> int2;
 typedef array<int, 3> int3;
 
+
+/*
+Parametrized priorities for cholesky:
+0. No priority, only enforces potrf>trsm>gemm
+1. Row-based priority, prioritize tasks with smaller row number in addition to priority 0.
+2. Critical path priority, prioritize tasks with longest distance to the exit task. For references, check out the paper
+    Beaumont, Olivier, et al. "A Makespan Lower Bound for the Scheduling of the Tiled Cholesky Factorization based on ALAP Schedule." (2020).
+3. Critical path and row priority, prioritize tasks with smaller row number in addition to priority 2. We also enforces potrf>trsm>gemm
+*/
+
 enum PrioKind { no = 0, row = 1, cp = 2, cp_row = 3};
 
 void cholesky(const int n_threads, const int verb, const int n, const int nb, const int nprows, const int npcols, 
