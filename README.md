@@ -323,9 +323,14 @@ make
 mpirun -n 2 ./tuto
 ```
 
-### Technical notes
+### Technical notes and limitations
 
-In general, it is safer to create a task with some given index `k` only once during the calculation. It is possible to have a task show up in the DAG multiple times. However, for correctness, the dependencies of an occurrence of `k` must be all satisfied before the "next" task with index `k` gets created again (through a call to `fulfill_promise(k)`). This is potentially error prone, maybe a source of confusion, and should be avoided. We therefore recommend that a task with index `k` be created only once throughout the calculation.
+* In general, it is safer to create a task with some given index `k` only once during the calculation. It is possible to have a task show up in the DAG multiple times. However, for correctness, the dependencies of an occurrence of `k` must be all satisfied before the "next" task with index `k` gets created again (through a call to `fulfill_promise(k)`). This is potentially error prone, maybe a source of confusion, and should be avoided. We therefore recommend that a task with index `k` be created only once throughout the calculation.
+* The code will always check MPI return codes and abort if any MPI function return anything else than `MPI_SUCCESS`.
+* The type `view<T>` does not assume nor guarantees that the associated pointer (retrieved using `view<T>::data()`) is aligned (see [https://en.cppreference.com/w/cpp/language/object]) when the view is send or received through the network. As such the buffer (`view<T>::size() * sizeof(T)` bytes, starting at the address `view<T>::data()`) should first be copied byte-by-byte (using `memcpy` for instance) into the user data structure before addressing individual elements.
+* Messages are limited to `std::numeric_limits<int>::max()` (i.e, `2^31-1` in general) bytes, as this is the maximum `count` of an MPI call. This is checked at runtime and the program will abort if that maximum size is exceeded.
+
+Future versions of TaskTorrent should lift the last two limitations
 
 ### References
 <b id="f1"><sup>1</sup></b> [Automatic Coarse-Grained Parallelization Techniques](https://link.springer.com/chapter/10.1007/978-94-011-5514-4_15), M. Cosnard, E. Jeannot [↩](#a1)</br>
