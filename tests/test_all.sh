@@ -18,18 +18,6 @@ else
 fi
 printf "TTOR's source set to ${dir}"
 
-# Tutorial test
-printf "\nTesting tutorial\n"
-
-cd $dir/tutorial
-make clean
-make run
-
-if [ $? != "0" ]
-then
-    exit 1
-fi
-
 # Sanitizer as an option
 SAN=$2
 if [ -z "$SAN" ]

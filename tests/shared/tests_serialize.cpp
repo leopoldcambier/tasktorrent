@@ -19,9 +19,10 @@ template<typename... T>
 void test(T... t) {
     Serializer<T...> s1;
     Serializer<T...> s2;
-    vector<char> buffer(s1.size(t...));
-    s1.write_buffer(buffer.data(), t...);
-    auto tup = s2.read_buffer(buffer.data());
+    size_t s = s1.size(t...);
+    vector<char> buffer(s);
+    s1.write_buffer(buffer.data(), s, t...);
+    auto tup = s2.read_buffer(buffer.data(), s);
     ASSERT_EQ(tup, make_tuple(t...));
 }
 
@@ -70,17 +71,83 @@ TEST(serialize,views) {
     auto v2 = view<double>(d2.data(), d2.size());
     Serializer<view<int>, view<double>> s1;
     Serializer<view<int>, view<double>> s2;
-    vector<char> buffer(s1.size(v1, v2));
-    s1.write_buffer(buffer.data(), v1, v2);
-    auto tup = s2.read_buffer(buffer.data());
-    ASSERT_EQ(get<0>(tup).size(), 5);
-    ASSERT_EQ(get<1>(tup).size(), 4);
+    size_t size = s1.size(v1, v2);
+    vector<char> buffer(size);
+    s1.write_buffer(buffer.data(), size, v1, v2);
+    auto tup = s2.read_buffer(buffer.data(), size);
+    ASSERT_EQ((int)get<0>(tup).size(), 5);
+    ASSERT_EQ((int)get<1>(tup).size(), 4);
     for(int i = 0; (size_t)i < d1.size(); i++) {
         ASSERT_EQ( *(get<0>(tup).begin() + i), d1[i] );
     }
     for(int i = 0; (size_t)i < d2.size(); i++) {
         ASSERT_EQ( *(get<1>(tup).begin() + i), d2[i] );
     }
+}
+
+TEST(serialize,alignement) {
+    short a = 42;
+    int b = 271;
+    double c = 3.14;
+    long long d = 4478687;
+    vector<int> e = {1, 2, 3};
+    vector<double> f = {10.10, 11.11, 12.12};
+    Serializer<short,int,double,long long,view<int>,view<double>> s;
+    auto e_v = view<int>(e.data(), e.size());
+    auto f_v = view<double>(f.data(), f.size());
+    size_t size = s.size(a,b,c,d,e_v,f_v);
+    vector<char> buffer(size);
+    s.write_buffer(buffer.data(), buffer.size(), a, b, c, d, e_v, f_v);
+    auto tup = s.read_buffer(buffer.data(), buffer.size());
+    ASSERT_EQ(get<0>(tup), a);
+    ASSERT_EQ(get<1>(tup), b);
+    ASSERT_EQ(get<2>(tup), c);
+    ASSERT_EQ(get<3>(tup), d);
+    for(int i = 0; i < 3; i++) {
+        ASSERT_EQ(e[i], *(get<4>(tup).data() + i));
+        ASSERT_EQ(f[i], *(get<5>(tup).data() + i));
+    }
+}
+
+TEST(serialize,alignement2) {
+    vector<char> a = {'l', 'o', 'l'};
+    vector<int> b = {1, 2, 3, 4};
+    vector<double> c = {10.10, 11.11};
+    Serializer<view<char>,view<int>,view<double>> s;
+    auto a_v = view<char>(a.data(), a.size());
+    auto b_v = view<int>(b.data(), b.size());
+    auto c_v = view<double>(c.data(), c.size());
+    size_t size = s.size(a_v, b_v, c_v);
+    vector<char> buffer(size);
+    s.write_buffer(buffer.data(), buffer.size(), a_v, b_v, c_v);
+    auto tup = s.read_buffer(buffer.data(), buffer.size());
+    for(int i = 0; i < 3; i++) {
+        ASSERT_EQ(a[i], *(get<0>(tup).data() + i));
+    }
+    for(int i = 0; i < 4; i++) {
+        ASSERT_EQ(b[i], *(get<1>(tup).data() + i));
+    }
+    for(int i = 0; i < 2; i++) {
+        ASSERT_EQ(c[i], *(get<2>(tup).data() + i));
+    }
+}
+
+TEST(serialize,empty_views) {
+    int z = 0;
+    vector<char> a = {};
+    vector<int> b = {1};
+    vector<double> c = {};
+    Serializer<int,view<char>,view<int>,view<double>> s;
+    auto a_v = view<char>(a.data(), a.size());
+    auto b_v = view<int>(b.data(), b.size());
+    auto c_v = view<double>(c.data(), c.size());
+    size_t size = s.size(z,a_v, b_v, c_v);
+    vector<char> buffer(size);
+    s.write_buffer(buffer.data(), buffer.size(), z, a_v, b_v, c_v);
+    auto tup = s.read_buffer(buffer.data(), buffer.size());
+    ASSERT_EQ((int)get<1>(tup).size(), 0);
+    ASSERT_EQ((int)get<2>(tup).size(), 1);
+    ASSERT_EQ((int)get<3>(tup).size(), 0);
 }
 
 /**
@@ -96,10 +163,11 @@ TEST(serialize,large) {
     ASSERT_TRUE(data != nullptr);
     auto vdata = view<char>(data, size);
     Serializer<view<char>> s;
-    char* output = (char*)malloc( s.size(vdata) * sizeof(char) );
+    size_t buffer_size = s.size(vdata);
+    char* output = (char*)malloc( buffer_size * sizeof(char) );
     ASSERT_TRUE(output != nullptr);
-    s.write_buffer(output, vdata);
-    auto tup = s.read_buffer(output);
+    s.write_buffer(output, buffer_size, vdata);
+    auto tup = s.read_buffer(output, buffer_size);
     view<char>& voutput = get<0>(tup);
     ASSERT_EQ(voutput.size(), vdata.size());
     for(size_t i = 0; i < vdata.size(); i += static_cast<size_t>(1e5)) { // Too slow otherwise

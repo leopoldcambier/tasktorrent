@@ -58,7 +58,6 @@ public:
     MPI_Request request;
     int other;
     int tag;
-    char *start_buffer;
     message(int other) : other(other){};
 };
 
@@ -69,8 +68,12 @@ class Communicator;
  */
 class ActiveMsgBase
 {
+private:
+    int id_;
 public:
-    virtual void run(char *) = 0;
+    int get_id() const { return id_; };
+    virtual void run(char *, size_t) = 0;
+    ActiveMsgBase(int id) : id_(id) {};
     virtual ~ActiveMsgBase(){};
 };
 
@@ -93,11 +96,11 @@ public:
     /**
      * Create an active message tied to given function fun and that feeds into Communicator comm
      */
-    ActiveMsg(std::function<void(Ps &...)> fun, Communicator *comm);
+    ActiveMsg(std::function<void(Ps &...)> fun, Communicator *comm, int id);
     /**
      * Deserialize payload_raw and run active message through the RPCComm
      */
-    virtual void run(char *payload_raw);
+    virtual void run(char *payload_raw, size_t size);
     /**
      * Immediately send the payload to be sent to the destination
      * Should be called from the same thread calling MPI_Init_Thread(...)
@@ -183,7 +186,7 @@ public:
      * Message can later be filled with the data to be sent
      * TODO: This should be hidden from public
      */
-    unique_ptr<message> make_active_message(ActiveMsgBase *am, int dest, size_t size);
+    unique_ptr<message> make_active_message(int dest, size_t size);
 
 public:
 
@@ -273,23 +276,26 @@ public:
  * Active Messages
  */
 template <typename... Ps>
-ActiveMsg<Ps...>::ActiveMsg(function<void(Ps &...)> fun, Communicator *comm) : comm_(comm), fun_(fun) {}
+ActiveMsg<Ps...>::ActiveMsg(function<void(Ps &...)> fun, Communicator *comm, int id) : ActiveMsgBase(id), comm_(comm), fun_(fun) {}
 
 template <typename... Ps>
-void ActiveMsg<Ps...>::run(char *payload_raw)
+void ActiveMsg<Ps...>::run(char *payload_raw, size_t size)
 {
-    Serializer<Ps...> s;
-    tuple<Ps...> tup = s.read_buffer(payload_raw);
-    apply_fun(fun_, tup);
+    Serializer<int, Ps...> s;
+    auto tup = s.read_buffer(payload_raw, size);
+    assert(get_id() == get<0>(tup));
+    auto args = tail(tup);
+    apply_fun(fun_, args);
 }
 
 template <typename... Ps>
 unique_ptr<message> ActiveMsg<Ps...>::make_message(int dest, Ps &... ps)
 {
-    Serializer<Ps...> s;
-    size_t size = s.size(ps...);
-    unique_ptr<message> m = comm_->make_active_message(this, dest, size);
-    s.write_buffer(m->start_buffer, ps...);
+    Serializer<int, Ps...> s;
+    int id = get_id();
+    size_t size = s.size(id, ps...);
+    unique_ptr<message> m = comm_->make_active_message(dest, size);
+    s.write_buffer(m->buffer.data(), m->buffer.size(), id, ps...);
     return m;
 }
 
@@ -319,7 +325,7 @@ ActiveMsg<Ps...>::~ActiveMsg(){}
 template <typename... Ps>
 ActiveMsg<Ps...> *Communicator::make_active_msg(function<void(Ps &...)> fun)
 {
-    auto am = make_unique<ActiveMsg<Ps...>>(fun, this);
+    auto am = make_unique<ActiveMsg<Ps...>>(fun, this, active_messages.size());
     ActiveMsg<Ps...> *am_ = am.get();
     active_messages.push_back(move(am));
 
