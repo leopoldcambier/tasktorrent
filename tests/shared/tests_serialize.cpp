@@ -75,8 +75,8 @@ TEST(serialize,views) {
     vector<char> buffer(size);
     s1.write_buffer(buffer.data(), size, v1, v2);
     auto tup = s2.read_buffer(buffer.data(), size);
-    ASSERT_EQ(get<0>(tup).size(), 5);
-    ASSERT_EQ(get<1>(tup).size(), 4);
+    ASSERT_EQ((int)get<0>(tup).size(), 5);
+    ASSERT_EQ((int)get<1>(tup).size(), 4);
     for(int i = 0; (size_t)i < d1.size(); i++) {
         ASSERT_EQ( *(get<0>(tup).begin() + i), d1[i] );
     }
@@ -145,9 +145,9 @@ TEST(serialize,empty_views) {
     vector<char> buffer(size);
     s.write_buffer(buffer.data(), buffer.size(), z, a_v, b_v, c_v);
     auto tup = s.read_buffer(buffer.data(), buffer.size());
-    ASSERT_EQ(get<1>(tup).size(), 0);
-    ASSERT_EQ(get<2>(tup).size(), 1);
-    ASSERT_EQ(get<3>(tup).size(), 0);
+    ASSERT_EQ((int)get<1>(tup).size(), 0);
+    ASSERT_EQ((int)get<2>(tup).size(), 1);
+    ASSERT_EQ((int)get<3>(tup).size(), 0);
 }
 
 /**

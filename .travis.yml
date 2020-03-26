@@ -16,4 +16,3 @@ script:
   - cd ${HOME}/build/leopoldcambier/tasktorrent/miniapp/sparse_cholesky && cp Makefile.conf.travis Makefile.conf && make clean && make snchol && mpirun -n 2 ./snchol neglapl_2_32.mm 10 2 0 5 0 NONE 5
   - cd ${HOME}/build/leopoldcambier/tasktorrent && EIGEN3_ROOT=${HOME}/build/leopoldcambier/tasktorrent/eigen ./tests/test_all.sh $(pwd) OFF
   - cd ${HOME}/build/leopoldcambier/tasktorrent && EIGEN3_ROOT=${HOME}/build/leopoldcambier/tasktorrent/eigen ./tests/test_all.sh $(pwd) UB
-  - cd ${HOME}/build/leopoldcambier/tasktorrent && EIGEN3_ROOT=${HOME}/build/leopoldcambier/tasktorrent/eigen ./tests/test_all.sh $(pwd) ADDRESS

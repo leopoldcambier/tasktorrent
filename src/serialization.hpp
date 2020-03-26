@@ -15,6 +15,7 @@
 template <std::size_t... Ns, typename... Ts>
 constexpr auto tail_impl(std::index_sequence<Ns...>, std::tuple<Ts...> t)
 {
+    (void)t;
     return std::make_tuple(std::get<Ns + 1u>(t)...);
 }
 
