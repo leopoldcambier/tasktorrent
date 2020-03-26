@@ -6,6 +6,7 @@
 #include <vector>
 #include <utility>
 #include <cstring>
+#include <cassert>
 
 #include "views.hpp"
 
