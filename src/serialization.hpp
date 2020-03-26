@@ -7,6 +7,7 @@
 #include <utility>
 #include <cstring>
 #include <cassert>
+#include <memory>
 
 #include "views.hpp"
 
