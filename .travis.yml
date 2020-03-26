@@ -10,6 +10,7 @@ compiler:
   - g++
 install:
 script:
+  - cd ${HOME}/build/leopoldcambier/tasktorrent/tutorial && make clean && make run
   - cd ${HOME}/build/leopoldcambier/tasktorrent/miniapp/dense_cholesky && cp Makefile.conf.travis Makefile.conf && make clean && make cholesky && mpirun -n 2 ./cholesky
   - cd ${HOME}/build/leopoldcambier/tasktorrent/miniapp/3d_gemm && cp Makefile.conf.travis Makefile.conf && make clean && make 3d_gemm && mpirun --oversubscribe -n 8 ./3d_gemm
   - cd ${HOME}/build/leopoldcambier/tasktorrent/miniapp/sparse_cholesky && cp Makefile.conf.travis Makefile.conf && make clean && make snchol && mpirun -n 2 ./snchol neglapl_2_32.mm 10 2 0 5 0 NONE 5
