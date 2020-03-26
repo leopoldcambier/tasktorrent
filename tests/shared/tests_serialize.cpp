@@ -132,6 +132,24 @@ TEST(serialize,alignement2) {
     }
 }
 
+TEST(serialize,empty_views) {
+    int z = 0;
+    vector<char> a = {};
+    vector<int> b = {1};
+    vector<double> c = {};
+    Serializer<int,view<char>,view<int>,view<double>> s;
+    auto a_v = view<char>(a.data(), a.size());
+    auto b_v = view<int>(b.data(), b.size());
+    auto c_v = view<double>(c.data(), c.size());
+    size_t size = s.size(z,a_v, b_v, c_v);
+    vector<char> buffer(size);
+    s.write_buffer(buffer.data(), buffer.size(), z, a_v, b_v, c_v);
+    auto tup = s.read_buffer(buffer.data(), buffer.size());
+    ASSERT_EQ(get<1>(tup).size(), 0);
+    ASSERT_EQ(get<2>(tup).size(), 1);
+    ASSERT_EQ(get<3>(tup).size(), 0);
+}
+
 /**
  * Check that we can serialize message of more than 2^31 (limit of int) bytes
  * We should be able to serialize up to std::numeric_limits<size_t>::max() bytes

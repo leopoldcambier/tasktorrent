@@ -8,6 +8,7 @@
 #include <cstring>
 #include <cassert>
 #include <memory>
+#include <iostream>
 
 #include "views.hpp"
 
@@ -59,8 +60,10 @@ private:
         void operator()(view<T> &t)
         {
             total += sizeof(size_t);
-            total += (total % alignof(T));
-            total += sizeof(T) * t.size();
+            if(t.size() > 0) {
+                total += (alignof(T) - total % alignof(T)) % alignof(T);
+                total += sizeof(T) * t.size();
+            }
         }
     };
 
@@ -90,18 +93,21 @@ private:
             p += sizeof(size_t);
             size -= sizeof(size_t);
             assert(size >= 0);
-            // Align
-            void* pv = (void*)p;
-            void* error = std::align(alignof(T), sizeof(T), pv, size);
-            p = (char*)pv;
-            assert(error != nullptr);
-            assert(size >= 0);
-            // Serialize the data at the now aligned address
-            size_t size_view = length * sizeof(T);
-            memcpy(p, t.data(), size_view);
-            p += size_view;
-            size -= size_view;
-            assert(size >= 0);
+            if(length > 0) {
+                assert(size > 0);
+                // Align
+                void* pv = (void*)p;
+                void* error = std::align(alignof(T), sizeof(T), pv, size);
+                p = (char*)pv;
+                assert(error != nullptr);
+                assert(size >= 0);
+                // Serialize the data at the now aligned address
+                size_t size_view = length * sizeof(T);
+                memcpy(p, t.data(), size_view);
+                p += size_view;
+                size -= size_view;
+                assert(size >= 0);
+            }
         }
         // TODO: Specialize for other types
     };
@@ -132,19 +138,24 @@ private:
             p += sizeof(size_t);
             size -= sizeof(T);
             assert(size >= 0);
-            // Align
-            void* pv = (void*)p;
-            void* error = std::align(alignof(T), sizeof(T), pv, size);
-            p = (char*)pv;
-            assert(error != nullptr);
-            assert(size >= 0);
-            // Deserialize data - avoid unnecessary copy and fetch the (aligned) pointer
-            size_t size_view = length * sizeof(T);
-            T *start = reinterpret_cast<T *>(p);
-            t = view<T>(start, length);
-            p += size_view;
-            size -= size_view;
-            assert(size >= 0);
+            if(length > 0) {
+                assert(size > 0);
+                // Align
+                void* pv = (void*)p;
+                void* error = std::align(alignof(T), sizeof(T), pv, size);
+                p = (char*)pv;
+                assert(error != nullptr);
+                assert(size >= 0);
+                // Deserialize data - avoid unnecessary copy and fetch the (aligned) pointer
+                size_t size_view = length * sizeof(T);
+                T *start = reinterpret_cast<T *>(p);
+                t = view<T>(start, length);
+                p += size_view;
+                size -= size_view;
+                assert(size >= 0);
+            } else {
+                t = view<T>(nullptr, 0);
+            }
         }
     };
 
