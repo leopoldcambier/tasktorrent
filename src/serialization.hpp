@@ -136,8 +136,8 @@ private:
             size_t length;
             memcpy(&length, p, sizeof(size_t));
             p += sizeof(size_t);
-            assert(size >= sizeof(T));
-            size -= sizeof(T);
+            assert(size >= sizeof(size_t));
+            size -= sizeof(size_t);
             if(length > 0) {
                 assert(size > 0);
                 // Align
