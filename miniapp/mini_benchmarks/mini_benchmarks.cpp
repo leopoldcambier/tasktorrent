@@ -7,6 +7,16 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <time.h>
+
+void spin_for(double time) {
+    clock_t t0, t1;
+    t0 = clock();
+    while(true) {
+        t1 = clock();
+        if( ((double)(t1 - t0))/CLOCKS_PER_SEC >= time ) break;
+    }
+}
 
 /**
  *   /x\
@@ -17,7 +27,7 @@
  *  o-x-y
  *   \x/
  */
-int wait_only(const int n_threads, const int n_tasks, const int n_deps, const int sleep_time, const int verb) {
+int wait_only(const int n_threads, const int n_tasks, const int n_deps, const double sleep_for, const int verb) {
 
     ttor::Threadpool_shared tp(n_threads, 0, "Wk_", false);
     ttor::Taskflow<int> tf_0(&tp, 0);
@@ -31,7 +41,7 @@ int wait_only(const int n_threads, const int n_tasks, const int n_deps, const in
         return 1;
     })
     .set_task([&](int k) {
-        std::this_thread::sleep_for(std::chrono::nanoseconds(sleep_time));
+        spin_for(sleep_for);
         for(int i = 0; i < n_deps; i++) {
             tf_1.fulfill_promise(k * n_deps + i);
         }
@@ -44,7 +54,7 @@ int wait_only(const int n_threads, const int n_tasks, const int n_deps, const in
         return 1;
     })
     .set_task([&](int k) {
-        std::this_thread::sleep_for(std::chrono::nanoseconds(sleep_time));
+        spin_for(sleep_for);
         tf_2.fulfill_promise(k / n_deps);
     });
 
@@ -55,7 +65,7 @@ int wait_only(const int n_threads, const int n_tasks, const int n_deps, const in
         return n_deps;
     })
     .set_task([&](int) {
-        std::this_thread::sleep_for(std::chrono::nanoseconds(sleep_time));
+        spin_for(sleep_for);
     });
 
     for(int k = 0; k < n_tasks; k++) {
@@ -66,11 +76,12 @@ int wait_only(const int n_threads, const int n_tasks, const int n_deps, const in
     tp.join();
     auto t1 = ttor::wctime();
     double time = ttor::elapsed(t0, t1);
-    if(verb) printf("n_threads,n_taks,n_deps,sleep_time,time,total_tasks,time_per_task,efficiency\n");
+    if(verb) printf("n_threads,n_taks,n_deps,sleep_time,time,total_tasks,efficiency\n");
     int total_tasks = n_tasks + n_tasks * n_deps + (n_deps > 0 ? 1 : 0) * n_tasks;
-    double speedup = (double)(total_tasks) * 1e-9 * (double)(sleep_time) / time;
+    double speedup = (double)(total_tasks) * (double)(sleep_for) / (double)(time);
     double efficiency = speedup / (double)(n_threads);
-    printf("%d,%d,%d,%d,%e,%d,%e,%e\n", n_threads, n_tasks, n_deps, sleep_time, time, total_tasks, time / total_tasks, efficiency);
+    printf("%d,%d,%d,%e,%e,%d,%e\n", n_threads, n_tasks, n_deps, sleep_for, time, total_tasks, efficiency);
+
     return 0;
 }
 
@@ -79,7 +90,7 @@ int main(int argc, char **argv)
     int n_threads = 1;
     int n_tasks = 1000000;
     int n_deps = 0;
-    int sleep_time = 1000;
+    double sleep_for = 1e-6;
     int verb = 0;
 
     if (argc >= 2)
@@ -99,8 +110,8 @@ int main(int argc, char **argv)
     }
     if (argc >= 5)
     {
-        sleep_time = atoi(argv[4]);
-        assert(sleep_time >= 0);
+        sleep_for = atof(argv[4]);
+        assert(sleep_for >= 0);
     }
     if (argc >= 6)
     {
@@ -108,7 +119,7 @@ int main(int argc, char **argv)
         assert(verb >= 0);
     }
 
-    int error = wait_only(n_threads, n_tasks, n_deps, sleep_time, verb);
+    int error = wait_only(n_threads, n_tasks, n_deps, sleep_for, verb);
 
     return error;
 }
