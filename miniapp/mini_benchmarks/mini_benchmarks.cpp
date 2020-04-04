@@ -7,14 +7,12 @@
 #include <iostream>
 #include <map>
 #include <memory>
-#include <time.h>
 
 void spin_for(double time) {
-    clock_t t0, t1;
-    t0 = clock();
+    auto t0 = ttor::wctime();
     while(true) {
-        t1 = clock();
-        if( ((double)(t1 - t0))/CLOCKS_PER_SEC >= time ) break;
+    	auto t1 = ttor::wctime();
+        if( ttor::elapsed(t0, t1) >= time ) break;
     }
 }
 

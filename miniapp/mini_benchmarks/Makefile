@@ -1,10 +1,10 @@
 include Makefile.conf
 
-CC       = g++
-CFLAGS   += -pthread -O3 -std=c++14 -DTTOR_SHARED
+CC       = icpc
+CFLAGS   += -pthread -O3 -std=c++14 -DTTOR_SHARED -DNDEBUG
 INCLUDE  += -I../../src/
 LIBS     += 
-LDFLAGS  += 
+LDFLAGS  += -ltbbmalloc_proxy
 SRCDIR   = ../../src
 OBJDIR   = ../../build
 
