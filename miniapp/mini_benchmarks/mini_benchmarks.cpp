@@ -1,4 +1,3 @@
-#include "communications.hpp"
 #include "runtime.hpp"
 #include "util.hpp"
 #include <fstream>
@@ -67,9 +66,11 @@ int wait_only(const int n_threads, const int n_tasks, const int n_deps, const in
     tp.join();
     auto t1 = ttor::wctime();
     double time = ttor::elapsed(t0, t1);
-    if(verb) printf("n_threads,n_taks,n_deps,sleep_time,time,total_tasks,time_per_task\n");
+    if(verb) printf("n_threads,n_taks,n_deps,sleep_time,time,total_tasks,time_per_task,efficiency\n");
     int total_tasks = n_tasks + n_tasks * n_deps + (n_deps > 0 ? 1 : 0) * n_tasks;
-    printf("%d,%d,%d,%d,%e,%d,%e\n", n_threads, n_tasks, n_deps, sleep_time, time, total_tasks, time / total_tasks);
+    double speedup = (double)(total_tasks) * 1e-9 * (double)(sleep_time) / time;
+    double efficiency = speedup / (double)(n_threads);
+    printf("%d,%d,%d,%d,%e,%d,%e,%e\n", n_threads, n_tasks, n_deps, sleep_time, time, total_tasks, time / total_tasks, efficiency);
     return 0;
 }
 
