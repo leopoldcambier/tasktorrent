@@ -1,3 +1,4 @@
+CC      = g++
 INCLUDE =
 LIBS    =
 LDFLAGS =

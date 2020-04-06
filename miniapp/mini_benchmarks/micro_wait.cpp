@@ -117,6 +117,7 @@ int main(int argc, char **argv)
         assert(verb >= 0);
     }
 
+    if(verb) printf("./micro_wait n_threads n_tasks n_deps sleep_for verb\n");
     int error = wait_only(n_threads, n_tasks, n_deps, sleep_for, verb);
 
     return error;
