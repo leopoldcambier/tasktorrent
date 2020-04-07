@@ -10,16 +10,6 @@ then
     exit 1
 fi   
 
-for nrank in 2 3 4
-do
-    $CMD_OSBS -n ${nrank} ./tests_comms_internals --gtest_break_on_failure --gtest_filter=ttor.all_sizes
-
-    if [ $? != "0" ]
-    then
-        exit 1
-    fi   
-done
-
 for nrank in 1 2 3 4
 do
     $CMD_OSBS -n ${nrank} ./tests_completion 2 0 --gtest_repeat=32 --gtest_break_on_failure
