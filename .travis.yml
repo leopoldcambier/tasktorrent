@@ -19,6 +19,6 @@ script:
   - cd ${HOME}/build/leopoldcambier/tasktorrent && EIGEN3_ROOT=${HOME}/build/leopoldcambier/tasktorrent/eigen ./tests/test_all.sh $(pwd) ON UB
   - cd ${HOME}/build/leopoldcambier/tasktorrent && ASAN_OPTIONS=detect_leaks=0 EIGEN3_ROOT=${HOME}/build/leopoldcambier/tasktorrent/eigen ./tests/test_all.sh $(pwd) ON ADDRESS  
   
-  - cd ${HOME}/build/leopoldcambier/tasktorrent && EIGEN3_ROOT=${HOME}/build/leopoldcambier/tasktorrent/eigen ./tests/test_all.sh $(pwd) OFF OFF
-  - cd ${HOME}/build/leopoldcambier/tasktorrent && EIGEN3_ROOT=${HOME}/build/leopoldcambier/tasktorrent/eigen ./tests/test_all.sh $(pwd) OFF UB
-  - cd ${HOME}/build/leopoldcambier/tasktorrent && ASAN_OPTIONS=detect_leaks=0 EIGEN3_ROOT=${HOME}/build/leopoldcambier/tasktorrent/eigen ./tests/test_all.sh $(pwd) OFF ADDRESS
+  - cd ${HOME}/build/leopoldcambier/tasktorrent && TTOR_MPIRUN="mpirun -oversubscribe" EIGEN3_ROOT=${HOME}/build/leopoldcambier/tasktorrent/eigen ./tests/test_all.sh $(pwd) OFF OFF
+  - cd ${HOME}/build/leopoldcambier/tasktorrent && TTOR_MPIRUN="mpirun -oversubscribe" EIGEN3_ROOT=${HOME}/build/leopoldcambier/tasktorrent/eigen ./tests/test_all.sh $(pwd) OFF UB
+  - cd ${HOME}/build/leopoldcambier/tasktorrent && TTOR_MPIRUN="mpirun -oversubscribe" ASAN_OPTIONS=detect_leaks=0 EIGEN3_ROOT=${HOME}/build/leopoldcambier/tasktorrent/eigen ./tests/test_all.sh $(pwd) OFF ADDRESS

@@ -220,7 +220,7 @@ TEST(ttor, nonblocking)
     logfile.close();
 }
 
-TEST(mpi, manylarge_1)
+TEST(mpi, many_1)
 {
     const int nrpcs = 100; // number of messages
     const int size = 1000; // Number of int in each message
@@ -249,7 +249,7 @@ TEST(mpi, manylarge_1)
     MPI_Barrier(MPI_COMM_WORLD);
 }
 
-TEST(ttor, manylarge_2)
+TEST(ttor, many_2)
 {
     const int nrpcs = 100; // number of messages
     const int size = 1000; // Number of int in each message
@@ -295,7 +295,7 @@ TEST(ttor, manylarge_2)
 }
 
 // Test for a potential bug in mpich with MPI_Probe and MPI_Count not returning correct values for large messages
-TEST(mpi, get_count_large)
+TEST(mpi, large_probe_get_count)
 {
     MPI_Datatype MPI_MEGABYTE;
     int mega = 1 << 20;
@@ -334,10 +334,10 @@ TEST(mpi, get_count_large)
     }
 }
 
-TEST(ttor, all_sizes)
+TEST(ttor, large_all_sizes)
 {
     // Don't go too high. This ensures that we try sizes smaller and larger than 2^31 B.
-    vector<double> sizes = {0.1, 0.5, 0.9, 1.1, 2.0}; 
+    vector<double> sizes = {0.1, 0.5, 0.9, 1.1, 1.2, 1.3}; 
     for(auto s: sizes) {
         Communicator comm(VERB);
         int done = 0;
