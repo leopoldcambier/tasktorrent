@@ -140,13 +140,16 @@ class Communicator
 {
 
 private:
+    const static size_t mega = (1 << 20);
+    const static size_t max_int_size = static_cast<size_t>(std::numeric_limits<int>::max());
+
     const int verb;
     Logger *logger;
     bool log;
-    const int tag;
     std::vector<unique_ptr<ActiveMsgBase>> active_messages;
     std::atomic<int> messages_queued; // queued messages
     std::atomic<int> messages_processed; // received and processed messages
+    MPI_Datatype MPI_MEGABYTE; // used to send large message larger than 4GB
 
     /** Small messages                        
      *  This class maintains three lists to handle "small" messages, for which we allocate memory internally.
@@ -194,7 +197,7 @@ public:
      * Creates an Communicator
      * - verb_ is the verbose level: 0 = no printing. 4 = lots of printing.
      */
-    Communicator(int verb_ = 0, int tag_ = 0);
+    Communicator(int verb_ = 0);
 
     /**
      * Creates an active message tied to function fun

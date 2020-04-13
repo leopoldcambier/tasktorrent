@@ -3,7 +3,7 @@
 CMD="mpirun -mca shmem posix -mca btl ^tcp -n 2 ./tests_communicator"
 CMD_OSBS="mpirun -mca shmem posix -mca btl ^tcp -oversubscribe"
 
-$CMD_OSBS -n 4 ./tests_comms_internals --gtest_repeat=10 --gtest_break_on_failure
+$CMD_OSBS -n 4 ./tests_comms_internals --gtest_repeat=10 --gtest_break_on_failure --gtest_filter=-ttor.all_sizes
 
 if [ $? != "0" ]
 then

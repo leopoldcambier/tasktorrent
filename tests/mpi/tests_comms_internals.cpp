@@ -294,6 +294,51 @@ TEST(ttor, manylarge_2)
     MPI_Barrier(MPI_COMM_WORLD);
 }
 
+TEST(ttor, all_sizes)
+{
+    // Don't go too high. This ensures that we try sizes smaller and larger than 2^31 B.
+    vector<double> sizes = {0.1, 0.5, 0.9, 1.1, 2.0}; 
+    for(auto s: sizes) {
+        Communicator comm(VERB);
+        int done = 0;
+        int expected = 1;
+        size_t size = static_cast<size_t>(std::numeric_limits<int>::max()) * s;
+        char* buffer = (char*)malloc(size * sizeof(char));
+        buffer[0] = 'l';
+        buffer[1] = 'e';
+        buffer[size/4] = 'o';
+        buffer[size/2] = 'p';
+        buffer[3*size/4] = 'o';
+        buffer[size-2] = 'l';
+        buffer[size-1] = 'd';
+        auto am = comm.make_active_msg(
+            [&](view<char> &p) {
+                char* buffer = p.data();
+                size_t actual_size = p.size();
+                EXPECT_EQ(size, actual_size);
+                EXPECT_EQ(buffer[0],'l');
+                EXPECT_EQ(buffer[1],'e');
+                EXPECT_EQ(buffer[actual_size/4],'o');
+                EXPECT_EQ(buffer[actual_size/2],'p');
+                EXPECT_EQ(buffer[3*actual_size/4],'o');
+                EXPECT_EQ(buffer[actual_size-2],'l');
+                EXPECT_EQ(buffer[actual_size-1],'d');
+                done++;
+            });
+
+        auto v = view<char>(buffer, size);
+        am->send( (comm_rank() + 1) % (comm_size()) , v);
+
+        while (done != expected) {
+            comm.progress();
+        }
+        
+        EXPECT_EQ(done, expected);
+        MPI_Barrier(MPI_COMM_WORLD);
+        free(buffer);
+    }
+}
+
 int main(int argc, char **argv)
 {
     MPI_Init(NULL, NULL);

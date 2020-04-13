@@ -31,18 +31,29 @@ string processor_name()
  * Communicator
  */
 
-Communicator::Communicator(int verb_, int tag_) : 
+Communicator::Communicator(int verb_) : 
     verb(verb_), 
     logger(nullptr), 
     log(false), 
-    tag(tag_), 
     messages_queued(0), 
-    messages_processed(0) {}
+    messages_processed(0) {
+        TASKTORRENT_MPI_CHECK(MPI_Type_contiguous(static_cast<int>(mega), MPI_BYTE, &MPI_MEGABYTE));
+        TASKTORRENT_MPI_CHECK(MPI_Type_commit(&MPI_MEGABYTE));
+    }
     
 unique_ptr<message> Communicator::make_active_message(int dest, size_t size)
 {
     auto m = make_unique<message>(dest);
-    m->buffer.resize(size);
+    size_t buffer_size = 0;
+    int tag = 0;
+    if(size > max_int_size) {
+        buffer_size = mega * ((size + mega - 1) / mega); // pad so that the total size if a multiple of mega (2^20)
+        tag = 1;
+    } else {
+        buffer_size = size;
+        tag = 0;
+    }
+    m->buffer.resize(buffer_size);
     m->tag = tag;
     return m;
 }
@@ -50,15 +61,25 @@ unique_ptr<message> Communicator::make_active_message(int dest, size_t size)
 void Communicator::Isend_message(const unique_ptr<message> &m)
 {
     if (verb > 1)
-        printf("[%2d] -> %d: sending msg [tag %d], %lu B, rqst %p\n", comm_rank(), m->other, m->tag, m->buffer.size(), (void*)&(m->request));
+        printf("[%2d] -> %d: sending msg [tag %d], %zd B, rqst %p\n", comm_rank(), m->other, m->tag, m->buffer.size(), (void*)&(m->request));
 
-    size_t max_size = static_cast<size_t>(std::numeric_limits<int>::max());
-    if(m->buffer.size() > max_size) {
-        printf("Error in Communicator::Isend_message: requested message size of %zd larger than maximum int %d\n", m->buffer.size(), std::numeric_limits<int>::max());
-        MPI_Finalize();
-        exit(1);
+    if(m->tag == 0) {
+        size_t size = m->buffer.size();
+        assert(size <= max_int_size);
+        TASKTORRENT_MPI_CHECK(MPI_Isend(m->buffer.data(), static_cast<int>(size), MPI_BYTE, m->other, m->tag, MPI_COMM_WORLD, &(m->request)));
+    } else if(m->tag == 1) {
+        assert(m->buffer.size() > max_int_size);
+        assert(m->buffer.size() % mega == 0);
+        size_t size = m->buffer.size() / mega;
+        if(size > max_int_size) {
+            printf("Error in Communicator::Isend_message: requested message size of %zd larger than maximum of 2^31 MB\n", m->buffer.size());
+            MPI_Finalize();
+            exit(1);
+        }
+        TASKTORRENT_MPI_CHECK(MPI_Isend(m->buffer.data(), static_cast<int>(size), MPI_MEGABYTE, m->other, m->tag, MPI_COMM_WORLD, &(m->request)));
+    } else {
+        assert(false);
     }
-    TASKTORRENT_MPI_CHECK(MPI_Isend(m->buffer.data(), static_cast<int>(m->buffer.size()), MPI_BYTE, m->other, m->tag, MPI_COMM_WORLD, &(m->request)));
 
     if (verb > 4)
         print_bytes(m->buffer);
@@ -113,25 +134,39 @@ void Communicator::test_Isent_messages()
 bool Communicator::probe_Irecv_message(unique_ptr<message> &m)
 {
     if (verb > 3)
-        printf("[%2d] MPI probe on tag %d\n", comm_rank(), tag);
+        printf("[%2d] MPI probe\n", comm_rank());
 
-    MPI_Status status;
-    int size, flag; // MPI uses int for message count (size)
-    TASKTORRENT_MPI_CHECK(MPI_Iprobe(MPI_ANY_SOURCE, tag, MPI_COMM_WORLD, &flag, &status));
-    if (!flag)
+    MPI_Status mpi_status;
+    int mpi_size, mpi_flag; // MPI uses int for message count (mpi_size)
+    TASKTORRENT_MPI_CHECK(MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_flag, &mpi_status));
+    if (!mpi_flag)
         return false;
 
-    TASKTORRENT_MPI_CHECK(MPI_Get_count(&status, MPI_BYTE, &size));
-    int mpi_tag = status.MPI_TAG;
-    assert(mpi_tag == tag);
-    int source = status.MPI_SOURCE;
+    int mpi_tag = mpi_status.MPI_TAG;
+    int source = mpi_status.MPI_SOURCE;
+    size_t buffer_size = 0;
     m = make_unique<message>(source);
-    m->buffer.resize(size);
+    if(mpi_tag == 0) { // We are receiving MPI_BYTE
+        TASKTORRENT_MPI_CHECK(MPI_Get_count(&mpi_status, MPI_BYTE, &mpi_size));
+        buffer_size = static_cast<size_t>(mpi_size);
+    } else if(mpi_tag == 1) { // We are receiving MPI_MEGABYTE
+        TASKTORRENT_MPI_CHECK(MPI_Get_count(&mpi_status, MPI_MEGABYTE, &mpi_size));
+        buffer_size = static_cast<size_t>(mpi_size) * mega;
+    } else {
+        assert(false);
+    }
+    m->buffer.resize(buffer_size);
     m->tag = mpi_tag;
     if (verb > 1)
-        printf("[%2d] <- %d: receiving msg [tag %d], %d B, rqst %p\n", comm_rank(), source, mpi_tag, size, (void*)&m->request);
+        printf("[%2d] <- %d: receiving msg [tag %d], %zd B, rqst %p\n", comm_rank(), source, mpi_tag, buffer_size, (void*)&m->request);
 
-    TASKTORRENT_MPI_CHECK(MPI_Irecv(m->buffer.data(), m->buffer.size(), MPI_BYTE, source, mpi_tag, MPI_COMM_WORLD, &m->request));
+    if(mpi_tag == 0) { // We are receiving MPI_BYTE
+        TASKTORRENT_MPI_CHECK(MPI_Irecv(m->buffer.data(), mpi_size, MPI_BYTE, source, mpi_tag, MPI_COMM_WORLD, &m->request));
+    } else if(mpi_tag == 1) {
+        TASKTORRENT_MPI_CHECK(MPI_Irecv(m->buffer.data(), mpi_size, MPI_MEGABYTE, source, mpi_tag, MPI_COMM_WORLD, &m->request));
+    } else {
+        assert(false);
+    }
 
     return true;
 }
