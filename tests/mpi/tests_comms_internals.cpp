@@ -282,7 +282,7 @@ TEST(ttor, manylarge_2)
         }
     }
 
-    while (l.done != expected)
+    while ( (!comm.is_done()) || (l.done != expected) )
     {
         comm.progress();
     }
@@ -292,6 +292,46 @@ TEST(ttor, manylarge_2)
     EXPECT_EQ(l.done, expected);
     
     MPI_Barrier(MPI_COMM_WORLD);
+}
+
+// Test for a potential bug in mpich with MPI_Probe and MPI_Count not returning correct values for large messages
+TEST(mpi, get_count_large)
+{
+    MPI_Datatype MPI_MEGABYTE;
+    int mega = 1 << 20;
+    MPI_Type_contiguous(mega, MPI_BYTE, &MPI_MEGABYTE);
+    MPI_Type_commit(&MPI_MEGABYTE);
+
+    std::vector<int> counts = {1, 5, 100, 5000};
+    for(auto count: counts) {
+        size_t size = static_cast<size_t>(mega) * static_cast<size_t>(count);
+        char* sendbuff = (char*)malloc(size * sizeof(char));
+        char* recvbuff = (char*)malloc(size * sizeof(char));
+        sendbuff[0] = '1';
+        sendbuff[size-1] = '7';
+        MPI_Request send, recv;
+        int after = (comm_rank() + 1) % (comm_size());
+        int before = (comm_rank() > 0) ? (comm_rank() - 1) : (comm_size() - 1);
+        MPI_Isend(sendbuff, count, MPI_MEGABYTE, after, 0, MPI_COMM_WORLD, &send);
+        {
+            MPI_Status status;
+            MPI_Probe(before, 0, MPI_COMM_WORLD, &status);
+            int probe_count = 0;
+            MPI_Get_count(&status, MPI_MEGABYTE, &probe_count);
+            EXPECT_EQ(probe_count, count);
+        }
+        MPI_Irecv(recvbuff, count, MPI_MEGABYTE, before, 0, MPI_COMM_WORLD, &recv);
+        MPI_Wait(&send, MPI_STATUS_IGNORE);
+        MPI_Wait(&recv, MPI_STATUS_IGNORE);
+        {
+            EXPECT_EQ(recvbuff[0],'1');
+            EXPECT_EQ(recvbuff[size-1],'7');
+        }
+        
+        MPI_Barrier(MPI_COMM_WORLD);
+        free(sendbuff);
+        free(recvbuff);
+    }
 }
 
 TEST(ttor, all_sizes)
@@ -329,7 +369,7 @@ TEST(ttor, all_sizes)
         auto v = view<char>(buffer, size);
         am->send( (comm_rank() + 1) % (comm_size()) , v);
 
-        while (done != expected) {
+        while ( (!comm.is_done()) || (done != expected) ) {
             comm.progress();
         }
         
