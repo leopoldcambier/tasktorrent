@@ -9,12 +9,18 @@ language: cpp
 compiler:
   - g++
 env:
-  - TTOR_ROOT="${HOME}/build/leopoldcambier/tasktorrent"
-  - EIGEN3_ROOT="${HOME}/build/leopoldcambier/tasktorrent/eigen"
-  - ASAN_OPTIONS="detect_leaks=0"
-  - TTOR_MPIRUN="mpirun -oversubscribe"
-  - SHARED="ON" SHARED="OFF"
-  - SAN="OFF" SAN="UB" SAN="ADDRESS"
+  global:
+    - TTOR_ROOT="${HOME}/build/leopoldcambier/tasktorrent"
+    - EIGEN3_ROOT="${HOME}/build/leopoldcambier/tasktorrent/eigen"
+    - ASAN_OPTIONS="detect_leaks=0"
+    - TTOR_MPIRUN="mpirun -oversubscribe"
+  jobs:
+    - SHARED="ON" SAN="OFF"
+    - SHARED="ON" SAN="UB"
+    - SHARED="ON" SAN="ADDRESS"
+    - SHARED="OFF" SAN="OFF"
+    - SHARED="OFF" SAN="UB"
+    - SHARED="OFF" SAN="ADDRESS"
 install:
 script:
   - cd ${TTOR_ROOT}/tutorial && make clean && make run
