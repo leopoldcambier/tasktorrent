@@ -133,6 +133,11 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     std::vector<std::vector<Eigen::MatrixXd>> A_ijk(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(Nt, Nt)));
     std::vector<std::vector<Eigen::MatrixXd>> C_ijk(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(Nt, Nt)));
     std::vector<std::vector<Eigen::MatrixXd>> B_ijk(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(Nt, Nt)));
+    std::vector<std::unique_ptr<std::atomic<int>>> C_ijk_counts(n * n);
+    for(int i = 0; i < n*n; i++) {
+        C_ijk_counts[i] = std::make_unique<std::atomic<int>>();
+        C_ijk_counts[i]->store(0);
+    }
     
     // C_ijk_accu[sub_i][sub_j][from] stores the results for (sub_i, sub_j) to be accumulated, from rank from
     std::vector<std::vector<std::vector<Eigen::MatrixXd>>> C_ijk_accu(
@@ -197,9 +202,14 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     }).set_indegree([&](int2) {
         return 1;
     }).set_mapping([&](int2 sub_ij) {
-        return (sub_ij[0] + n * sub_ij[1]) % n_threads;
-    }).set_priority([&](int2){
-        return 3.0;
+        // return (sub_ij[0] + n * sub_ij[1]) % n_threads;
+        // return 0;
+        return sub_ij[0] % n_threads;
+    }).set_priority([&](int2 sub_ij){
+        return 1.0 * n + (n - sub_ij[1]);
+    }).set_binding([&](int2 sub_ij){
+        return false;
+        // return true;
     }).set_name([&](int2 sub_ij) { return "send_A_" + to_string(sub_ij) + "_" + to_string(rank_ijk); });
 
     // (i,j,0) sends B_ij to (i,j,i) for all i,j
@@ -219,9 +229,14 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     }).set_indegree([&](int2) {
         return 1;
     }).set_mapping([&](int2 sub_ij) {
-        return (sub_ij[0] + n * sub_ij[1]) % n_threads;
-    }).set_priority([&](int2){
-        return 3.0;
+        // return (sub_ij[0] + n * sub_ij[1]) % n_threads;
+        // return 0;
+        return (sub_ij[1] % n_threads);
+    }).set_priority([&](int2 sub_ij){
+        return 1.0 * n + (n - sub_ij[0]);
+    }).set_binding([&](int2 sub_ij){
+        return false;
+        //return true;
     }).set_name([&](int2 sub_ij) { return "send_B_" + to_string(sub_ij) + "_" + to_string(rank_ijk); });
 
     /** 
@@ -261,9 +276,14 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     }).set_indegree([&](int2) {
         return 1;
     }).set_mapping([&](int2 sub_ij) {
-        return (sub_ij[0] + n * sub_ij[1]) % n_threads;
-    }).set_priority([&](int2){
-        return 2.0;
+        // return (sub_ij[0] + n * sub_ij[1]) % n_threads;
+        // return 0;
+        return (sub_ij[0] % n_threads);
+    }).set_priority([&](int2 sub_ij){
+        return 1.0 * n + (n - sub_ij[1]);
+    }).set_binding([&](int2 sub_ij){
+        return false;
+        //return true;
     }).set_name([&](int2 sub_ij) { return "bcast_A_" + to_string(sub_ij) + "_" + to_string(rank_ijk); });
 
     // (i,j,i) sends B_ij along i to all (*,j,i) for all i,j
@@ -285,9 +305,14 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     }).set_indegree([&](int2) {
         return 1;
     }).set_mapping([&](int2 sub_ij) {
-        return (sub_ij[0] + n * sub_ij[1]) % n_threads;
-    }).set_priority([&](int2){
-        return 2.0;
+        // return (sub_ij[0] + n * sub_ij[1]) % n_threads;
+        // return 0;
+        return (sub_ij[1] % n_threads);
+    }).set_priority([&](int2 sub_ij){
+        return 1.0 * n + (n - sub_ij[0]);
+    }).set_binding([&](int2 sub_ij){
+        return false;
+        // return true;
     }).set_name([&](int2 sub_ij) { return "bcast_B_" + to_string(sub_ij) + "_" + to_string(rank_ijk); });
 
     /** 
@@ -309,10 +334,12 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
             scoped_timer t(&gemm_us_t);
             C_ijk[sub_i][sub_j].noalias() += A_ijk[sub_i][sub_k] * B_ijk[sub_k][sub_j];
         }
+        //(*(C_ijk_counts[sub_i * n + sub_j]))++;
         scoped_timer t(&gemm_copy_us_t);
         if(sub_ijk[2] < n-1) {
             gemm_Cijk.fulfill_promise({sub_i, sub_j, sub_k+1});
         } else {
+        //if(C_ijk_counts[sub_i * n + sub_j]->load() == n) {
             auto C_ijk_view = make_view(&C_ijk[sub_i][sub_j]);
             int dest = rank_ijk_to_rank(rank_i, rank_j, 0);
             if(dest == rank) {
@@ -325,10 +352,16 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
         }
     }).set_indegree([&](int3 sub_ijk) {
         return sub_ijk[2] == 0 ? 2 : 3; // 2 A_ik and B_kj blocks, + previous gemm
+        // return 2;
     }).set_mapping([&](int3 sub_ijk) {
-        return (sub_ijk[0] + sub_ijk[1] * n + sub_ijk[2] * n * n) % n_threads;
-    }).set_priority([&](int3){
-        return 1.0;
+        if(n_threads == 1) return 0;
+        // else return max(1, (sub_ijk[0] + sub_ijk[1] * n) % n_threads);
+        else return max(1, (sub_ijk[0] + sub_ijk[1] * n) % n_threads); // + sub_ijk[2] * n * n) % n_threads);
+        // return (sub_ijk[0] + sub_ijk[1] * n + sub_ijk[2] * n * n) % n_threads;
+    }).set_binding([&](int3 sub_ijk) {
+        return false;
+    }).set_priority([&](int3 sub_ijk){
+        return 0.0 * n + (n - sub_ijk[2]);
     }).set_name([&](int3 sub_ijk) { return "gemm_C_" + to_string(sub_ijk) + "_" + to_string(rank_ijk); });
 
     // (i,j,k) compute C_ijk = A_ik * B_kj
@@ -339,9 +372,11 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
         int from  = sub_ij_from[2];
         C_ij[sub_i][sub_j] += C_ijk_accu[sub_i][sub_j][from];
     }).set_indegree([&](int3) {
-        return 1; // 2 A_ik and B_kj blocks, + previous gemm
+        return 1;
     }).set_mapping([&](int3 sub_ij_from) {
-        return (sub_ij_from[0] + n * sub_ij_from[1]) % n_threads;
+        if(n_threads == 1) return 0;
+        else return max(1, (sub_ij_from[0] + n * sub_ij_from[1]) % n_threads);
+        // return (sub_ij_from[0] + n * sub_ij_from[1]) % n_threads;
     }).set_binding([&](int3) {
         return true;
     }).set_priority([&](int3){

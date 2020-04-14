@@ -1,9 +1,12 @@
+include Makefile.conf
+
 CC       = mpicxx
-CFLAGS   = -DEIGEN_USE_LAPACKE --std=c++14 -g -O3 -DEIGEN_NO_DEBUG
-INCLUDE  = -I../../src/ -I/usr/local/Cellar/eigen/3.3.7/include/eigen3/ -I/usr/local/opt/openblas/include
+CFLAGS   += -pthread -O3 -g -std=c++14 -DEIGEN_NO_DEBUG -DEIGEN_USE_LAPACKE
+INCLUDE  += -I../../src/
+LIBS     += 
+LDFLAGS  += 
 SRCDIR   = ../../src
 OBJDIR   = ../../build
-LFLAGS   = -llapack -lblas -lpthread -L/usr/local/opt/openblas/lib
 
 .PHONY: clean
 
@@ -14,7 +17,7 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(DEPS)
 	$(CC) -o $@ -c $< $(CFLAGS) $(INCLUDE)
 
 3d_gemm: 3d_gemm.cpp $(OBJ)
-	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LFLAGS)
+	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LDFLAGS)
 
 clean:
 	rm -f 3d_gemm
