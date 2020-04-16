@@ -90,6 +90,18 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     assert(Nt * n == Nr);
     printf("Hello rank %d with 3d-index (%d %d %d) / (%d %d %d) from host %s, N %d, Nr %d, Nt %d, n %d\n", rank, rank_i, rank_j, rank_k, n_ranks_1d, n_ranks_1d, n_ranks_1d, 
         ttor::processor_name().c_str(), N, Nr, Nt, n);
+
+    printf("rank,%d\n", rank);
+    printf("rank_i,%d\n", rank_i);
+    printf("rank_j,%d\n", rank_j);
+    printf("rank_k,%d\n", rank_k);
+    printf("ntot,%d\n", N);
+    printf("nrank,%d\n", Nr);
+    printf("ntile,%d\n", Nt);
+    printf("nthreads,%d\n", n_threads);
+    printf("logfile,%s\n", logfile.c_str());
+    printf("verb,%d\n", verb);
+    printf("test,%d\n", test);
     
     auto rank_ijk_to_rank = [n_ranks_1d](int rank_i, int rank_j, int rank_k) {
         return rank_k * n_ranks_1d * n_ranks_1d + rank_j * n_ranks_1d + rank_i;
@@ -395,6 +407,9 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     }
     tp.join();
     ttor::timer t1 = ttor::wctime();
+    double total_time = ttor::elapsed(t0, t1);
+    double gemm_time = gemm_us_t.load() * 1e-6;
+    double gemm_time_per_thread = gemm_time / n_threads;
     printf("Done\n");
     printf("total_time,%e\n", ttor::elapsed(t0, t1));
     printf("send_copy_us_t,%e\n",send_copy_us_t.load() * 1e-6);
@@ -405,6 +420,9 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     printf("gemm_copy_us_t,%e\n",gemm_copy_us_t.load() * 1e-6);
     printf("gemm_am_us_t,%e\n",gemm_am_us_t.load() * 1e-6);
     printf("accu_us_t,%e\n",accu_us_t.load() * 1e-6);
+    // For easy CSV parsing
+    printf("[rank]>>>>Ntot,Nrank,Ntile,rank,n_ranks,nthreads,tot_time,gemm_time,gemm_time_per_thread\n");
+    printf("[%d]>>>>%d,%d,%d,%d,%d,%d,%e,%e,%e\n",rank,N,Nr,Nt,rank,n_ranks,n_threads,total_time,gemm_time,gemm_time_per_thread);
 
     if(logfile.size() > 0) {
         std::ofstream logstream;
