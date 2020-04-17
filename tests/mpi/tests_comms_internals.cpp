@@ -220,7 +220,7 @@ TEST(ttor, nonblocking)
     logfile.close();
 }
 
-TEST(mpi, manylarge_1)
+TEST(mpi, many_1)
 {
     const int nrpcs = 100; // number of messages
     const int size = 1000; // Number of int in each message
@@ -249,7 +249,7 @@ TEST(mpi, manylarge_1)
     MPI_Barrier(MPI_COMM_WORLD);
 }
 
-TEST(ttor, manylarge_2)
+TEST(ttor, many_2)
 {
     const int nrpcs = 100; // number of messages
     const int size = 1000; // Number of int in each message
@@ -282,7 +282,7 @@ TEST(ttor, manylarge_2)
         }
     }
 
-    while (l.done != expected)
+    while ( (!comm.is_done()) || (l.done != expected) )
     {
         comm.progress();
     }
@@ -294,10 +294,50 @@ TEST(ttor, manylarge_2)
     MPI_Barrier(MPI_COMM_WORLD);
 }
 
-TEST(ttor, all_sizes)
+// Test for a potential bug in mpich with MPI_Probe and MPI_Count not returning correct values for large messages
+TEST(mpi, large_probe_get_count)
+{
+    MPI_Datatype MPI_MEGABYTE;
+    int mega = 1 << 20;
+    MPI_Type_contiguous(mega, MPI_BYTE, &MPI_MEGABYTE);
+    MPI_Type_commit(&MPI_MEGABYTE);
+
+    std::vector<int> counts = {1, 5, 100, 5000};
+    for(auto count: counts) {
+        size_t size = static_cast<size_t>(mega) * static_cast<size_t>(count);
+        char* sendbuff = (char*)malloc(size * sizeof(char));
+        char* recvbuff = (char*)malloc(size * sizeof(char));
+        sendbuff[0] = '1';
+        sendbuff[size-1] = '7';
+        MPI_Request send, recv;
+        int after = (comm_rank() + 1) % (comm_size());
+        int before = (comm_rank() > 0) ? (comm_rank() - 1) : (comm_size() - 1);
+        MPI_Isend(sendbuff, count, MPI_MEGABYTE, after, 0, MPI_COMM_WORLD, &send);
+        {
+            MPI_Status status;
+            MPI_Probe(before, 0, MPI_COMM_WORLD, &status);
+            int probe_count = 0;
+            MPI_Get_count(&status, MPI_MEGABYTE, &probe_count);
+            EXPECT_EQ(probe_count, count);
+        }
+        MPI_Irecv(recvbuff, count, MPI_MEGABYTE, before, 0, MPI_COMM_WORLD, &recv);
+        MPI_Wait(&send, MPI_STATUS_IGNORE);
+        MPI_Wait(&recv, MPI_STATUS_IGNORE);
+        {
+            EXPECT_EQ(recvbuff[0],'1');
+            EXPECT_EQ(recvbuff[size-1],'7');
+        }
+        
+        MPI_Barrier(MPI_COMM_WORLD);
+        free(sendbuff);
+        free(recvbuff);
+    }
+}
+
+TEST(ttor, large_all_sizes)
 {
     // Don't go too high. This ensures that we try sizes smaller and larger than 2^31 B.
-    vector<double> sizes = {0.1, 0.5, 0.9, 1.1, 2.0}; 
+    vector<double> sizes = {0.1, 0.5, 0.9, 1.1, 1.2, 1.3}; 
     for(auto s: sizes) {
         Communicator comm(VERB);
         int done = 0;
@@ -329,7 +369,7 @@ TEST(ttor, all_sizes)
         auto v = view<char>(buffer, size);
         am->send( (comm_rank() + 1) % (comm_size()) , v);
 
-        while (done != expected) {
+        while ( (!comm.is_done()) || (done != expected) ) {
             comm.progress();
         }
         
