@@ -20,6 +20,21 @@ typedef array<int, 5> int5;
 typedef array<int, 6> int6;
 typedef array<int, 7> int7;
 
+struct scoped_timer {
+  private:
+    std::atomic<long long int>* time_us_;
+    ttor::timer time_init_;
+  public:
+    scoped_timer(std::atomic<long long int>* time_us) {
+        time_us_ = time_us;
+        time_init_= ttor::wctime();
+    }
+    ~scoped_timer() {
+        ttor::timer time_end_ = ttor::wctime();
+        *time_us_ += static_cast<long long int>(1e6 * ttor::elapsed(time_init_, time_end_));
+    }
+};
+
 ttor::view<double> make_view(Eigen::MatrixXd* A) {
     return ttor::view<double>(A->data(), A->size());
 }
@@ -38,7 +53,10 @@ void copy_from_view(Eigen::MatrixXd* dest, const ttor::view<double> A) {
 
 void accumulate(Eigen::MatrixXd* dest, const Eigen::MatrixXd* src) {
     assert(dest->size() == src->size());
-    (*dest) += (*src);
+    #pragma omp parallel for
+    for(int k = 0; k < dest->size(); k++) {
+        (*dest)(k) += (*src)(k);
+    }
 }
 
 std::string to_string(int2 ij) {
@@ -49,9 +67,15 @@ std::string to_string(int3 ijk) {
     return to_string(ijk[0]) + "_" + to_string(ijk[1]) + "_" + to_string(ijk[2]);
 }
 
-int gemm(const int matrix_size, const int verb, const bool test)
+/**
+ * Matrix is of size N (global)
+ * Each rank works on Nr x Nr
+ * Each thread works on Nt x Nt
+ * 
+ * There are n sub blocks on a given rank
+ */
+void gemm(const int N, const int Nt, const int n_threads, std::string logfile, const int verb, const bool test)
 {
-    const int n_threads = 1; // Shared memory parallelism is in BLAS 
     const int rank = ttor::comm_rank();
     const int n_ranks = ttor::comm_size();
     const int n_ranks_1d = static_cast<int>(round(pow(n_ranks, 1.0/3.0)));
@@ -60,9 +84,24 @@ int gemm(const int matrix_size, const int verb, const bool test)
     const int rank_j = (rank / n_ranks_1d) % n_ranks_1d;
     const int rank_k = rank / (n_ranks_1d * n_ranks_1d);
     const int3 rank_ijk = {rank_i, rank_j, rank_k};
-    const int block_size = matrix_size / n_ranks_1d;
-    assert(block_size * n_ranks_1d == matrix_size);
-    printf("Hello rank %d with 3d-index (%d %d %d) / (%d %d %d) from host %s\n", rank, rank_i, rank_j, rank_k, n_ranks_1d, n_ranks_1d, n_ranks_1d, ttor::processor_name().c_str());
+    const int Nr = N / n_ranks_1d;
+    assert(Nr * n_ranks_1d == N);
+    const int n = Nr / Nt;
+    assert(Nt * n == Nr);
+    printf("Hello rank %d with 3d-index (%d %d %d) / (%d %d %d) from host %s, N %d, Nr %d, Nt %d, n %d\n", rank, rank_i, rank_j, rank_k, n_ranks_1d, n_ranks_1d, n_ranks_1d, 
+        ttor::processor_name().c_str(), N, Nr, Nt, n);
+
+    printf("rank,%d\n", rank);
+    printf("rank_i,%d\n", rank_i);
+    printf("rank_j,%d\n", rank_j);
+    printf("rank_k,%d\n", rank_k);
+    printf("ntot,%d\n", N);
+    printf("nrank,%d\n", Nr);
+    printf("ntile,%d\n", Nt);
+    printf("nthreads,%d\n", n_threads);
+    printf("logfile,%s\n", logfile.c_str());
+    printf("verb,%d\n", verb);
+    printf("test,%d\n", test);
     
     auto rank_ijk_to_rank = [n_ranks_1d](int rank_i, int rank_j, int rank_k) {
         return rank_k * n_ranks_1d * n_ranks_1d + rank_j * n_ranks_1d + rank_i;
@@ -73,246 +112,361 @@ int gemm(const int matrix_size, const int verb, const bool test)
      * Record timings
      **/
     std::atomic<long long int> send_copy_us_t(0);
+    std::atomic<long long int> send_am_us_t(0);
     std::atomic<long long int> bcst_copy_us_t(0);
-    std::atomic<long long int> accu_copy_us_t(0);
+    std::atomic<long long int> bcst_am_us_t(0);
     std::atomic<long long int> gemm_us_t(0);
+    std::atomic<long long int> gemm_copy_us_t(0);
+    std::atomic<long long int> gemm_am_us_t(0);
     std::atomic<long long int> accu_us_t(0);
 
     /**
-     *  Initializes the matrices
+     * Original and final matrices
      **/
-    Eigen::MatrixXd A_ij = Eigen::MatrixXd::Zero(block_size, block_size);
-    Eigen::MatrixXd B_ij = Eigen::MatrixXd::Zero(block_size, block_size);
-    Eigen::MatrixXd C_ij = Eigen::MatrixXd::Zero(block_size, block_size);
+    // n x n matrix of Nt x Nt matrices, so Nr x Nr total
+    std::vector<std::vector<Eigen::MatrixXd>> A_ij(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(Nt, Nt)));
+    std::vector<std::vector<Eigen::MatrixXd>> C_ij(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(Nt, Nt)));
+    std::vector<std::vector<Eigen::MatrixXd>> B_ij(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(Nt, Nt)));
+
     auto val_global = [](int i, int j) { return static_cast<double>(1 + i + j); };
     if(rank_k == 0) {
-        auto val = [&](int i, int j) { return val_global(rank_i * block_size + i, rank_j * block_size + j); };
-        A_ij = Eigen::MatrixXd::NullaryExpr(block_size, block_size, val);
-        B_ij = Eigen::MatrixXd::NullaryExpr(block_size, block_size, val);
+        for(int i = 0; i < n; i++) {
+            for(int j = 0; j < n; j++) {
+                auto val = [&](int i_, int j_) { return val_global(rank_i * Nr + i * Nt + i_, rank_j * Nr + j * Nt + j_); };
+                A_ij[i][j] = Eigen::MatrixXd::NullaryExpr(Nt, Nt, val);
+                B_ij[i][j] = Eigen::MatrixXd::NullaryExpr(Nt, Nt, val);
+            }
+        }
     }
-    Eigen::MatrixXd A_ik = Eigen::MatrixXd::Zero(block_size, block_size);
-    Eigen::MatrixXd B_kj = Eigen::MatrixXd::Zero(block_size, block_size);
-    Eigen::MatrixXd C_ijk = Eigen::MatrixXd::Zero(block_size, block_size);
-    vector<Eigen::MatrixXd> C_ijks(n_ranks_1d, Eigen::MatrixXd::Zero(block_size, block_size));
+
+    /** 
+     * Workspace
+     **/
+    std::vector<std::vector<Eigen::MatrixXd>> A_ijk(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(Nt, Nt)));
+    std::vector<std::vector<Eigen::MatrixXd>> C_ijk(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(Nt, Nt)));
+    std::vector<std::vector<Eigen::MatrixXd>> B_ijk(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(Nt, Nt)));
+    std::vector<std::unique_ptr<std::atomic<int>>> C_ijk_counts(n * n);
+    for(int i = 0; i < n*n; i++) {
+        C_ijk_counts[i] = std::make_unique<std::atomic<int>>();
+        C_ijk_counts[i]->store(0);
+    }
+    
+    // C_ijk_accu[sub_i][sub_j][from] stores the results for (sub_i, sub_j) to be accumulated, from rank from
+    std::vector<std::vector<std::vector<Eigen::MatrixXd>>> C_ijk_accu(
+        n, std::vector<std::vector<Eigen::MatrixXd>>(
+        n, std::vector<Eigen::MatrixXd>(
+        n_ranks_1d, Eigen::MatrixXd::Zero(Nt, Nt))));
+    
+    MPI_Barrier(MPI_COMM_WORLD);
 
     /**
      * Initialize the runtime structures
      **/
     ttor::Communicator comm(verb);
     ttor::Threadpool tp(n_threads, &comm, verb, "Wk_Gemm_" + to_string(rank) + "_");
-    ttor::Taskflow<int> send_Aij(&tp, verb);  // (i,j,0) sends A_ij to (i,j,j) for all i,j
-    ttor::Taskflow<int> send_Bij(&tp, verb);  // (i,j,0) sends B_ij to (i,j,i) for all i,j
-    ttor::Taskflow<int> bcst_Aij(&tp, verb);  // (i,j,j) sends A_ij along j to all (i,*,j) for all i,j
-    ttor::Taskflow<int> bcst_Bij(&tp, verb);  // (i,j,i) sends B_ij along i to all (*,j,i) for all i,j
-    ttor::Taskflow<int> gemm_Cijk(&tp, verb); // (i,j,k) compute C_ijk = A_ik * B_kj, send for reduction on (i,j,0)
-    ttor::Taskflow<int> accu_Cijk(&tp, verb); // (i,j,0) accumulates C_ijk
+
+    // send is indexed by int2, which are the sub blocks
+    ttor::Taskflow<int2> send_Aij(&tp, verb);  // (i,j,0) sends A_ij to (i,j,j) for all i,j
+    ttor::Taskflow<int2> send_Bij(&tp, verb);  // (i,j,0) sends B_ij to (i,j,i) for all i,j
+    // send is indexed by int2, which are the sub blocks
+    ttor::Taskflow<int2> bcst_Aij(&tp, verb);  // (i,j,j) sends A_ij along j to all (i,*,j) for all i,j
+    ttor::Taskflow<int2> bcst_Bij(&tp, verb);  // (i,j,i) sends B_ij along i to all (*,j,i) for all i,j
+    // gemm is indexed by int3, which are the sub blocks
+    ttor::Taskflow<int3> gemm_Cijk(&tp, verb); // (i,j,k) compute C_ijk = A_ik * B_kj, send for accumulation reduction on (i,j,0)
+    ttor::Taskflow<int3> accu_Cij(&tp, verb);  // accumulate (i,j,from) into (i,j)
+
+    ttor::Logger log(1000000);
+    if(logfile.size() > 0) {
+        tp.set_logger(&log);
+        comm.set_logger(&log);
+    }
 
     /** 
      * Send
      **/
 
-    auto send_Aij_am = comm.make_active_msg([&](ttor::view<double>& Aij) {
-        ttor::timer t0 = ttor::wctime();
-        copy_from_view(&A_ij, Aij);
-        ttor::timer t1 = ttor::wctime();
-        send_copy_us_t += 1e6 * ttor::elapsed(t0, t1);
-        bcst_Aij.fulfill_promise(0);
+    auto send_Aij_am = comm.make_active_msg([&](ttor::view<double>& Aij, int& sub_i, int& sub_j) {
+        scoped_timer t(&send_am_us_t);
+        copy_from_view(&A_ijk[sub_i][sub_j], Aij);
+        bcst_Aij.fulfill_promise({sub_i, sub_j});
     });
 
-    auto send_Bij_am = comm.make_active_msg([&](ttor::view<double>& Bij) {
-        ttor::timer t0 = ttor::wctime();
-        copy_from_view(&B_ij, Bij);
-        ttor::timer t1 = ttor::wctime();
-        send_copy_us_t += 1e6 * ttor::elapsed(t0, t1);
-        bcst_Bij.fulfill_promise(0);
+    auto send_Bij_am = comm.make_active_msg([&](ttor::view<double>& Bij, int& sub_i, int& sub_j) {
+        scoped_timer t(&send_am_us_t);
+        copy_from_view(&B_ijk[sub_i][sub_j], Bij);
+        bcst_Bij.fulfill_promise({sub_i, sub_j});
     });
 
     // (i,j,0) sends A_ij to (i,j,j) for all i,j
-    send_Aij.set_task([&](int ijk){
+    send_Aij.set_task([&](int2 sub_ij){
         assert(rank_k == 0);
-        ttor::view<double> A_view = make_view(&A_ij);
+        scoped_timer t(&send_copy_us_t);
+        int sub_i = sub_ij[0];
+        int sub_j = sub_ij[1];
+        ttor::view<double> A_view = make_view(&A_ij[sub_i][sub_j]);
         int dest = rank_ijk_to_rank(rank_i, rank_j, rank_j);
-        if(dest != rank) {
-            send_Aij_am->send(dest, A_view);
+        if(dest == rank) {
+            A_ijk[sub_i][sub_j] = A_ij[sub_i][sub_j];
+            bcst_Aij.fulfill_promise({sub_i, sub_j});
         } else {
-            bcst_Aij.fulfill_promise(0);
+            send_Aij_am->send(dest, A_view, sub_i, sub_j);
         }
-    }).set_indegree([&](int ijk) {
+    }).set_indegree([&](int2) {
         return 1;
-    }).set_mapping([&](int ijk) {
-        return 0;
-    }).set_name([&](int ijk) { return "send_A_" + to_string(rank_ijk); });
+    }).set_mapping([&](int2 sub_ij) {
+        // return (sub_ij[0] + n * sub_ij[1]) % n_threads;
+        // return 0;
+        return sub_ij[0] % n_threads;
+    }).set_priority([&](int2 sub_ij){
+        return 1.0 * n + (n - sub_ij[1]);
+    }).set_binding([&](int2 sub_ij){
+        return false;
+        // return true;
+    }).set_name([&](int2 sub_ij) { return "send_A_" + to_string(sub_ij) + "_" + to_string(rank_ijk); });
 
     // (i,j,0) sends B_ij to (i,j,i) for all i,j
-    send_Bij.set_task([&](int ijk){
+    send_Bij.set_task([&](int2 sub_ij){
         assert(rank_k == 0);
-        ttor::view<double> B_view = make_view(&B_ij);
+        scoped_timer t(&send_copy_us_t);
+        int sub_i = sub_ij[0];
+        int sub_j = sub_ij[1];
+        ttor::view<double> B_view = make_view(&B_ij[sub_i][sub_j]);
         int dest = rank_ijk_to_rank(rank_i, rank_j, rank_i);
-        if(dest != rank) {
-            send_Bij_am->send(dest, B_view);
+        if(dest == rank) {
+            B_ijk[sub_i][sub_j] = B_ij[sub_i][sub_j];
+            bcst_Bij.fulfill_promise({sub_i, sub_j});
         } else {
-            bcst_Bij.fulfill_promise(0);
+            send_Bij_am->send(dest, B_view, sub_i, sub_j);
         }
-    }).set_indegree([&](int ijk) {
+    }).set_indegree([&](int2) {
         return 1;
-    }).set_mapping([&](int ijk) {
-        return 0;
-    }).set_name([&](int ijk) { return "send_B_" + to_string(rank_ijk); });
+    }).set_mapping([&](int2 sub_ij) {
+        // return (sub_ij[0] + n * sub_ij[1]) % n_threads;
+        // return 0;
+        return (sub_ij[1] % n_threads);
+    }).set_priority([&](int2 sub_ij){
+        return 1.0 * n + (n - sub_ij[0]);
+    }).set_binding([&](int2 sub_ij){
+        return false;
+        //return true;
+    }).set_name([&](int2 sub_ij) { return "send_B_" + to_string(sub_ij) + "_" + to_string(rank_ijk); });
 
     /** 
      * Broadcast
      **/
 
-    auto bcst_Aij_am = comm.make_active_msg([&](ttor::view<double>& Aij) {
-        ttor::timer t0 = ttor::wctime();
-        copy_from_view(&A_ik, Aij);
-        gemm_Cijk.fulfill_promise(0);
-        ttor::timer t1 = ttor::wctime();
-        bcst_copy_us_t += 1e6 * ttor::elapsed(t0, t1);
+    auto bcst_Aij_am = comm.make_active_msg([&](ttor::view<double>& Aij, int &sub_i, int &sub_j) {
+        scoped_timer t(&bcst_am_us_t);
+        copy_from_view(&A_ijk[sub_i][sub_j], Aij);
+        for(int k = 0; k < n; k++)
+            gemm_Cijk.fulfill_promise({sub_i, k, sub_j});
     });
 
-    auto bcst_Bij_am = comm.make_active_msg([&](ttor::view<double>& Bij) {
-        ttor::timer t0 = ttor::wctime();
-        copy_from_view(&B_kj, Bij);
-        gemm_Cijk.fulfill_promise(0);
-        ttor::timer t1 = ttor::wctime();
-        bcst_copy_us_t += 1e6 * ttor::elapsed(t0, t1);
+    auto bcst_Bij_am = comm.make_active_msg([&](ttor::view<double>& Bij, int &sub_i, int &sub_j) {
+        scoped_timer t(&bcst_am_us_t);
+        copy_from_view(&B_ijk[sub_i][sub_j], Bij);
+        for(int k = 0; k < n; k++)
+            gemm_Cijk.fulfill_promise({k, sub_j, sub_i});
     });
 
     // (i,j,j) sends A_ij along j to all (i,*,j) for all i,j
-    bcst_Aij.set_task([&](int ijk){
+    bcst_Aij.set_task([&](int2 sub_ij){
+        scoped_timer t(&bcst_copy_us_t);
         assert(rank_j == rank_k);
-        ttor::view<double> A_view = make_view(&A_ij);
+        int sub_i = sub_ij[0];
+        int sub_j = sub_ij[1];
+        ttor::view<double> A_view = make_view(&A_ijk[sub_i][sub_j]);
         for(int k = 0; k < n_ranks_1d; k++) {
             int dest = rank_ijk_to_rank(rank_i, k, rank_j);
-            if(dest != rank) {
-                bcst_Aij_am->send(dest, A_view);
+            if(dest == rank) {
+                for(int l = 0; l < n; l++)
+                    gemm_Cijk.fulfill_promise({sub_i, l, sub_j});
             } else {
-                copy_from_view(&A_ik, A_view);
-                gemm_Cijk.fulfill_promise(0);
+                bcst_Aij_am->send(dest, A_view, sub_i, sub_j);
             }
         }
-    }).set_indegree([&](int ij) {
+    }).set_indegree([&](int2) {
         return 1;
-    }).set_mapping([&](int ij) {
-        return 0;
-    }).set_name([&](int ijk) { return "bcast_A_" + to_string(rank_ijk); });
+    }).set_mapping([&](int2 sub_ij) {
+        // return (sub_ij[0] + n * sub_ij[1]) % n_threads;
+        // return 0;
+        return (sub_ij[0] % n_threads);
+    }).set_priority([&](int2 sub_ij){
+        return 1.0 * n + (n - sub_ij[1]);
+    }).set_binding([&](int2 sub_ij){
+        return false;
+        //return true;
+    }).set_name([&](int2 sub_ij) { return "bcast_A_" + to_string(sub_ij) + "_" + to_string(rank_ijk); });
 
     // (i,j,i) sends B_ij along i to all (*,j,i) for all i,j
-    bcst_Bij.set_task([&](int ij){
+    bcst_Bij.set_task([&](int2 sub_ij){
+        scoped_timer t(&bcst_copy_us_t);
         assert(rank_i == rank_k);
-        ttor::view<double> B_view = make_view(&B_ij);
+        int sub_i = sub_ij[0];
+        int sub_j = sub_ij[1];
+        ttor::view<double> B_view = make_view(&B_ijk[sub_i][sub_j]);
         for(int k = 0; k < n_ranks_1d; k++) {
             int dest = rank_ijk_to_rank(k, rank_j, rank_i);
-            if(dest != rank) {
-                bcst_Bij_am->send(dest, B_view);
+            if(dest == rank) {
+                for(int l = 0; l < n; l++)
+                    gemm_Cijk.fulfill_promise({l, sub_j, sub_i});
             } else {
-                copy_from_view(&B_kj, B_view);
-                gemm_Cijk.fulfill_promise(0);
+                bcst_Bij_am->send(dest, B_view, sub_i, sub_j);
             }
         }
-    }).set_indegree([&](int ijk) {
+    }).set_indegree([&](int2) {
         return 1;
-    }).set_mapping([&](int ijk) {
-        return 0;
-    }).set_name([&](int ijk) { return "bcast_B_" + to_string(rank_ijk); });
+    }).set_mapping([&](int2 sub_ij) {
+        // return (sub_ij[0] + n * sub_ij[1]) % n_threads;
+        // return 0;
+        return (sub_ij[1] % n_threads);
+    }).set_priority([&](int2 sub_ij){
+        return 1.0 * n + (n - sub_ij[0]);
+    }).set_binding([&](int2 sub_ij){
+        return false;
+        // return true;
+    }).set_name([&](int2 sub_ij) { return "bcast_B_" + to_string(sub_ij) + "_" + to_string(rank_ijk); });
 
     /** 
      * GEMM
      **/
 
-    auto accu_Cijk_am = comm.make_active_msg([&](ttor::view<double>& Cijk, int& k) {
-        ttor::timer t0 = ttor::wctime();
-        copy_from_view(&C_ijks[k], Cijk);
-        accu_Cijk.fulfill_promise(k);
-        ttor::timer t1 = ttor::wctime();
-        accu_copy_us_t += 1e6 * ttor::elapsed(t0, t1);
+    auto gemm_Cijk_am = comm.make_active_msg([&](ttor::view<double>& Cijk, int &sub_i, int &sub_j, int& from) {
+        scoped_timer t(&gemm_am_us_t);
+        copy_from_view(&C_ijk_accu[sub_i][sub_j][from], Cijk);
+        accu_Cij.fulfill_promise({sub_i, sub_j, from});
     });
 
     // (i,j,k) compute C_ijk = A_ik * B_kj
-    gemm_Cijk.set_task([&](int ijk){
-        ttor::timer t0 = ttor::wctime();
-        C_ijk.noalias() += A_ik * B_kj;
-        ttor::timer t1 = ttor::wctime();
-        gemm_us_t += 1e6 * ttor::elapsed(t0, t1);
-        auto C_ijk_view = make_view(&C_ijk);
-        int dest = rank_ijk_to_rank(rank_i, rank_j, 0);
-        int k = rank_k;
-        accu_Cijk_am->send(dest, C_ijk_view, k);
-    }).set_indegree([&](int ij) {
-        return 2;
-    }).set_mapping([&](int ij) {
-        return 0;
-    }).set_name([&](int ijk) { return "gemm_C_" + to_string(rank_ijk); });
+    gemm_Cijk.set_task([&](int3 sub_ijk){
+        int sub_i = sub_ijk[0];
+        int sub_j = sub_ijk[1];
+        int sub_k = sub_ijk[2];
+        {
+            scoped_timer t(&gemm_us_t);
+            C_ijk[sub_i][sub_j].noalias() += A_ijk[sub_i][sub_k] * B_ijk[sub_k][sub_j];
+        }
+        //(*(C_ijk_counts[sub_i * n + sub_j]))++;
+        scoped_timer t(&gemm_copy_us_t);
+        if(sub_ijk[2] < n-1) {
+            gemm_Cijk.fulfill_promise({sub_i, sub_j, sub_k+1});
+        } else {
+        //if(C_ijk_counts[sub_i * n + sub_j]->load() == n) {
+            auto C_ijk_view = make_view(&C_ijk[sub_i][sub_j]);
+            int dest = rank_ijk_to_rank(rank_i, rank_j, 0);
+            if(dest == rank) {
+                C_ijk_accu[sub_i][sub_j][rank_k] = C_ijk[sub_i][sub_j];
+                accu_Cij.fulfill_promise({sub_i, sub_j, rank_k});
+            } else {
+                int k = rank_k;
+                gemm_Cijk_am->send(dest, C_ijk_view, sub_i, sub_j, k);
+            }
+        }
+    }).set_indegree([&](int3 sub_ijk) {
+        return sub_ijk[2] == 0 ? 2 : 3; // 2 A_ik and B_kj blocks, + previous gemm
+        // return 2;
+    }).set_mapping([&](int3 sub_ijk) {
+        if(n_threads == 1) return 0;
+        // else return max(1, (sub_ijk[0] + sub_ijk[1] * n) % n_threads);
+        else return max(1, (sub_ijk[0] + sub_ijk[1] * n) % n_threads); // + sub_ijk[2] * n * n) % n_threads);
+        // return (sub_ijk[0] + sub_ijk[1] * n + sub_ijk[2] * n * n) % n_threads;
+    }).set_binding([&](int3 sub_ijk) {
+        return false;
+    }).set_priority([&](int3 sub_ijk){
+        return 0.0 * n + (n - sub_ijk[2]);
+    }).set_name([&](int3 sub_ijk) { return "gemm_C_" + to_string(sub_ijk) + "_" + to_string(rank_ijk); });
 
-    /** 
-     * ACCUMULATE
-     **/
-    accu_Cijk.set_task([&](int k){
-        ttor::timer t0 = ttor::wctime();
-        accumulate(&C_ij, &C_ijks[k]);
-        ttor::timer t1 = ttor::wctime();
-        accu_us_t += 1e6 * ttor::elapsed(t0, t1);
-    }).set_indegree([&](int ij) {
+    // (i,j,k) compute C_ijk = A_ik * B_kj
+    accu_Cij.set_task([&](int3 sub_ij_from){
+        scoped_timer t(&accu_us_t);
+        int sub_i = sub_ij_from[0];
+        int sub_j = sub_ij_from[1];
+        int from  = sub_ij_from[2];
+        C_ij[sub_i][sub_j] += C_ijk_accu[sub_i][sub_j][from];
+    }).set_indegree([&](int3) {
         return 1;
-    }).set_mapping([&](int ij) {
-        return 0;
-    }).set_binding([&](int k) {
+    }).set_mapping([&](int3 sub_ij_from) {
+        if(n_threads == 1) return 0;
+        else return max(1, (sub_ij_from[0] + n * sub_ij_from[1]) % n_threads);
+        // return (sub_ij_from[0] + n * sub_ij_from[1]) % n_threads;
+    }).set_binding([&](int3) {
         return true;
-    }).set_name([&](int ijk) { return "accu_C_" + to_string(rank_ijk); });
+    }).set_priority([&](int3){
+        return 0.0;
+    }).set_name([&](int3 sub_ij_from) { return "accu_C_" + to_string(sub_ij_from) + "_" + to_string(rank_ijk); });
 
-    MPI_Barrier(MPI_COMM_WORLD);
-    if(rank == 0) printf("Starting 3D Gemm...\n");
+    printf("Starting 3D Gemm...\n");
     ttor::timer t0 = ttor::wctime();
     if(rank_k == 0) {
-        send_Aij.fulfill_promise(0);
-        send_Bij.fulfill_promise(0);
+        for(int i = 0; i < n; i++) {
+            for(int j = 0; j < n; j++) {
+                send_Aij.fulfill_promise({i,j});
+                send_Bij.fulfill_promise({i,j});
+            }
+        }
     }
     tp.join();
-    MPI_Barrier(MPI_COMM_WORLD);
     ttor::timer t1 = ttor::wctime();
-    if(rank == 0) printf("Done\n");
-    if(rank == 0) printf("Elapsed time: %e\n", ttor::elapsed(t0, t1));
+    double total_time = ttor::elapsed(t0, t1);
+    double gemm_time = gemm_us_t.load() * 1e-6;
+    double gemm_time_per_thread = gemm_time / n_threads;
+    printf("Done\n");
+    printf("total_time,%e\n", ttor::elapsed(t0, t1));
+    printf("send_copy_us_t,%e\n",send_copy_us_t.load() * 1e-6);
+    printf("send_am_us_t,%e\n",send_am_us_t.load() * 1e-6);
+    printf("bcst_copy_us_t,%e\n",bcst_copy_us_t.load() * 1e-6);
+    printf("bcst_am_us_t,%e\n",bcst_am_us_t.load() * 1e-6);
+    printf("gemm_us_t,%e\n",gemm_us_t.load() * 1e-6);
+    printf("gemm_copy_us_t,%e\n",gemm_copy_us_t.load() * 1e-6);
+    printf("gemm_am_us_t,%e\n",gemm_am_us_t.load() * 1e-6);
+    printf("accu_us_t,%e\n",accu_us_t.load() * 1e-6);
+    // For easy CSV parsing
+    printf("[rank]>>>>Ntot,Nrank,Ntile,rank,n_ranks,nthreads,tot_time,gemm_time,gemm_time_per_thread\n");
+    printf("[%d]>>>>%d,%d,%d,%d,%d,%d,%e,%e,%e\n",rank,N,Nr,Nt,rank,n_ranks,n_threads,total_time,gemm_time,gemm_time_per_thread);
 
-    printf("gemm,%e\n", gemm_us_t.load() * 1e-6);
-    printf("accu,%e\n", accu_us_t.load() * 1e-6);
-    printf("send_copy,%e\n", send_copy_us_t.load() * 1e-6);
-    printf("bcst_copy,%e\n", bcst_copy_us_t.load() * 1e-6);
-    printf("accu_copy,%e\n", accu_copy_us_t.load() * 1e-6);
+    if(logfile.size() > 0) {
+        std::ofstream logstream;
+        std::string filename = logfile + ".log." + to_string(rank);
+        printf("Saving log to %s\n", filename.c_str());
+        logstream.open(filename);
+        logstream << log;
+        logstream.close();
+    }
 
+    MPI_Barrier(MPI_COMM_WORLD);
     if(test && rank_k == 0) {
         // Send all to 0
         int n_received = 0;
-        int n_expected = (rank == 0 ? n_ranks_1d * n_ranks_1d : 0);
-        Eigen::MatrixXd C_test = Eigen::MatrixXd::Zero(matrix_size, matrix_size);
+        int n_expected = (rank == 0 ? n * n * n_ranks_1d * n_ranks_1d : 0);
+        Eigen::MatrixXd C_test = Eigen::MatrixXd::Zero(N, N);
         ttor::Communicator comm(verb);
-        auto am = comm.make_active_msg([&](ttor::view<double>& A, int& rank_i_from, int& rank_j_from){
-            C_test.block(rank_i_from * block_size, rank_j_from * block_size, block_size, block_size) = make_from_view(A, block_size);
+        auto am = comm.make_active_msg([&](ttor::view<double>& A, int& rank_i_from, int& rank_j_from, int& sub_i, int& sub_j){
+            C_test.block(rank_i_from * Nr + sub_i * Nt, rank_j_from * Nr + sub_j * Nt, Nt, Nt) = make_from_view(A, Nt);
             n_received++;
         });
-        auto C_view = make_view(&C_ij);
         int rank_i_from = rank_i;
         int rank_j_from = rank_j;
-        am->send(0, C_view, rank_i_from, rank_j_from);
+        for(int sub_i = 0; sub_i < n; sub_i++) {
+            for(int sub_j = 0; sub_j < n; sub_j++) {
+                auto C_view = make_view(&C_ij[sub_i][sub_j]);
+                am->send(0, C_view, rank_i_from, rank_j_from, sub_i, sub_j);
+            }
+        }
         while((!comm.is_done()) || (n_received < n_expected)) {
             comm.progress();
         }
         // Compute reference on 0
         if(rank == 0) {
-            Eigen::MatrixXd A_ref = Eigen::MatrixXd::NullaryExpr(matrix_size, matrix_size, val_global);
-            Eigen::MatrixXd B_ref = Eigen::MatrixXd::NullaryExpr(matrix_size, matrix_size, val_global);
+            Eigen::MatrixXd A_ref = Eigen::MatrixXd::NullaryExpr(N, N, val_global);
+            Eigen::MatrixXd B_ref = Eigen::MatrixXd::NullaryExpr(N, N, val_global);
             ttor::timer t0 = ttor::wctime();
             Eigen::MatrixXd C_ref = A_ref * B_ref;
             ttor::timer t1 = ttor::wctime();
             double error = (C_ref - C_test).norm() / C_ref.norm();
             printf("\n==> GEMM error %e\n\n", error);
             printf("Reference code took %e\n", ttor::elapsed(t0, t1));
-            return (error >= 1e-12);
-        } else {
-            return 0;
+            assert(error <= 1e-12);
         }
-    } else {
-        return 0;
     }
 }
 
@@ -325,31 +479,47 @@ int main(int argc, char **argv)
 
     assert(prov == req);
 
-    int matrix_size = 128;
+    int N = 128;
+    int Nt = 8;
+    int n_threads = 1;
     int verb = 0;
     bool test = true;
+    std::string logfile = "";
 
     if (argc >= 2)
     {
-        matrix_size = atoi(argv[1]);
-        assert(matrix_size > 0);
+        N = atoi(argv[1]);
+        assert(N > 0);
     }
     
     if (argc >= 3) {
-        verb = atoi(argv[2]);
-        assert(verb >= 0);
+        Nt = atoi(argv[2]);
+        assert(Nt > 0);
+        assert(Nt <= N);
     }
 
     if (argc >= 4) {
-        test = static_cast<bool>(atoi(argv[3]));
+        n_threads = atoi(argv[3]);
+        assert(n_threads > 0);
     }
 
-    if(ttor::comm_rank() == 0) printf("Usage: ./3d_gemm matrix_size verb test\n");
-    if(ttor::comm_rank() == 0) printf("Arguments: matrix_size (global matrix size) %d, verb %d, test %d\n", matrix_size, verb, test);
+    if (argc >= 5) {
+        logfile = argv[4];
+    }
 
-    int error = gemm(matrix_size, verb, test);
+    if (argc >= 6) {
+        verb = atoi(argv[5]);
+        assert(verb >= 0);
+    }
+
+    if (argc >= 7) {
+        test = static_cast<bool>(atoi(argv[6]));
+    }
+
+    if(ttor::comm_rank() == 0) printf("Usage: ./3d_gemm N Nt n_threads logfile verb test\n");
+    if(ttor::comm_rank() == 0) printf("Arguments: N (global matrix size) %d, Nt (smallest block size) %d, n_threads %d, logfile %s, verb %d, test %d\n", N, Nt, n_threads, logfile.c_str(), verb, test);
+
+    gemm(N, Nt, n_threads, logfile, verb, test);
 
     MPI_Finalize();
-
-    return error;
 }
