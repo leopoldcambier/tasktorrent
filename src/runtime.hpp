@@ -232,7 +232,6 @@ private:
 public:
     void start()
     {
-        assert(tasks_in_flight.load() == 0);
         ++tasks_in_flight;
         // This variable will be decremented when we call join().
         // This ensures that the main thread has called fulfill_promise on all indegree-0 tasks
