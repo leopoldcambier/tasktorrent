@@ -1,10 +1,8 @@
 include Makefile.conf
 
-CC       = mpicxx
-CFLAGS   = -pthread -O3 -g -std=c++14 -DEIGEN_NO_DEBUG
+CFLAGS   = -pthread -O3 -g -std=c++14 -DEIGEN_NO_DEBUG ${USE_MKL}
 INCLUDE  += -I../../src/
 LIBS     += 
-LDFLAGS  += 
 SRCDIR   = ../../src
 OBJDIR   = ../../build
 
@@ -14,10 +12,10 @@ DEPS = $(SRCDIR)/runtime.hpp $(SRCDIR)/util.hpp $(SRCDIR)/communications.hpp $(S
 OBJ  = $(OBJDIR)/communications.o $(OBJDIR)/serialization.o $(OBJDIR)/util.o
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(DEPS)
-	$(CC) -o $@ -c $< $(CFLAGS) $(INCLUDE)
+	$(MPICXX) $(CFLAGS) -o $@ -c $< $(INCLUDE)
 
 cholesky: cholesky.cpp $(OBJ)
-	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LDFLAGS) $(LIBS) $(USE_MKL)
+	$(MPICXX) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LIBS)
 
 clean:
 	rm -f cholesky
