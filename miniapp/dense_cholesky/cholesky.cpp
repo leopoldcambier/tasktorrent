@@ -520,7 +520,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
     timer t1 = wctime();
     double total_time = elapsed(t0, t1);
     printf("Done with Cholesky factorization...\n");
-    printf("Elapsed time: %e\n", elapsed);
+    printf("Elapsed time: %e\n", total_time);
     printf("Potrf time: %e\n", potrf_us_t.load() * 1e-6);
     printf("Trsm time: %e\n", trsm_us_t.load() * 1e-6);
     printf("Gemm time: %e\n", gemm_us_t.load() * 1e-6);
