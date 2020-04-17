@@ -247,13 +247,14 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
         })
         .set_fulfill([&](int j) { // Triggers all trsms on rows i > j, A[i,j]
             assert(block_2_rank(j,j) == rank);
-            vector<vector<int>> fulfill(n_ranks);
+            map<int,vector<int>> fulfill;
             for (int i = j+1; i<num_blocks; i++) {
                 fulfill[block_2_rank(i,j)].push_back(i);
             }
-            for (int r = 0; r < n_ranks; r++) { // Looping through all outgoing dependency edges
+            for (auto& rf: fulfill) {
+                int r = rf.first;
                 if (rank == r) {
-                    for (auto& i: fulfill[r]) {
+                    for (auto& i: rf.second) {
                         trsm.fulfill_promise({i,j});
                         if(deps_log) {
                             dlog.add_event(make_unique<DepsEvent>(potrf.name(j), trsm.name({i,j})));
@@ -261,7 +262,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
                     }
                 } else {
                     auto Ljjv = view<double>(blocks[j+j*num_blocks]->data(), block_size*block_size);
-                    auto isv = view<int>(fulfill[r].data(), fulfill[r].size());                    
+                    auto isv = view<int>(rf.second.data(), rf.second.size());                    
                     if(deps_log) {
                         for(auto i: isv) {
                             dlog.add_event(make_unique<DepsEvent>(potrf.name(j), trsm_name({i,j}, r)));
@@ -317,16 +318,16 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
             int j=ij[1];
             assert(block_2_rank(i,j) == rank);
             assert(i > j);
-            vector<vector<int2>> fulfill(n_ranks);
+            map<int,vector<int2>> fulfill;
             for (int k = j+1; k < num_blocks; k++) {
                 int ii = std::max(i,k);
                 int jj = std::min(i,k);
                 fulfill[block_2_rank(ii,jj)].push_back({ii,jj});
             }
-            for (int r = 0; r < n_ranks; r++)   // Looping through all outgoing dependency edges
-            {
+            for (auto& rf: fulfill) {
+                int r = rf.first;
                 if (r == rank) {
-                    for (auto& ij_gemm : fulfill[r]) {
+                    for (auto& ij_gemm : rf.second) {
                         gemm.fulfill_promise({j,ij_gemm[0],ij_gemm[1]});
                         if(deps_log) {
                             dlog.add_event(make_unique<DepsEvent>(trsm.name(ij), gemm.name({j,ij_gemm[0],ij_gemm[1]})));
@@ -335,7 +336,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
                 }
                 else {
                     auto Lijv = view<double>(blocks[i+j*num_blocks]->data(), block_size*block_size);
-                    auto ijsv = view<int2>(fulfill[r].data(), fulfill[r].size());
+                    auto ijsv = view<int2>(rf.second.data(), rf.second.size());
                     for(auto ij_gemm: ijsv) {
                         if(deps_log) {
                             if(deps_log) {
@@ -525,8 +526,8 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
     printf("Gemm time: %e\n", gemm_us_t.load() * 1e-6);
     printf("Accu time: %e\n", accu_us_t.load() * 1e-6);
 
-    printf("++++rank,nranks,matrix_size,block_size,num_blocks,priority_kind,accumulate,total_time\n");
-    printf("[%d]>>>>%d,%d,%d,%d,%d,%d,%d,%e\n",rank,rank,n_ranks,block_size*num_blocks,block_size,num_blocks,(int)prio_kind,(int)accumulate_parallel,total_time);
+    printf("++++rank,nranks,n_threads,matrix_size,block_size,num_blocks,priority_kind,accumulate,total_time\n");
+    printf("[%d]>>>>%d,%d,%d,%d,%d,%d,%d,%e\n",rank,rank,n_ranks,n_threads,block_size*num_blocks,block_size,num_blocks,(int)prio_kind,(int)accumulate_parallel,total_time);
 
     if(log) {
         std::ofstream logfile;
@@ -556,6 +557,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
                     int owner = block_2_rank(ii,jj);
                     MPI_Status status;
                     if (rank == 0 && rank != owner) { // Careful with deadlocks here
+                        blocks[ii+jj*num_blocks] = make_unique<Eigen::MatrixXd>(block_size, block_size);
                         MPI_Recv(blocks[ii+jj*num_blocks]->data(), block_size*block_size, MPI_DOUBLE, owner, 0, MPI_COMM_WORLD, &status);
                     } else if (rank != 0 && rank == owner) {
                         MPI_Send(blocks[ii+jj*num_blocks]->data(), block_size*block_size, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
