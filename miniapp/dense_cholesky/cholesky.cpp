@@ -527,7 +527,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
     printf("Accu time: %e\n", accu_us_t.load() * 1e-6);
 
     printf("++++rank,nranks,n_threads,matrix_size,block_size,num_blocks,priority_kind,accumulate,total_time\n");
-    printf("[%d]>>>>%d,%d,%d,%d,%d,%d,%d,%e\n",rank,rank,n_ranks,n_threads,block_size*num_blocks,block_size,num_blocks,(int)prio_kind,(int)accumulate_parallel,total_time);
+    printf("[%d]>>>>%d,%d,%d,%d,%d,%d,%d,%d,%e\n",rank,rank,n_ranks,n_threads,block_size*num_blocks,block_size,num_blocks,(int)prio_kind,(int)accumulate_parallel,total_time);
 
     if(log) {
         std::ofstream logfile;
