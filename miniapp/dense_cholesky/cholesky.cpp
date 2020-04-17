@@ -445,7 +445,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
             return block_2_thread(kij[1], kij[2]); // IMPORTANT if accumulate_parallel is true
         })
         .set_binding([&](int3 kij) {
-            return ! accumulate_parallel;
+            return false; // If we accumulate in parallel, there is no order for the gemm so it doesnt matter ; If we don't then we do the gemm in sequence anyway
         }).set_name([&](int3 kij) { // This is just for debugging and profiling
             assert(block_2_rank(kij[1],kij[2]) == rank);
             return gemm_name(kij, rank);
