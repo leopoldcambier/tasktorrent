@@ -307,7 +307,7 @@ To build this example, you will need
 - An [MPI](https://www.mpi-forum.org/) implementation (see the [MPI Forum](https://www.mpi-forum.org/docs/) for MPI documentation). There are many options: [MPICH](https://www.mpich.org/), [MVAPICH](http://mvapich.cse.ohio-state.edu/), [Open MPI](https://www.open-mpi.org/), [Cray MPICH](https://pubs.cray.com/content/S-2529/17.05/xctm-series-programming-environment-user-guide-1705-s-2529/mpt), [Intel MPI](https://software.intel.com/en-us/mpi-library), [IBM Spectrum MPI](https://www.ibm.com/us-en/marketplace/spectrum-mpi), [Microsoft MPI](https://docs.microsoft.com/en-us/message-passing-interface/microsoft-mpi)
   * On MacOS/Linux, you can also use [Homebrew](https://brew.sh/). For instance, to install MPICH: `brew install mpich`
 - If you are running on a single node only, and do not use MPI for communication, you can compile the code with the option `-DTTOR_SHARED`. This will comment out the components of the library that depend on MPI. You can then compile the code with a standard C++ compiler instead of [mpicxx](https://www.open-mpi.org/doc/v4.0/man1/mpicxx.1.php) for example.
-- The code contains a lot of [assert](https://en.cppreference.com/w/cpp/error/assert) statements. In production/benchmark runs, we recommend compiling with the option [-DNDEBUG](https://en.cppreference.com/w/cpp/error/assert). This will disable all the assert checks.
+- The code contains a lot of [assert](https://en.cppreference.com/w/cpp/error/assert) statements. In production/benchmark runs, we recommend compiling with the option [-DNDEBUG](https://en.cppreference.com/w/cpp/error/assert). This will disable all the assert checks. This doesn't disable MPI error checking ; those are always checked.
 
 Once you have this:
 - First, navigate to the `tutorial` folder
@@ -323,9 +323,14 @@ make
 mpirun -n 2 ./tuto
 ```
 
-### Technical notes
+### Technical notes and limitations
 
-In general, it is safer to create a task with some given index `k` only once during the calculation. It is possible to have a task show up in the DAG multiple times. However, for correctness, the dependencies of an occurrence of `k` must be all satisfied before the "next" task with index `k` gets created again (through a call to `fulfill_promise(k)`). This is potentially error prone, maybe a source of confusion, and should be avoided. We therefore recommend that a task with index `k` be created only once throughout the calculation.
+* In general, it is safer to create a task with some given index `k` only once during the calculation. It is possible to have a task show up in the DAG multiple times. However, for correctness, the dependencies of an occurrence of `k` must be all satisfied before the "next" task with index `k` gets created again (through a call to `fulfill_promise(k)`). This is potentially error prone, maybe a source of confusion, and should be avoided. We therefore recommend that a task with index `k` be created only once throughout the calculation.
+* The code will always check MPI return codes and abort if any MPI function return anything else than `MPI_SUCCESS`.
+* The type `view<T>` does not assume nor guarantees that the associated pointer (retrieved using `view<T>::data()`) is aligned (see [https://en.cppreference.com/w/cpp/language/object]) when the view is send or received through the network. As such the buffer (`view<T>::size() * sizeof(T)` bytes, starting at the address `view<T>::data()`) should first be copied byte-by-byte (using `memcpy` for instance) into the user data structure before addressing individual elements.
+* Messages are limited to `std::numeric_limits<int>::max()` (i.e, `2^31-1` in general) bytes, as this is the maximum `count` of an MPI call. This is checked at runtime and the program will abort if that maximum size is exceeded.
+
+Future versions of TaskTorrent should lift the last two limitations
 
 ### References
 <b id="f1"><sup>1</sup></b> [Automatic Coarse-Grained Parallelization Techniques](https://link.springer.com/chapter/10.1007/978-94-011-5514-4_15), M. Cosnard, E. Jeannot [↩](#a1)</br>

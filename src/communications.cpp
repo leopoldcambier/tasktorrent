@@ -39,19 +39,11 @@ Communicator::Communicator(int verb_, int tag_) :
     messages_queued(0), 
     messages_processed(0) {}
     
-unique_ptr<message> Communicator::make_active_message(ActiveMsgBase *am, int dest, size_t size)
+unique_ptr<message> Communicator::make_active_message(int dest, size_t size)
 {
-    auto result = find_if(active_messages.begin(), active_messages.end(), [am](const unique_ptr<ActiveMsgBase> &m) { return m.get() == am; });
-    assert(result != active_messages.end());
-
     auto m = make_unique<message>(dest);
-    m->buffer.resize(sizeof(int) + size);
-    Serializer<int> s;
-    int id = distance(active_messages.begin(), result);
-    s.write_buffer(m->buffer.data(), id);
-    m->start_buffer = m->buffer.data() + sizeof(int);
+    m->buffer.resize(size);
     m->tag = tag;
-
     return m;
 }
 
@@ -185,10 +177,9 @@ void Communicator::process_Ircvd_messages()
 void Communicator::process_message(const unique_ptr<message> &m)
 {
     Serializer<int> s;
-    tuple<int> tup = s.read_buffer(m->buffer.data());
+    tuple<int> tup = s.read_buffer(m->buffer.data(), m->buffer.size());
     int am_id = get<0>(tup);
     assert(am_id >= 0 && am_id < static_cast<int>(active_messages.size()));
-    auto payload_raw = m->buffer.data() + s.size(am_id);
     if (verb > 4)
     {
         printf("[%2d] <- %2d: lpc() ID %d, data received: ", comm_rank(), m->other, am_id);
@@ -201,7 +192,7 @@ void Communicator::process_message(const unique_ptr<message> &m)
 
     {
         // Run the callback function in the message
-        active_messages.at(am_id)->run(payload_raw);
+        active_messages.at(am_id)->run(m->buffer.data(), m->buffer.size());
 
         // This must be done strictly after running the callback function
         // This ensures that all potential new tasks have been created before we increment messages_rcvd
