@@ -95,50 +95,56 @@ TEST(threadpool, tasksrun)
 TEST(graph, mini)
 {
     int n_threads = n_threads_;
-    Logger log(1000);
 
-    Threadpool tp(n_threads, VERB);
-    tp.set_logger(&log);
-    Taskflow<int> mini_tf(&tp, VERB);
+    // 0 = start immediately ; 1 == start before the FF ; 2 == start after the FF
+    int start_kind[] = {0, 1, 2};
+    for(auto start: start_kind) {
 
-    vector<vector<int>> out_deps = {
-        vector<int>{1, 2},
-        vector<int>{3},
-        vector<int>{3, 5},
-        vector<int>{4, 6},
-        vector<int>{5},
-        vector<int>{},
-        vector<int>{},
-        vector<int>{5}};
+        Threadpool tp(n_threads, VERB, "WkTest_", (start == 0));
+        Taskflow<int> mini_tf(&tp, VERB);
+        std::atomic<int> ntasks_done(0);
 
-    vector<int> indegree = {1, 1, 1, 2, 1, 3, 1, 1};
+        vector<vector<int>> out_deps = {
+            vector<int>{1, 2},
+            vector<int>{3},
+            vector<int>{3, 5},
+            vector<int>{4, 6},
+            vector<int>{5},
+            vector<int>{},
+            vector<int>{},
+            vector<int>{5}};
 
-    mini_tf.set_mapping([n_threads](int k) {
-               return (k % n_threads);
-           })
-        .set_indegree([&indegree](int k) {
-            return indegree[k];
-        })
-        .set_task([&out_deps, &mini_tf](int k) {
-            for (auto k_ : out_deps[k])
-                mini_tf.fulfill_promise(k_);
-        })
-        .set_name([](int k) {
-            return "miniTask_" + to_string(k);
-        })
-        .set_priority([](int k) {
-            return k;
-        });
+        vector<int> indegree = {1, 1, 1, 2, 1, 3, 1, 1};
 
-    mini_tf.fulfill_promise(0);
-    mini_tf.fulfill_promise(7);
+        mini_tf.set_mapping([&](int k) {
+                return (k % n_threads);
+            })
+            .set_indegree([&](int k) {
+                return indegree[k];
+            })
+            .set_task([&](int k) {
+                ntasks_done++;
+                for (auto k_ : out_deps[k])
+                    mini_tf.fulfill_promise(k_);
+            })
+            .set_name([](int k) {
+                return "miniTask_" + to_string(k);
+            })
+            .set_priority([](int k) {
+                return k;
+            });
+        
+        if(start == 0) { } // Nothing
+        if(start == 1) { tp.start(); } // Start before the FF
 
-    tp.join();
+        mini_tf.fulfill_promise(0);
+        mini_tf.fulfill_promise(7);
 
-    std::ofstream logfile;
-    logfile.open("mini.log");
-    logfile << log;
-    logfile.close();
+        if(start == 2) { tp.start(); } // Start after the FF
+
+        tp.join();
+        EXPECT_EQ(ntasks_done.load(), 8);
+    }
 }
 
 TEST(reduction, concurrent)
@@ -157,8 +163,8 @@ TEST(reduction, concurrent)
     Taskflow<int2> reduction_tf(&tp, VERB);
 
     reduction_tf.set_mapping([&](int2 ij) {
-                    return ij[0] % n_threads;
-                })
+            return ij[0] % n_threads;
+        })
         .set_binding([&](int2) {
             return true;
         })
@@ -166,11 +172,11 @@ TEST(reduction, concurrent)
             return 1;
         })
         .set_task([&](int2 ij) {
-            assert(!is_running.at(ij[0]).load());
+            ASSERT_FALSE(is_running.at(ij[0]).load());
             is_running.at(ij[0]).store(true);
-            assert(is_running.at(ij[0]).load());
+            ASSERT_TRUE(is_running.at(ij[0]).load());
             is_running.at(ij[0]).store(false);
-            assert(!is_running.at(ij[0]).load());
+            ASSERT_FALSE(is_running.at(ij[0]).load());
         });
 
     for (int i = 0; i < n_reds; i++)
