@@ -1,9 +1,9 @@
-#/bin/bash
+#!/bin/bash
 
 echo "Config: TTOR_ROOT=${TTOR_ROOT}, EIGEN3_ROOT=${EIGEN3_ROOT}, ASAN_OPTIONS=${ASAN_OPTIONS}, TTOR_MPIRUN=${TTOR_MPIRUN}"
 echo "        TEST=${TEST}, SHARED=${SHARED}, SAN=${SAN}"
 
-if [ ${TEST} == "MINIAPPS" ]
+if [ "${TEST}" == "MINIAPPS" ]
 then
   cd ${TTOR_ROOT}/tutorial && make clean && make run
   if [ $? != "0" ]

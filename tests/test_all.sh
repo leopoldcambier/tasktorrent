@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # Get ttor's source
 dir="${TTOR_ROOT}"
@@ -39,7 +39,7 @@ cd $builddir
 printf "Building in ${builddir}...\n"
 cmake -DTTOR_SHARED=${SHARED} -DCMAKE_BUILD_TYPE=Debug -DTTOR_SAN=${SAN} ..
 cmake --build .
-if [ ${SHARED} == "OFF" ]
+if [ "${SHARED}" == "OFF" ]
 then
     cp $dir/tests/mpi/run_tests.sh $builddir/tests/mpi/run_tests.sh
     cd $builddir/tests/mpi
