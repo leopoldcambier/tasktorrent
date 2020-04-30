@@ -1,10 +1,10 @@
-#!/bin/bash
+#!/bin/sh
 
 # Get ttor's source
-dir=$1
+dir=${TTOR_ROOT}
 if [ -z "$dir" ]
 then
-    echo "You need to pass ttor's source as first argument. Aborting tests."
+    echo "You need to pass ttor's source as TTOR_ROOT. Aborting tests."
     exit 1
 fi
 cmakeexist="${dir}/CMakeLists.txt"
@@ -19,14 +19,12 @@ fi
 printf "TTOR's source set to ${dir}"
 
 # Shared or distributed
-SHARED=$2
 if [ -z "$SHARED" ]
 then
     SHARED="OFF"
 fi
 
 # Sanitizer as an option
-SAN=$3
 if [ -z "$SAN" ]
 then
     SAN="OFF"
