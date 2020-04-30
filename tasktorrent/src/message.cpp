@@ -4,7 +4,7 @@
 
 namespace ttor {
 
-message::message(int other) : other(other){};
+message::message(int other) : other(other){}
 
 }
 

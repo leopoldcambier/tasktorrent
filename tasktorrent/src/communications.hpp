@@ -244,7 +244,7 @@ ActiveMsg<Ps...> *Communicator::make_active_msg(std::function<void(Ps &...)> fun
     }
 
     return am_;
-};
+}
 
 // TODO: Simplify the return type
 template <typename F>
@@ -252,7 +252,7 @@ typename ActiveMsg_type<decltype(&F::operator())>::type *Communicator::make_acti
 {
     auto fun = GetStdFunction(f);
     return make_active_msg(fun);
-};
+}
 
 } // namespace ttor
 
