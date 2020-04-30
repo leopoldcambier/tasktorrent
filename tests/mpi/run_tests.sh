@@ -56,7 +56,7 @@ then
     exit 1
 fi
 
-mpirun -mca shmem posix -mca btl ^tcp -n 1 ./tests_communicator 2 0 --gtest_filter=*critical
+$CMD_MPIRUN -n 1 ./tests_communicator 2 0 --gtest_filter=*critical
 
 if [ $? != "0" ]
 then
