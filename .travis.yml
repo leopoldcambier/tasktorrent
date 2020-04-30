@@ -8,6 +8,7 @@ before_install:
 language: cpp
 compiler:
   - g++
+  - clang++
 env:
   global:
     - TTOR_ROOT="${HOME}/build/leopoldcambier/tasktorrent"
@@ -16,9 +17,9 @@ env:
     - TTOR_MPIRUN="mpirun -oversubscribe"
   jobs:
     - TEST="MINIAPPS"
-    - TEST="TESTSUITE" SHARED="ON" SAN="UB"
-    - TEST="TESTSUITE" SHARED="ON" SAN="OFF"
-    - TEST="TESTSUITE" SHARED="ON" SAN="ADDRESS"
+    - TEST="TESTSUITE" SHARED="ON"  SAN="UB"
+    - TEST="TESTSUITE" SHARED="ON"  SAN="OFF"
+    - TEST="TESTSUITE" SHARED="ON"  SAN="ADDRESS"
     - TEST="TESTSUITE" SHARED="OFF" SAN="OFF"
     - TEST="TESTSUITE" SHARED="OFF" SAN="UB"
     - TEST="TESTSUITE" SHARED="OFF" SAN="ADDRESS"

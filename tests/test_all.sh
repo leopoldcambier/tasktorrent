@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # Get ttor's source
-dir=${TTOR_ROOT}
+dir="${TTOR_ROOT}"
 if [ -z "$dir" ]
 then
     echo "You need to pass ttor's source as TTOR_ROOT. Aborting tests."
@@ -13,7 +13,7 @@ if [[ -f "$cmakeexist" ]];
 then
     echo "Found CMakeLists.txt"
 else
-    echo "You need to pass ttor's source as first argument, which should contain CMakeLists.txt. Aborting tests."
+    echo "You need to pass ttor's source as TTOR_ROOT, which should contain CMakeLists.txt. Aborting tests."
     exit 1
 fi
 printf "TTOR's source set to ${dir}"
