@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <numeric>
+#include <algorithm>
 
 #include "threadpool_mpi.hpp"
 

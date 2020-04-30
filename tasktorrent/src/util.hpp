@@ -6,6 +6,7 @@
 #include <atomic>
 #include <vector>
 #include <chrono>
+#include <memory>
 
 namespace ttor
 {
