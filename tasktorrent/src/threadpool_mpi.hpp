@@ -10,7 +10,7 @@
 #include "tasks.hpp"
 #include "threadpool_shared.hpp"
 #include "communications.hpp"
-#include "activemessage.hpp"
+#include "active_messages.hpp"
 
 namespace ttor 
 {

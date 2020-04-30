@@ -16,7 +16,7 @@ if(TTOR_SHARED)
 else()
     # Adding communications routines
     message("Building TaskTorrent in distributed memory mode")    
-    list(APPEND SOURCES communications.cpp threadpool_mpi.cpp activemessage.cpp message.cpp)
+    list(APPEND SOURCES communications.cpp threadpool_mpi.cpp active_messages.cpp message.cpp)
     add_library(TaskTorrent STATIC ${SOURCES})
     find_package(MPI REQUIRED)
     target_link_libraries(TaskTorrent PUBLIC MPI::MPI_CXX)

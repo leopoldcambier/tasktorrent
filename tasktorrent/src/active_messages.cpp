@@ -1,6 +1,6 @@
 #ifndef TTOR_SHARED
 
-#include "activemessage.hpp"
+#include "active_messages.hpp"
 
 namespace ttor {
 

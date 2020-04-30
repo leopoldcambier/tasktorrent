@@ -9,7 +9,7 @@
 #include "communications.hpp"
 #include "mpi_utils.hpp"
 #include "serialization.hpp"
-#include "activemessage.hpp"
+#include "active_messages.hpp"
 
 namespace ttor
 {
