@@ -1,7 +1,3 @@
-#include "communications.hpp"
-#include "runtime.hpp"
-#include "util.hpp"
-
 #include <Eigen/Core>
 #include <Eigen/Cholesky>
 #include <fstream>
@@ -10,9 +6,10 @@
 #include <mutex>
 #include <iostream>
 #include <map>
-
 #include <gtest/gtest.h>
 #include <mpi.h>
+
+#include "tasktorrent/tasktorrent.hpp"
 
 using namespace std;
 using namespace Eigen;

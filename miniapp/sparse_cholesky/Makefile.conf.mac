@@ -1,3 +1,2 @@
 INCLUDE = -I/usr/local/Cellar/eigen/3.3.7/include/eigen3/ -I/Users/lcambier/Softwares/scotch_6.0.9/include -I/usr/local/opt/openblas/include
-LIBS    = -L/Users/lcambier/Softwares/scotch_6.0.9/lib -L/usr/local/opt/openblas/lib
-LDFLAGS = -lscotch -lscotcherr -lblas -llapack
+LIBS    = -L/Users/lcambier/Softwares/scotch_6.0.9/lib -L/usr/local/opt/openblas/lib -lscotch -lscotcherr -lblas -llapack

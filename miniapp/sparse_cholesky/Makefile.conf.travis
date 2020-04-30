@@ -1,3 +1,2 @@
 INCLUDE = -I${HOME}/build/leopoldcambier/tasktorrent/eigen -I/usr/include/scotch/ -I/usr/include/ -I/usr/include/x86_64-linux-gnu/
-LIBS    = -L/usr/lib/x86_64-linux-gnu/
-LDFLAGS = -lscotch -lscotcherr -lblas -llapacke
+LIBS    = -L/usr/lib/x86_64-linux-gnu/ -lscotch -lscotcherr -lblas -llapacke

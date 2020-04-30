@@ -1,19 +1,11 @@
-#ifndef __TTOR_UTIL_HPP__
-#define __TTOR_UTIL_HPP__
+#ifndef __TTOR_SRC_UTIL_HPP__
+#define __TTOR_SRC_UTIL_HPP__
 
-#include <sys/time.h>
 #include <string>
 #include <iostream>
-#include <thread>
 #include <atomic>
 #include <vector>
-#include <stdio.h>
 #include <chrono>
-#include <ctime>
-#include <ratio>
-#include <assert.h>
-#include <unistd.h>
-#include <iomanip>
 
 namespace ttor
 {
@@ -79,6 +71,10 @@ struct DepsLogger
 
 std::ostream &operator<<(std::ostream &os, ttor::DepsLogger &t);
 std::ostream &operator<<(std::ostream &os, ttor::Logger &t);
+
+// Byte printing
+void print_bytes(const void* ptr, size_t size);
+void print_bytes(std::vector<char> buffer);
 
 } // namespace ttor
 

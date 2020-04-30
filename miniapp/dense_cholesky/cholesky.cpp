@@ -1,7 +1,4 @@
-#include "communications.hpp"
-#include "runtime.hpp"
-#include "util.hpp"
-#include "complex.h"
+#include "tasktorrent/tasktorrent.hpp"
 #ifdef USE_MKL
 #include <mkl_cblas.h>
 #include <mkl_lapacke.h>

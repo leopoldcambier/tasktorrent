@@ -3,25 +3,25 @@ include Makefile.conf
 CC       = mpicxx
 # CFLAGS   = -fsanitize=address -fsanitize=undefined -pthread -O1 -g -std=c++14
 CFLAGS   = -pthread -O3 -g -std=c++14 -DEIGEN_NO_DEBUG
-INCLUDE  += -I../../src/
+INCLUDE  += -I../../
 LIBS     += 
-LDFLAGS  += 
-SRCDIR   = ../../src
+SRCDIR   = ../../tasktorrent/src
 OBJDIR   = ../../build
 
-.PHONY: default all clean
+.PHONY: clean
+
+DEPS := $(wildcard $(SRCDIR)/*.hpp)
+SRCS := $(wildcard $(SRCDIR)/*.cpp)
+OBJ := $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(SRCS))
 
 default: all
 all: snchol
-
-DEPS = $(SRCDIR)/runtime.hpp $(SRCDIR)/util.hpp $(SRCDIR)/communications.hpp $(SRCDIR)/serialization.hpp $(SRCDIR)/views.hpp $(SRCDIR)/apply_functions.hpp $(SRCDIR)/functional_extra.hpp
-OBJ  = $(OBJDIR)/communications.o $(OBJDIR)/serialization.o $(OBJDIR)/util.o
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(DEPS)
 	$(CC) -o $@ -c $< $(CFLAGS) $(INCLUDE)
 
 snchol: snchol.cpp $(OBJ)
-	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LIBS) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LIBS)
 
 clean:
 	rm -f *.o $(OBJDIR)/*.o

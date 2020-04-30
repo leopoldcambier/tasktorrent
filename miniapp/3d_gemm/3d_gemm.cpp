@@ -1,6 +1,4 @@
-#include "communications.hpp"
-#include "runtime.hpp"
-#include "util.hpp"
+#include "tasktorrent/tasktorrent.hpp"
 #include <Eigen/Core>
 #include <Eigen/Cholesky>
 #include <fstream>

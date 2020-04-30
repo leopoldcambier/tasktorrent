@@ -33,11 +33,8 @@
 #include <lapacke.h>
 #endif
 
-#include "runtime.hpp"
-#include "util.hpp"
+#include "tasktorrent/tasktorrent.hpp"
 #include "mmio.hpp"
-#include "communications.hpp"
-#include "runtime.hpp"
 
 using namespace std;
 using namespace Eigen;

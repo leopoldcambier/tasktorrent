@@ -1,8 +1,11 @@
-#ifndef __TTOR_APPLY_FUNCTIONS_HPP__
-#define __TTOR_APPLY_FUNCTIONS_HPP__
+#ifndef __TTOR_SRC_APPLY_FUNCTIONS_HPP__
+#define __TTOR_SRC_APPLY_FUNCTIONS_HPP__
 
-namespace ttor
-{
+#include <stddef.h>
+#include <utility>
+
+namespace ttor {
+
 // Allows calling a function f(A... a) where the data for a is stored in tuple t
 template <typename T, typename F, size_t... Is>
 constexpr auto apply_impl(F &f, T &t, std::index_sequence<Is...>)
@@ -21,6 +24,7 @@ void apply_fun(F &&fn, T &t)
 {
     apply(fn, t);
 }
+
 } // namespace ttor
 
 #endif

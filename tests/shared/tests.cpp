@@ -1,5 +1,3 @@
-#include "runtime.hpp"
-#include "util.hpp"
 #include <Eigen/Core>
 #include <Eigen/Cholesky>
 #include <Eigen/Sparse>
@@ -9,6 +7,8 @@
 #include <random>
 #include <mutex>
 #include <gtest/gtest.h>
+
+#include "tasktorrent/tasktorrent.hpp"
 
 using namespace std;
 using namespace Eigen;

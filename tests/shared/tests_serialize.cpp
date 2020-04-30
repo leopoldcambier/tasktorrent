@@ -7,10 +7,9 @@
 #include <tuple>
 #include <complex>
 #include <utility>
-
 #include <gtest/gtest.h>
-#include "serialization.hpp"
-#include "views.hpp"
+
+#include "tasktorrent/src/serialization.hpp"
 
 using namespace std;
 using namespace ttor;

@@ -1,15 +1,19 @@
 include Makefile.conf
 
 CFLAGS   += -pthread -O3 -g -std=c++14 -DEIGEN_NO_DEBUG -DEIGEN_USE_LAPACKE
-INCLUDE  += -I../../src/
+INCLUDE  += -I../../
 LIBS     += 
-SRCDIR   = ../../src
+SRCDIR   = ../../tasktorrent/src
 OBJDIR   = ../../build
 
 .PHONY: clean
 
-DEPS = $(SRCDIR)/runtime.hpp $(SRCDIR)/util.hpp $(SRCDIR)/communications.hpp $(SRCDIR)/serialization.hpp $(SRCDIR)/views.hpp $(SRCDIR)/apply_functions.hpp $(SRCDIR)/functional_extra.hpp
-OBJ  = $(OBJDIR)/communications.o $(OBJDIR)/serialization.o $(OBJDIR)/util.o
+DEPS := $(wildcard $(SRCDIR)/*.hpp)
+SRCS := $(wildcard $(SRCDIR)/*.cpp)
+OBJ := $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(SRCS))
+
+default: all
+all: 3d_gemm
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(DEPS)
 	$(MPICXX) $(CFLAGS) -o $@ -c $<  $(INCLUDE)
