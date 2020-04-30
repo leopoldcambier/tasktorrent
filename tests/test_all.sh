@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Get ttor's source
-dir=$1
+dir="${TTOR_ROOT}"
 if [ -z "$dir" ]
 then
-    echo "You need to pass ttor's source as first argument. Aborting tests."
+    echo "You need to pass ttor's source as TTOR_ROOT. Aborting tests."
     exit 1
 fi
 cmakeexist="${dir}/CMakeLists.txt"
@@ -13,20 +13,18 @@ if [[ -f "$cmakeexist" ]];
 then
     echo "Found CMakeLists.txt"
 else
-    echo "You need to pass ttor's source as first argument, which should contain CMakeLists.txt. Aborting tests."
+    echo "You need to pass ttor's source as TTOR_ROOT, which should contain CMakeLists.txt. Aborting tests."
     exit 1
 fi
 printf "TTOR's source set to ${dir}"
 
 # Shared or distributed
-SHARED=$2
 if [ -z "$SHARED" ]
 then
     SHARED="OFF"
 fi
 
 # Sanitizer as an option
-SAN=$3
 if [ -z "$SAN" ]
 then
     SAN="OFF"
@@ -41,7 +39,7 @@ cd $builddir
 printf "Building in ${builddir}...\n"
 cmake -DTTOR_SHARED=${SHARED} -DCMAKE_BUILD_TYPE=Debug -DTTOR_SAN=${SAN} ..
 cmake --build .
-if [ ${SHARED} == "OFF" ]
+if [ "${SHARED}" == "OFF" ]
 then
     cp $dir/tests/mpi/run_tests.sh $builddir/tests/mpi/run_tests.sh
     cd $builddir/tests/mpi

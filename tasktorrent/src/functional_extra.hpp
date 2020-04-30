@@ -1,5 +1,5 @@
-#ifndef __TTOR_FUNCTIONAL_EXTRA_HPP__
-#define __TTOR_FUNCTIONAL_EXTRA_HPP__
+#ifndef __TTOR_SRC_FUNCTIONAL_EXTRA_HPP__
+#define __TTOR_SRC_FUNCTIONAL_EXTRA_HPP__
 
 #include <functional>
 #include <cstdlib>

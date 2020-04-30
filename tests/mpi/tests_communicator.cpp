@@ -1,12 +1,5 @@
-// make tests_comms_dag && mpirun -oversubscribe -n 8 ./tests_comms_dag 4 1 --gtest_repeat=16  --gtest_break_on_failure
-// mpirun -mca btl ^tcp -oversubscribe -n 2 ./tests_comms_dag 2 2 --gtest_filter=*pingpong --gtest_repeat=8 | grep "Msg count update: sent - rcvd ="
-// mpirun -mca shmem posix -mca btl ^tcp -oversubscribe
 // -mca shmem posix: to remove error message when using oversubscribe
 // -mca btl ^tcp: to remove firewall warnings on macos
-
-#include "communications.hpp"
-#include "runtime.hpp"
-#include "util.hpp"
 
 #include <fstream>
 #include <array>
@@ -18,9 +11,10 @@
 #include <unordered_map>
 #include <queue>
 #include <vector>
-
 #include <gtest/gtest.h>
 #include <mpi.h>
+
+#include "tasktorrent/tasktorrent.hpp"
 
 using namespace std;
 using namespace ttor;

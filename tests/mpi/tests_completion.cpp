@@ -1,15 +1,9 @@
-// make tests_completion && mpirun -oversubscribe -n 4 ./tests_completion 4 1 --gtest_repeat=16 --gtest_break_on_failure
-
-#include "communications.hpp"
-#include "runtime.hpp"
-#include "util.hpp"
-
 #include <iostream>
 #include <map>
-
+#include <gtest/gtest.h>
 #include <mpi.h>
 
-#include <gtest/gtest.h>
+#include "tasktorrent/tasktorrent.hpp"
 
 using namespace std;
 using namespace ttor;

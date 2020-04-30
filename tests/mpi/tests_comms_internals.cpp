@@ -1,6 +1,3 @@
-#include "communications.hpp"
-#include "util.hpp"
-
 #include <fstream>
 #include <array>
 #include <random>
@@ -10,9 +7,10 @@
 #include <tuple>
 #include <cstring>
 #include <thread>
-
 #include <gtest/gtest.h>
 #include <mpi.h>
+
+#include "tasktorrent/tasktorrent.hpp"
 
 using namespace std;
 using namespace ttor;

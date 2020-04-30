@@ -8,6 +8,7 @@ before_install:
 language: cpp
 compiler:
   - g++
+  - clang++
 env:
   global:
     - TTOR_ROOT="${HOME}/build/leopoldcambier/tasktorrent"
@@ -15,17 +16,13 @@ env:
     - ASAN_OPTIONS="detect_leaks=0"
     - TTOR_MPIRUN="mpirun -oversubscribe"
   jobs:
-    - SHARED="ON" SAN="OFF"
-    - SHARED="ON" SAN="UB"
-    - SHARED="ON" SAN="ADDRESS"
-    - SHARED="OFF" SAN="OFF"
-    - SHARED="OFF" SAN="UB"
-    - SHARED="OFF" SAN="ADDRESS"
+    - TEST="MINIAPPS"
+    - TEST="TESTSUITE" SHARED="ON"  SAN="UB"
+    - TEST="TESTSUITE" SHARED="ON"  SAN="OFF"
+    - TEST="TESTSUITE" SHARED="ON"  SAN="ADDRESS"
+    - TEST="TESTSUITE" SHARED="OFF" SAN="OFF"
+    - TEST="TESTSUITE" SHARED="OFF" SAN="UB"
+    - TEST="TESTSUITE" SHARED="OFF" SAN="ADDRESS"
 install:
 script:
-  - cd ${TTOR_ROOT}/tutorial && make clean && make run
-  - cd ${TTOR_ROOT}/miniapp/dense_cholesky && cp Makefile.conf.travis Makefile.conf && make clean && make cholesky && mpirun -n 2 ./cholesky
-  - cd ${TTOR_ROOT}/miniapp/3d_gemm && cp Makefile.conf.travis Makefile.conf && make clean && make 3d_gemm && mpirun --oversubscribe -n 8 ./3d_gemm
-  - cd ${TTOR_ROOT}/miniapp/sparse_cholesky && cp Makefile.conf.travis Makefile.conf && make clean && make snchol && mpirun -n 2 ./snchol neglapl_2_32.mm 10 2 0 5 0 NONE 5
-  
-  - cd ${TTOR_ROOT} && ./tests/test_all.sh $(pwd) ${SHARED} ${SAN}
+  - ./tests/test_travis.sh

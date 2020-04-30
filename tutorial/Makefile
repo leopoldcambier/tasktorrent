@@ -1,29 +1,28 @@
 CC       = mpicxx
-CFLAGS   = --std=c++14 -g
-INCLUDE  = -I../src/
-SRCDIR   = ../src
+CFLAGS   = -std=c++14 -g
+INCLUDE  = -I../
+SRCDIR   = ../tasktorrent/src
 OBJDIR   = ../build
 
 .PHONY: clean
 
-DEPS = $(SRCDIR)/runtime.hpp $(SRCDIR)/util.hpp $(SRCDIR)/communications.hpp $(SRCDIR)/serialization.hpp $(SRCDIR)/views.hpp $(SRCDIR)/apply_functions.hpp $(SRCDIR)/functional_extra.hpp
-OBJ  = $(OBJDIR)/communications.o $(OBJDIR)/serialization.o $(OBJDIR)/util.o
+DEPS := $(wildcard $(SRCDIR)/*.hpp)
+SRCS := $(wildcard $(SRCDIR)/*.cpp)
+OBJ := $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(SRCS))
+
+default: all
+all: tuto
 
 # Objects
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(DEPS)
-	$(CC) -o $@ -c $< $(CFLAGS) $(INCLUDE)
-
-# Objects
-$(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(OBJ)
 	$(CC) -o $@ -c $< $(CFLAGS) $(INCLUDE)
 
 tuto: tuto.cpp $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE)
 
 run: tuto
-	mpirun -mca shmem posix -mca btl ^tcp -n 2 ./tuto	
+	mpirun -n 2 ./tuto
 
 clean:
 	rm -f tuto
 	rm -f $(OBJDIR)/*.o
-	

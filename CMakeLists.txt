@@ -29,7 +29,7 @@ if(${TTOR_SAN} MATCHES "UB")
     set (CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=undefined")
 endif()
 
-add_subdirectory(src)
+add_subdirectory(tasktorrent/src)
 if(TTOR_SHARED)
     add_subdirectory(tests/shared)
 else()

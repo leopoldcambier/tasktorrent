@@ -1,5 +1,5 @@
-#ifndef __TTOR_SERIALIZATION_HPP__
-#define __TTOR_SERIALIZATION_HPP__
+#ifndef __TTOR_SRC_SERIALIZATION_HPP__
+#define __TTOR_SRC_SERIALIZATION_HPP__
 
 #include <tuple>
 #include <functional>
@@ -8,9 +8,10 @@
 #include <cstring>
 #include <cassert>
 #include <memory>
-#include <iostream>
 
 #include "views.hpp"
+
+namespace ttor {
 
 template <std::size_t... Ns, typename... Ts>
 constexpr auto tail_impl(std::index_sequence<Ns...>, std::tuple<Ts...> t)
@@ -24,9 +25,6 @@ constexpr auto tail(std::tuple<Ts...> t)
 {
     return tail_impl(std::make_index_sequence<sizeof...(Ts) - 1u>(), t);
 }
-
-namespace ttor
-{
 
 // Serialize data
 template <typename... Values>
@@ -192,6 +190,7 @@ public:
 
 void print_bytes(const void *ptr, size_t size);
 void print_bytes(std::vector<char> buffer);
+
 } // namespace ttor
 
 #endif

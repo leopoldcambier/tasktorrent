@@ -1,6 +1,15 @@
-#include "communications.hpp"
+#ifndef TTOR_SHARED
 
-using namespace std;
+#include <list>
+#include <vector>
+#include <mutex>
+#include <tuple>
+#include <cassert>
+
+#include "communications.hpp"
+#include "mpi_utils.hpp"
+#include "serialization.hpp"
+#include "active_messages.hpp"
 
 namespace ttor
 {
@@ -19,12 +28,12 @@ int comm_size()
     return world_size;
 }
 
-string processor_name()
+std::string processor_name()
 {
     char name[MPI_MAX_PROCESSOR_NAME];
     int size;
     TASKTORRENT_MPI_CHECK(MPI_Get_processor_name(name, &size));
-    return string(name);
+    return std::string(name);
 }
 
 /**
@@ -41,9 +50,9 @@ Communicator::Communicator(int verb_) :
         TASKTORRENT_MPI_CHECK(MPI_Type_commit(&MPI_MEGABYTE));
     }
     
-unique_ptr<message> Communicator::make_active_message(int dest, size_t size)
+std::unique_ptr<message> Communicator::make_active_message(int dest, size_t size)
 {
-    auto m = make_unique<message>(dest);
+    auto m = std::make_unique<message>(dest);
     size_t buffer_size = 0;
     int tag = 0;
     if(size > max_int_size) {
@@ -58,7 +67,7 @@ unique_ptr<message> Communicator::make_active_message(int dest, size_t size)
     return m;
 }
 
-void Communicator::Isend_message(const unique_ptr<message> &m)
+void Communicator::Isend_message(const std::unique_ptr<message> &m)
 {
     if (verb > 1)
         printf("[%2d] -> %d: sending msg [tag %d], %zd B, rqst %p\n", comm_rank(), m->other, m->tag, m->buffer.size(), (void*)&(m->request));
@@ -87,9 +96,9 @@ void Communicator::Isend_message(const unique_ptr<message> &m)
 
 void Communicator::Isend_queued_messages()
 {
-    list<unique_ptr<message>> to_Isend;
+    std::list<std::unique_ptr<message>> to_Isend;
     {
-        lock_guard<mutex> lock(messages_rdy_mtx);
+        std::lock_guard<std::mutex> lock(messages_rdy_mtx);
         to_Isend.swap(messages_rdy);
         assert(messages_rdy.size() == 0);
     }
@@ -114,7 +123,7 @@ void Communicator::Isend_queued_messages()
 
 void Communicator::test_Isent_messages()
 {
-    list<unique_ptr<message>> messages_Isent_new;
+    std::list<std::unique_ptr<message>> messages_Isent_new;
     for (auto &m : messages_Isent)
     {
         int flag = 0;
@@ -131,7 +140,7 @@ void Communicator::test_Isent_messages()
 }
 
 // Return true if there is a message and we started an Irecv; false otherwise
-bool Communicator::probe_Irecv_message(unique_ptr<message> &m)
+bool Communicator::probe_Irecv_message(std::unique_ptr<message> &m)
 {
     if (verb > 3)
         printf("[%2d] MPI probe\n", comm_rank());
@@ -145,7 +154,7 @@ bool Communicator::probe_Irecv_message(unique_ptr<message> &m)
     int mpi_tag = mpi_status.MPI_TAG;
     int source = mpi_status.MPI_SOURCE;
     size_t buffer_size = 0;
-    m = make_unique<message>(source);
+    m = std::make_unique<message>(source);
     if(mpi_tag == 0) { // We are receiving MPI_BYTE
         TASKTORRENT_MPI_CHECK(MPI_Get_count(&mpi_status, MPI_BYTE, &mpi_size));
         buffer_size = static_cast<size_t>(mpi_size);
@@ -173,7 +182,7 @@ bool Communicator::probe_Irecv_message(unique_ptr<message> &m)
 
 void Communicator::process_Ircvd_messages()
 {
-    list<unique_ptr<message>> messages_Ircvd_new;
+    std::list<std::unique_ptr<message>> messages_Ircvd_new;
     const int self = comm_rank();
     for (auto &m : messages_Ircvd)
     {
@@ -193,15 +202,15 @@ void Communicator::process_Ircvd_messages()
             if (verb > 1)
                 printf("[%2d] -> %d: msg [tag %d] received, rqst %p complete\n", comm_rank(), m->other, m->tag, (void*)&m->request);
 
-            unique_ptr<Event> e;
+            std::unique_ptr<Event> e;
             if (log)
-                e = make_unique<Event>("rank_" + to_string(comm_rank()) + ">lpc>" + "rank_" + to_string(m->other) + ">" + to_string(m->tag));
+                e = std::make_unique<Event>("rank_" + std::to_string(comm_rank()) + ">lpc>" + "rank_" + std::to_string(m->other) + ">" + std::to_string(m->tag));
 
             // Process the message
             process_message(m);
 
             if (log)
-                logger->record(move(e));
+                logger->record(std::move(e));
         }
         else
             messages_Ircvd_new.push_back(move(m));
@@ -209,11 +218,11 @@ void Communicator::process_Ircvd_messages()
     messages_Ircvd.swap(messages_Ircvd_new);
 }
 
-void Communicator::process_message(const unique_ptr<message> &m)
+void Communicator::process_message(const std::unique_ptr<message> &m)
 {
     Serializer<int> s;
-    tuple<int> tup = s.read_buffer(m->buffer.data(), m->buffer.size());
-    int am_id = get<0>(tup);
+    std::tuple<int> tup = s.read_buffer(m->buffer.data(), m->buffer.size());
+    int am_id = std::get<0>(tup);
     assert(am_id >= 0 && am_id < static_cast<int>(active_messages.size()));
     if (verb > 4)
     {
@@ -249,7 +258,7 @@ void Communicator::recv_process()
     // (1) Try Irecv
     while (true)
     {
-        unique_ptr<message> m;
+        std::unique_ptr<message> m;
         bool success = probe_Irecv_message(m);
         // Note: if probe_Irecv_message keep returning false we never exit
         if (success)
@@ -267,10 +276,10 @@ void Communicator::progress()
     // Keep checking for Irecv messages and insert into queue
     while (true)
     {
-        unique_ptr<message> m;
+        std::unique_ptr<message> m;
         bool success = probe_Irecv_message(m);
         if (success)
-            messages_Ircvd.push_back(move(m));
+            messages_Ircvd.push_back(std::move(m));
         else
             // Iprobe says there are no messages in the pipeline
             break;
@@ -285,7 +294,7 @@ bool Communicator::is_done()
 {
     bool ret;
     {
-        lock_guard<mutex> lock(messages_rdy_mtx);
+        std::lock_guard<std::mutex> lock(messages_rdy_mtx);
         ret = messages_rdy.empty() && messages_Isent.empty() && messages_Ircvd.empty();
     }
     return ret;
@@ -302,3 +311,5 @@ int Communicator::get_n_msg_queued()
 }
 
 } // namespace ttor
+
+#endif
