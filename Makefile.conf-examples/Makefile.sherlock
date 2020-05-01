@@ -1,6 +1,0 @@
-GTEST_INCDIR = /home/users/lcambier/Softwares/googletest/googletest/include
-GTEST_LIBDIR = /home/users/lcambier/Softwares/googletest/build/lib
-CXX = mpicxx
-CFLAGS = -Wall --std=c++14 -O0 -g -lz -Wno-sign-compare
-LDFLAGS = 
-EIGEN_INCDIR = ./
