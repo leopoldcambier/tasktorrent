@@ -24,7 +24,7 @@ using namespace ttor;
 
 int VERB = 0;
 
-TEST(ttor, active_messages)
+TEST(ttor, activeMessages)
 {
     int rank = comm_rank();
     Communicator comm(VERB);
@@ -218,7 +218,7 @@ TEST(ttor, nonblocking)
     logfile.close();
 }
 
-TEST(mpi, many_1)
+TEST(mpi, many1)
 {
     const int nrpcs = 100; // number of messages
     const int size = 1000; // Number of int in each message
@@ -247,7 +247,7 @@ TEST(mpi, many_1)
     MPI_Barrier(MPI_COMM_WORLD);
 }
 
-TEST(ttor, many_2)
+TEST(ttor, many2)
 {
     const int nrpcs = 100; // number of messages
     const int size = 1000; // Number of int in each message
@@ -293,7 +293,7 @@ TEST(ttor, many_2)
 }
 
 // Test for a potential bug in mpich with MPI_Probe and MPI_Count not returning correct values for large messages
-TEST(mpi, large_probe_get_count)
+TEST(mpi, largeProbeGetCount)
 {
     MPI_Datatype MPI_MEGABYTE;
     int mega = 1 << 20;
@@ -332,7 +332,7 @@ TEST(mpi, large_probe_get_count)
     }
 }
 
-TEST(ttor, large_all_sizes)
+TEST(ttor, largeAllSizes)
 {
     // Don't go too high. This ensures that we try sizes smaller and larger than 2^31 B.
     vector<double> sizes = {0.1, 0.5, 0.9, 1.1, 1.2, 1.3}; 

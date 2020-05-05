@@ -131,7 +131,7 @@ TEST(serialize,alignement2) {
     }
 }
 
-TEST(serialize,empty_views) {
+TEST(serialize,emptyViews) {
     int z = 0;
     vector<char> a = {};
     vector<int> b = {1};

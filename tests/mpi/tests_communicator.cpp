@@ -32,7 +32,7 @@ struct local_t
     Taskflow<int> *local_tf;
 };
 
-TEST(ttor, mini_v0)
+TEST(ttor, miniV0)
 {
     int n_threads = n_threads_;
     int rank = comm_rank();
@@ -88,7 +88,7 @@ TEST(ttor, mini_v0)
     MPI_Barrier(MPI_COMM_WORLD); // This is required in case we call this function repeatedly
 }
 
-TEST(ttor, mini_v1)
+TEST(ttor, miniV1)
 {
     int n_threads = n_threads_;
     int rank = comm_rank();
@@ -514,7 +514,7 @@ void test_sparse_graph(int n_tasks_per_rank, bool self)
     MPI_Barrier(MPI_COMM_WORLD); // This is required in case we call this function repeatedly
 }
 
-TEST(ttor, sparse_graph)
+TEST(ttor, sparseGraph)
 {
     const int n_ranks = comm_size();
 
