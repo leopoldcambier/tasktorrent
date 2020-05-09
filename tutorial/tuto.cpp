@@ -53,14 +53,11 @@ void tuto_1(int n_threads, int verb)
     Taskflow<int> tf(&tp, verb);
 
     // Create active message
-    auto am = comm.make_large_active_msg(
+    auto am = comm.make_active_msg(
         [&](int &k, int &k_) {
             /* The data k and k_ are received over the network using MPI */
-            printf("Task %d fulfilling %d (remote), large data = %e\n", k, k_, large_data[k][0]);
+            printf("Task %d fulfilling %d (remote)\n", k, k_);
             tf.fulfill_promise(k_);
-        },
-        [&](int &k, int &k_) {
-            return (char*) large_data[k].data();
         });
 
     // Define the task flow
@@ -82,7 +79,7 @@ void tuto_1(int n_threads, int verb)
                     // Send k and k_ to rank dest using an MPI non-blocking send.
                     // The type of k and k_ must match the declaration of am above.
                     // am->send(dest, k, k_);
-                    am->send_large(dest, (char*)large_data[k].data(), large_data[k].size() * sizeof(double), k, k_);
+                    am->send(dest, k, k_);
                 }
             }
         })
