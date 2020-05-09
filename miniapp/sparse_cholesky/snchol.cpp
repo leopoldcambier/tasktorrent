@@ -795,8 +795,7 @@ struct DistMat
                     assert(Aik->size() == isize * ksize);
                     auto vAik = view<double>(Aik->data(), Aik->size());
                     auto vJs = view<int>(js.data(), js.size());
-                    am_send_panel->named_send(dest, "trsm_" + to_string(k) + "_" + to_string(i),
-                                              i, k, isize, ksize, vAik, vJs);
+                    am_send_panel->send(dest, i, k, isize, ksize, vAik, vJs);
                 }
             })
             .set_name([&](int2 ki) {
