@@ -8,6 +8,30 @@ fi
 
 echo "Using ${CMD_MPIRUN} as mpirun command"
 
+$CMD_MPIRUN -n 2 ./cholesky 2 5 10 1 2 --gtest_repeat=5 --gtest_break_on_failure
+
+if [ $? != "0" ]
+then
+    exit 1
+fi
+
+$CMD_MPIRUN -n 4 ./cholesky 1 5 32 2 2 --gtest_repeat=5 --gtest_break_on_failure
+
+if [ $? != "0" ]
+then
+    exit 1
+fi
+
+for nrank in 1 2 3 4
+do
+    $CMD_MPIRUN -n ${nrank} ./tests_active_msg_large --gtest_break_on_failure
+
+    if [ $? != "0" ]
+    then
+        exit 1
+    fi
+done
+
 $CMD_MPIRUN -n 4 ./tests_comms_internals --gtest_repeat=10 --gtest_break_on_failure --gtest_filter=-*large*
 
 if [ $? != "0" ]

@@ -293,6 +293,7 @@ TEST(ttor, many2)
 }
 
 // Test for a potential bug in mpich with MPI_Probe and MPI_Count not returning correct values for large messages
+// This need very large messages to trigger the bug
 TEST(mpi, largeProbeGetCount)
 {
     MPI_Datatype MPI_MEGABYTE;
@@ -303,8 +304,8 @@ TEST(mpi, largeProbeGetCount)
     std::vector<int> counts = {1, 5, 100, 5000};
     for(auto count: counts) {
         size_t size = static_cast<size_t>(mega) * static_cast<size_t>(count);
-        char* sendbuff = (char*)malloc(size * sizeof(char));
-        char* recvbuff = (char*)malloc(size * sizeof(char));
+        char* sendbuff = (char*)calloc(size, sizeof(char));
+        char* recvbuff = (char*)calloc(size, sizeof(char));
         sendbuff[0] = '1';
         sendbuff[size-1] = '7';
         MPI_Request send, recv;
@@ -332,16 +333,18 @@ TEST(mpi, largeProbeGetCount)
     }
 }
 
-TEST(ttor, largeAllSizes)
+TEST(ttor, breakSize)
 {
-    // Don't go too high. This ensures that we try sizes smaller and larger than 2^31 B.
-    vector<double> sizes = {0.1, 0.5, 0.9, 1.1, 1.2, 1.3}; 
+    // Don't go too high. This ensures that we try sizes smaller and larger than 2^31 / 16 B.
+    vector<double> sizes = {0.001, 0.01, 0.1, 0.5, 0.9, 1.1, 1.2, 1.3, 1.5, 2.0, 4.0, 5.5, 6.0, 7.8}; 
+    const size_t break_size = (1 << 22); // Larger than 1MB but smaller than 2^31
     for(auto s: sizes) {
-        Communicator comm(VERB);
+        if(VERB) printf("Size factor = %e =======================\n", s);
+        Communicator comm(VERB, break_size);
         int done = 0;
         int expected = 1;
-        size_t size = static_cast<size_t>(std::numeric_limits<int>::max()) * s;
-        char* buffer = (char*)malloc(size * sizeof(char));
+        size_t size = break_size * s;
+        char* buffer = (char*)calloc(size, sizeof(char));
         buffer[0] = 'l';
         buffer[1] = 'e';
         buffer[size/4] = 'o';

@@ -18,7 +18,8 @@ using namespace ttor;
 typedef array<int, 2> int2;
 typedef array<int, 3> int3;
 
-int VERB = 1;
+int VERB = 0;
+bool LOG = false;
 int n_threads_ = 4;
 int n_ = 100;
 int N_ = 20;
@@ -30,7 +31,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
     // MPI info
     const int rank = comm_rank();
     const int n_ranks = comm_size();
-    printf("[%d] Hello from %s\n", comm_rank(), processor_name().c_str());
+    if(VERB) printf("[%d] Hello from %s\n", comm_rank(), processor_name().c_str());
 
     assert(p * q == n_ranks);
     assert(p >= 1);
@@ -103,8 +104,10 @@ void cholesky(int n_threads, int n, int N, int p, int q)
         // Log
         DepsLogger dlog(1000000);
         Logger log(1000000);
-        tp.set_logger(&log);
-        comm.set_logger(&log);
+        if(LOG) {
+            tp.set_logger(&log);
+            comm.set_logger(&log);
+        }
         
         // Active messages
         // Sends a pivot and trigger multiple trsms in one columns
@@ -290,11 +293,13 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                 cout << "Time : " << elapsed(t0, t1) << endl;
             }
 
-            std::ofstream logfile;
-            string filename = "cholesky_"+ to_string(n_ranks)+".log."+to_string(rank);
-            logfile.open(filename);
-            logfile << log;
-            logfile.close();
+            if(LOG) {
+                std::ofstream logfile;
+                string filename = "cholesky_"+ to_string(n_ranks)+".log."+to_string(rank);
+                logfile.open(filename);
+                logfile << log;
+                logfile.close();
+            }
     }
 
     // Gather everything on rank 0 and test for accuracy

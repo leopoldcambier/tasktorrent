@@ -4,8 +4,8 @@
 
 namespace ttor {
 
-int ActiveMsgBase::get_id() const { return id_; }
-ActiveMsgBase::ActiveMsgBase(int id) : id_(id) {}
+size_t ActiveMsgBase::get_id() const { return id_; }
+ActiveMsgBase::ActiveMsgBase(size_t id) : id_(id) {}
 ActiveMsgBase::~ActiveMsgBase(){}
 
 }

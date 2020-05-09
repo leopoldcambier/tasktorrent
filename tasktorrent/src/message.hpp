@@ -11,11 +11,31 @@ namespace ttor {
 struct message
 {
 public:
-    std::vector<char> buffer;
-    MPI_Request request;
+
+    // This is used for two-steps messages
+    // We first send a header (in exactly 1 MPI messages
+    // Followed by potentially multiple MPI messages for the body
+
+    // Header is encoded as
+    // AM ID (size_t) | Body_size (size_t) | Arguments ...
+    // Body is a user provided buffer
+
+    // Source or destination
     int other;
-    int tag;
-    message(int other);
+
+    // Header
+    bool header_processed;
+    int header_tag;                         // 0 if count in B, 1 if count in MB
+    std::vector<char> header_buffer;        // Header buffer (internally allocated/deallocated)
+    MPI_Request header_request;             // Associated request
+
+    // Body
+    int body_tag;                           // Tag used to communicate the body
+    char* body_buffer;                      // "Large" body buffer (user provided)
+    size_t body_size;                       // Sizes
+    std::vector<MPI_Request> body_requests; // Associated requests (multiple needed if message > 2 GB)
+
+    message();
 };
 
 }
