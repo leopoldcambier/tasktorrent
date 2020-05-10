@@ -183,6 +183,139 @@ TEST(ActiveMsgLarge, multipleBodiesBreakSize)
     }
 }
 
+/**
+ * We send a lot of messages to next rank, starting with big ones and then small ones
+ * This gives a change for small messages to sneak in before the big, and should make sure the ordering is properly respected
+ */
+TEST(ActiveMsgLarge, bigToSmall)
+{
+    const size_t break_size = (1 << 21); // Larger than 1MB but much smaller than 2^31
+    
+    // Various distributions of sizes
+    // Accross the spectrum
+    vector<size_t> sizes_0 = {32*break_size,    16*break_size,  8*break_size, 
+                              4*break_size,     2*break_size,   break_size, 
+                              break_size/2,     break_size/4,   break_size/8, 
+                              break_size/16,    break_size/32,  break_size/64, 
+                              break_size/128,   break_size/256, break_size/512};
+    // Very small and very large
+    // This make sure that the small ones (which are sent last) are (usually) completed first
+    // So this stresses the code to verify the ordering
+    vector<size_t> sizes_1 = {128*break_size, 1*break_size, break_size/16, break_size/1024};
+    // Around break_size
+    vector<size_t> sizes_2 = {4*break_size, 4*break_size, 4*break_size, 4*break_size, 4*break_size,
+                              2*break_size, 2*break_size, 2*break_size, 2*break_size, 2*break_size,
+                              1*break_size, 1*break_size, 1*break_size, 1*break_size, 1*break_size,
+                              break_size/2, break_size/2, break_size/2, break_size/2, break_size/2, 
+                              break_size/4, break_size/4, break_size/4, break_size/4, break_size/4};
+    
+    vector<vector<size_t>> sizes_all = {sizes_0, sizes_1, sizes_2};
+
+    for(auto& sizes: sizes_all) {
+
+        Communicator comm(VERB, break_size);
+
+        int N = sizes.size();
+
+        // unsigned char to make sure the wrap around is well defined (the -k before need to be well defined)
+        vector<unsigned char*> send_buffers(N * N);
+        vector<unsigned char*> recv_buffers(N * N);
+        vector<unsigned char*> header_buffers(N * N);
+
+        int headers_rcvd = 0;
+        int bodies_rcvd = 0;
+        const int expected = N * N;
+
+        for(int i = 0; i < N; i++) {
+            for(int j = 0; j < N; j++) {
+                int k = i + j * N;
+                size_t header_size = sizes[i];
+                size_t body_size = sizes[j];
+
+                // malloc seems _overall_ faster than std::vector somehow
+                header_buffers.at(k) = (unsigned char*)malloc(header_size);
+                *(header_buffers.at(k)) = (unsigned char)(- k);
+                *(header_buffers.at(k)+header_size-1) = (unsigned char)(- k);
+
+                send_buffers.at(k) = (unsigned char*)malloc(body_size);
+                *(send_buffers.at(k)) = (unsigned char)k;
+                *(send_buffers.at(k)+body_size-1) = (unsigned char)k;
+
+                recv_buffers.at(k) = (unsigned char*)malloc(body_size);
+                *(recv_buffers.at(k)) = (unsigned char)0;
+                *(recv_buffers.at(k)+body_size-1) = (unsigned char)0;
+            }
+        }
+
+        auto am = comm.make_large_active_msg(
+            [&](int& i, int& j, view<unsigned char>& header) {
+                int k = i + j * N;
+
+                size_t header_size = sizes.at(i);
+                EXPECT_EQ(header.size(), header_size);
+                EXPECT_EQ(*(header.begin()), (unsigned char)(- k));
+                EXPECT_EQ(*(header.end()-1), (unsigned char)(- k));
+
+                // Data is there
+                size_t body_size = sizes.at(j);
+                EXPECT_EQ(*(recv_buffers[k]), (unsigned char)k); 
+                EXPECT_EQ(*(recv_buffers[k] + body_size - 1), (unsigned char)k);
+
+                bodies_rcvd++;
+            },
+            [&](int& i, int& j, view<unsigned char>& header) {
+                int k = i + j * N;
+
+                size_t header_size = sizes.at(i);
+                EXPECT_EQ(header.size(), header_size);
+                EXPECT_EQ(*(header.begin()), (unsigned char)(- k));
+                EXPECT_EQ(*(header.end()-1), (unsigned char)(- k));
+
+                // Data is not there
+                size_t body_size = sizes.at(j);
+                EXPECT_EQ(*(recv_buffers[k]), (unsigned char)0); 
+                EXPECT_EQ(*(recv_buffers[k] + body_size - 1), (unsigned char)0);
+
+                unsigned char* ptr = recv_buffers.at(k);
+                headers_rcvd++;
+                return ptr;
+            });
+
+        int dest = (comm_rank() + 1) % (comm_size());
+        for(int i = 0; i < N; i++) {
+            for(int j = 0; j < N; j++) {
+                int k = i + j * N;
+                size_t header_size = sizes.at(i);
+                size_t body_size = sizes.at(j);
+                auto body   = view<unsigned char>(send_buffers.at(k), body_size);
+                auto header = view<unsigned char>(header_buffers.at(k), header_size);
+                am->send_large(dest, body, i, j, header);
+            }
+        }
+
+        while ( (!comm.is_done()) || (bodies_rcvd != expected) ) {
+            comm.progress();
+        }
+
+        EXPECT_EQ(bodies_rcvd, expected);
+        EXPECT_EQ(headers_rcvd, expected);
+        for(int i = 0; i < N; i++) {
+            for(int j = 0; j < N; j++) {
+                int k = i + j * N;
+                size_t body_size = sizes.at(j);
+                EXPECT_EQ(*(recv_buffers.at(k)), (unsigned char)k);
+                EXPECT_EQ(*(recv_buffers.at(k) + body_size - 1), (unsigned char)k);
+            }
+        }
+
+        MPI_Barrier(MPI_COMM_WORLD);
+
+        for(auto v: send_buffers) free(v);
+        for(auto v: recv_buffers) free(v);
+        for(auto v: header_buffers) free(v);
+    }
+}
+
 int main(int argc, char **argv)
 {
     int req = MPI_THREAD_FUNNELED;
