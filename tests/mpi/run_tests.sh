@@ -24,7 +24,7 @@ fi
 
 for nrank in 1 2 3 4
 do
-    $CMD_MPIRUN -n ${nrank} ./tests_active_msg_large --gtest_break_on_failure
+    $CMD_MPIRUN -n ${nrank} ./tests_active_msg_large --gtest_break_on_failure  --gtest_filter=-*large*
 
     if [ $? != "0" ]
     then
