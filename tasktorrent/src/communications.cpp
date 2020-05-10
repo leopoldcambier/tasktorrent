@@ -213,7 +213,7 @@ void Communicator::process_header(std::unique_ptr<message> &m) {
     const size_t am_id = std::get<0>(tup);
     const size_t body_size = std::get<1>(tup);
     m->body_size = body_size;
-    assert(am_id >= 0 && am_id < active_messages.size());
+    assert(am_id < active_messages.size());
     m->body_buffer = active_messages.at(am_id)->get_user_buffers(m->header_buffer.data(), m->header_buffer.size());
     m->header_processed = true;
 }
@@ -222,7 +222,7 @@ void Communicator::process_body(std::unique_ptr<message> &m) {
     Serializer<size_t> s;
     std::tuple<size_t> tup = s.read_buffer(m->header_buffer.data(), m->header_buffer.size());
     const size_t am_id = std::get<0>(tup);
-    assert(am_id >= 0 && am_id < active_messages.size());
+    assert(am_id < active_messages.size());
     active_messages.at(am_id)->run(m->header_buffer.data(), m->header_buffer.size());
     messages_processed++;
 }
