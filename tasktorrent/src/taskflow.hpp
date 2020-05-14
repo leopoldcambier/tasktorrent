@@ -47,8 +47,8 @@ public:
 
     /**
      * Creates a Taskflow associated with a Threadpool in which task will be inserted.
-     * \param `tp` the associated Threadpool
-     * \param `verb` the verbosity level. 0 is quiet, > 0 is more printing.
+     * \param tp the associated Threadpool
+     * \param verb the verbosity level. 0 is quiet, > 0 is more printing.
      */
     Taskflow(Threadpool_shared *tp_, int verb_ = 0) : tp(tp_), verb(verb_), dep_map(tp_->size())
     {
@@ -82,7 +82,7 @@ public:
 
     /**
      * Set function `f` as the task computational routine
-     * \param (void)f(K k) the function running the computational task for task `k`
+     * \param (void)f(K) the function running the computational task for task `k`
      * \return `this`, the taskflow itself.
      */
     Taskflow &set_task(std::function<void(K)> f)
