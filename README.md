@@ -3,6 +3,8 @@
 
 _A parallel runtime library for executing concurrent directed acyclic graphs of computational tasks with a focus on a very low-overhead when executing micro-tasks, speed, portability, light weight, and user friendly interface_
 
+See full documentation here (https://tasktorrent.readthedocs.io/en/latest/).
+
 ## Tutorial
 
 ### Description

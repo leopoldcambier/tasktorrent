@@ -49,20 +49,55 @@ private:
     virtual void test_completion();
 
 public:
-    Threadpool_shared(int n_threads, int verb_ = 0, std::string basename_ = "Wk_", bool start_immediately = true);
+    /**
+     * Creates a threadpool
+     * \param n_threads the number of threads in the threadpool
+     * \param verb verbosity level. 0 is quiet, > 0 prints more and more informations to stdout
+     * \param basename used in logging, this will be used to identity this threadpool
+     * \param start_immediately if true, the threadpool starts immediately. Otherwise, use is reponsible for calling `tp.start()` before joining.
+     */
+    Threadpool_shared(int n_threads, int verb = 0, std::string basename = "Wk_", bool start_immediately = true);
 
+    /**
+     * Starts the threadpool
+     */
     void start();
 
+    /**
+     * Insert task `t`
+     * \param t a pointer to the task to insert. The task ownership is taken by the threadpool and the task will be freed when done.
+     * \param where the thread to insert the task on
+     * \param binding if true, the task cannot be stolen by another thread.
+     */
     void insert(Task *t, int where, bool binding = false);
 
+    /**
+     * Same as `join()`
+     */
     void all_threads_join();
 
+    /**
+     * Join all the thread.
+     * This function returns when all threads are finished and have joined with the master thread
+     */
     void join();
 
+    /**
+     * Returns true if no tasks are present in the Taskflow, either running or in the ready queues
+     * \return true is all queues are empty and no tasks are running, false otherwise
+     */
     bool is_done();
 
+    /**
+     * Set the logger
+     * \param logger_ a pointer to the `Logger`. Logger ownership is left to the user.
+     */
     void set_logger(Logger *logger_);
 
+    /**
+     * Returns the number of threads
+     * \return the number of threads in the threadpool
+     */
     int size();
 };
 

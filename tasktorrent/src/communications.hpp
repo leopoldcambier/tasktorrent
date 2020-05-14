@@ -92,44 +92,48 @@ private:
     void process_message(const std::unique_ptr<message> &m);
 
 public:
+
+    // TODO: Make those four functions private
+
     /**
-     * Create a message tailored for an ActiveMsg of a given size to dest
+     * Create a message of a given size to dest
      * Message can later be filled with the data to be sent
-     * TODO: This should be hidden from public
      */
     std::unique_ptr<message> make_active_message(int dest, size_t size);
 
-public:
-
     /**
-     * Creates an Communicator
-     * - verb_ is the verbose level: 0 = no printing. 4 = lots of printing.
+     * Creates an Communicator.
+     * \param verb the verbose level: 0 = no printing. > 0 = more and more printing
      */
-    Communicator(int verb_ = 0);
+    Communicator(int verb = 0);
 
     /**
-     * Creates an active message tied to function fun
+     * Creates an active message tied to function fun.
+     * \param fun the active function to be run on the receiver rank
+     * \return A pointer to the active message. The active message is stored in `this` and should not be freed by the user.
      */
     template <typename... Ps>
     ActiveMsg<Ps...> *make_active_msg(std::function<void(Ps &...)> fun);
 
     /**
-     * Creates an active message tied to function fun
-     * fun can be a lambda function
+     * Creates an active message tied to function fun.
+     * \param fun the active function to be run on the receiver rank
+     * \return A pointer to the active message. The active message is stored in `this` and should not be freed by the user.
      */
     template <typename F>
-    typename ActiveMsg_type<decltype(&F::operator())>::type *make_active_msg(F f);
+    typename ActiveMsg_type<decltype(&F::operator())>::type *make_active_msg(F fun);
 
     /**
      * Set the logger
+     * \param logger a pointer to the logger. The logger is not owned by `this`.
      */
-    void set_logger(Logger *logger_);
+    void set_logger(Logger *logger);
 
     /**
-     * Queue a message in RPCComm internal message queue
-     * Name is used to annotate the message
-     * Message will be Isent later
+     * Queue a message in the internal message queue. Name is used to annotate the message. Message will be Isent later.
      * Thread-safe
+     * \param name the message name
+     * \param m a message
      */
     template <typename... Ps>
     void queue_named_message(std::string name, std::unique_ptr<message> m);
@@ -138,6 +142,7 @@ public:
      * Queue a message in RPCComm internal message queue
      * Message will be Isent later
      * Thread-safe
+     * \param m a message
      */
     template <typename... Ps>
     void queue_message(std::unique_ptr<message> m);
@@ -145,36 +150,37 @@ public:
     /**
      * Blocking-send a message
      * Should be called from thread that called MPI_Init_Thread
+     * \param m a message
      */
     template <typename... Ps>
     void blocking_send(std::unique_ptr<message> m);
 
     /** 
-     * Blocking-recv & process a message 
-     * Should be called from thread that called MPI_Init_Thread
+     * Blocking-receive & process a message. Should be called from thread that called MPI_Init_Thread.
+     * Not thread safe.
      */
     void recv_process();
 
     /**
-     * Asynchronous (queue_rpc & in-flight lpcs) Progress
-     * Polls in Irecv and Isend request
-     * Should be called from thread that called MPI_Init_Thread
+     * Asynchronous (queue rpcs & in-flight lpcs) progress. Polls in Irecv and Isend request.
+     * Should be called from thread that called MPI_Init_Thread.
+     * Not thread safe.
      */
     void progress();
 
     /**
-     * Returns true is all queues are empty
-     * Returns false otherwise
+     * Check for _local_ completion.
+     * \return true is all queues are empty, false otherwise.
      */
     bool is_done();
 
     /**
-     * Returns the number of received and processed messages
+     * \return The number of processed active message. An active message is processed on the receiver when the associated LPC is done running.
      */
     int get_n_msg_processed();
 
     /**
-     * Returns the number of queued (or sent) messages
+     * \return The number of queued active message. An active message is queued on the sender after a call to `am->send(...)`.
      */
     int get_n_msg_queued();
 };
