@@ -4,6 +4,12 @@
 #include <functional>
 #include <string>
 
+/**
+ * Task implementation.
+ * - `run` and `fulfill` are always called one after the other
+ * - `priority` is this task priority. Higher priority tasks are run first when multiple tasks are ready
+ * - `name` is a string describind this task
+ */
 struct Task
 {
     std::function<void()> run;
@@ -11,6 +17,9 @@ struct Task
     double priority;
     std::string name;
     Task();
+    /**
+     * \return A C-string giving this tasks name
+     */
     const char *c_name();
 };
 

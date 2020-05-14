@@ -19,23 +19,47 @@ class Communicator;
 
 /**
  * Base Active Message class
+ * An active message is two things:
+ * - A function 
+ * - A payload
+ * The function is serialized accross ranks using its ID
+ * The payload is send as a buffer of bytes
  */
 class ActiveMsgBase
 {
 private:
     int id_;
 public:
+    /**
+     * Return the ID of the active message.
+     * \return The global ID of the active message
+     */
     int get_id() const;
-    virtual void run(char *, size_t) = 0;
+
+    /**
+     * Deserialize the payload and run the associated function.
+     * \param payload a pointer to the payload 
+     * \param size the number of bytes in the payload
+     */
+    virtual void run(char * payload, size_t size) = 0;
+
+    /**
+     * Creates an active message with corresponding global ID `id`.
+     * \param id the global id of that active message. ID should be unique for every active message (on a given rank).
+     */
     ActiveMsgBase(int id);
+
+    /**
+     * Destroys the active message.
+     */
     virtual ~ActiveMsgBase();
 };
 
 /**
- * Implementation of Active Message
+ * Implementation of Active Message for a payload of type `Ps...`.
  * An active message is a pair of
- * (1) A local function
- * (2) A remote payload
+ * - A function
+ * - A payload
  * tied to an Communicator instance
  */
 template <typename... Ps>
@@ -48,29 +72,44 @@ private:
 
 public:
     /**
-     * Create an active message tied to given function fun and that feeds into Communicator comm
+     * Create an active message with ID `id` tied to function `fun` using communicator `comm` for communications
+     * \param fun the function to be run on the receiver
+     * \param comm the communicator instance to use for communications
+     * \param id the active message unique ID. User is responsible to never reuse ID's.
      */
     ActiveMsg(std::function<void(Ps &...)> fun, Communicator *comm, int id);
-    /**
-     * Deserialize payload_raw and run active message through the RPCComm
-     */
+    
     virtual void run(char *payload_raw, size_t size);
+    
     /**
-     * Immediately send the payload to be sent to the destination
-     * Should be called from the same thread calling MPI_Init_Thread(...)
+     * Immediately sends payload to destination
+     * The function returns when the payload has been sent
+     * This is not thread safe and can only be called by the MPI master thread
+     * \param dest the destination rank
+     * \param ps the payload
      */
     void blocking_send(int dest, Ps &... ps);
+    
     /**
-     * Queue the payload to be send later to dest
-     * Thread-safe; can be called from any thread
+     * Queue the payload `ps` to be send later to `dest`
+     * This is thread-safe and can be called by any thread
+     * \param dest the destination rank
+     * \param ps is the payload
      */
     void send(int dest, Ps &... ps);
+
     /**
-     * Queue the payload to be send later to dest
-     * Annotate the message with name for logging purposes
-     * Thread-safe; can be called from any thread
+     * Queue the payload `ps` to be send later to `dest` and associated name `name` for profiling purposes
+     * This is thread-safe and can be called by any thread
+     * \param dest the destination rank
+     * \param name is the name to associate to this send operation
+     * \param ps is the payload
      */
     void named_send(int dest, std::string name, Ps &... ps);
+
+    /**
+     * Destroys the active message
+     */
     virtual ~ActiveMsg();
 };
 

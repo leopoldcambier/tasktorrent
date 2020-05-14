@@ -80,8 +80,23 @@ private:
     void test_completion() override;
 
 public:
-    Threadpool_mpi(int n_threads, Communicator *comm_, int verb_ = 0, std::string basename_ = "Wk_", bool start_immediately = true);
 
+    /**
+     * Creates a Threadpool associated with a communicator
+     * \param n_threads the number of threads
+     * \param comm the communicator
+     * \param verb the verbosity level. 0 means not printing; > 0 prints more and more to stdout
+     * \param basename the prefix to be used to identity this Threadpool in all logging operations
+     * \param start_immediately if true, the Threapol starts immediately. Otherwise, the user should call `tp.start()` before `tp.join()`.
+     */
+    Threadpool_mpi(int n_threads, Communicator *comm, int verb = 0, std::string basename = "Wk_", bool start_immediately = true);
+
+    /**
+     * Returns when
+     * 1. There are no tasks running or in any queues in all Threadpools associated with the Communicator;
+     * 2. There are no messages in flight
+     * \return True is the program has completed, false otherwise
+     */
     void join();
 
 private:
