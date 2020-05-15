@@ -67,6 +67,46 @@ std::unique_ptr<message> Communicator::make_active_message(int dest, size_t size
     return m;
 }
 
+void Communicator::queue_named_message(std::string name, std::unique_ptr<message> m)
+{
+    // Increment message counter
+    messages_queued++;
+
+    std::unique_ptr<Event> e;
+    if (log)
+    {
+        e = std::make_unique<Event>();
+        e->name = "rank_" + std::to_string(comm_rank()) + ">qrpc>" + "rank_" + std::to_string(m->other) + ">" + std::to_string(m->tag) + ">" + name;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(messages_rdy_mtx);
+        if (verb > 2)
+        {
+            printf("[%2d] -> %d: %d pushed, %lu total\n", comm_rank(), m->other, m->tag, messages_rdy.size() + 1);
+        }
+        messages_rdy.push_back(std::move(m));
+    }
+
+    if (log)
+        logger->record(std::move(e));
+}
+
+void Communicator::queue_message(std::unique_ptr<message> m)
+{
+    queue_named_message("_", move(m));
+}
+
+// Blocking send
+void Communicator::blocking_send(std::unique_ptr<message> m)
+{
+    // Increment message counter
+    messages_queued++;
+
+    Isend_message(m);
+    TASKTORRENT_MPI_CHECK(MPI_Wait(&m->request, MPI_STATUS_IGNORE));
+}
+
 void Communicator::Isend_message(const std::unique_ptr<message> &m)
 {
     if (verb > 1)

@@ -15,8 +15,18 @@
 namespace ttor 
 {
 
+/**
+ * \brief A threadpool associated to active messages and a communicator
+ * 
+ * \details This class behaves exactly like Threadpool_shared
+ *          except that `join()` is overloaded to complete 
+ *          when all threadpools on all ranks have completed
+ *          and there are no in-flight active messages 
+ *          (i.e. all queued rpcs have been processed)
+ */
 class Threadpool_mpi : public Threadpool_shared
 {
+    
 private:
 
     const int my_rank;
@@ -79,28 +89,6 @@ private:
     // Everything is done in join
     void test_completion() override;
 
-public:
-
-    /**
-     * Creates a Threadpool associated with a communicator
-     * \param n_threads the number of threads
-     * \param comm the communicator
-     * \param verb the verbosity level. 0 means not printing; > 0 prints more and more to stdout
-     * \param basename the prefix to be used to identity this Threadpool in all logging operations
-     * \param start_immediately if true, the Threapol starts immediately. Otherwise, the user should call `tp.start()` before `tp.join()`.
-     */
-    Threadpool_mpi(int n_threads, Communicator *comm, int verb = 0, std::string basename = "Wk_", bool start_immediately = true);
-
-    /**
-     * Returns when
-     * 1. There are no tasks running or in any queues in all Threadpools associated with the Communicator;
-     * 2. There are no messages in flight
-     * \return True is the program has completed, false otherwise
-     */
-    void join();
-
-private:
-
     // Return the number of internal queued rpcs
     int get_intern_n_msg_queued();
 
@@ -110,6 +98,28 @@ private:
     // Only MPI Master thread runs this function, on all ranks
     // When done, this function set done to true and is_done() now returns true
     void test_completion_join();
+
+public:
+
+    /**
+     * \brief Creates a Threadpool associated with a communicator
+     * 
+     * \param[in] n_threads the number of threads
+     * \param[in] comm the communicator
+     * \param[in] verb the verbosity level. 0 means not printing; > 0 prints more and more to stdout
+     * \param[in] basename the prefix to be used to identity this Threadpool in all logging operations
+     * \param[in] start_immediately if true, the Threapol starts immediately. Otherwise, the user should call `tp.start()` before `tp.join()`.
+     */
+    Threadpool_mpi(int n_threads, Communicator *comm, int verb = 0, std::string basename = "Wk_", bool start_immediately = true);
+
+    /**
+     * \brief Complete accross all ranks
+     * 
+     * \details Returns when
+     *          1. There are no tasks running or in any queues in all Threadpools associated with the Communicator;
+     *          2. There are no messages in flight
+     */
+    void join();
 
 };
 

@@ -11,6 +11,7 @@ TaskTorrent has two components, see below.
 .. toctree::
    shared
    distributed
+   utility
    :maxdepth: 2
    :caption: Contents:
 

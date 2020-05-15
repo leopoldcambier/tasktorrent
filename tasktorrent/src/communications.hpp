@@ -19,8 +19,25 @@
 namespace ttor
 {
 
+/**
+ * \brief The rank within the communicator
+ * 
+ * \return The MPI rank of the current processor
+ */
 int comm_rank();
+
+/**
+ * \brief The size of the communicator
+ * 
+ * \return The number of MPI ranks within the communicator
+ */
 int comm_size();
+
+/**
+ * \brief This processors' name
+ * 
+ * \return The hostname of this processor
+ */
 std::string processor_name();
 
 class ActiveMsgBase;
@@ -48,6 +65,7 @@ class Communicator
 {
 
 private:
+
     const static size_t mega = (1 << 20);
     const static size_t max_int_size = static_cast<size_t>(std::numeric_limits<int>::max());
 
@@ -86,48 +104,16 @@ private:
     // Run all lpcs that have been received
     void process_Ircvd_messages();
 
+    /**
+     * Active Message have access to those functions
+     */
+    template <typename... Ps>
+    friend class ActiveMsg;
+
     /** 
      * Process message (only Active message management so far)
      */
     void process_message(const std::unique_ptr<message> &m);
-
-public:
-
-    // TODO: Make those four functions private
-
-    /**
-     * Create a message of a given size to dest
-     * Message can later be filled with the data to be sent
-     */
-    std::unique_ptr<message> make_active_message(int dest, size_t size);
-
-    /**
-     * Creates an Communicator.
-     * \param verb the verbose level: 0 = no printing. > 0 = more and more printing
-     */
-    Communicator(int verb = 0);
-
-    /**
-     * Creates an active message tied to function fun.
-     * \param fun the active function to be run on the receiver rank
-     * \return A pointer to the active message. The active message is stored in `this` and should not be freed by the user.
-     */
-    template <typename... Ps>
-    ActiveMsg<Ps...> *make_active_msg(std::function<void(Ps &...)> fun);
-
-    /**
-     * Creates an active message tied to function fun.
-     * \param fun the active function to be run on the receiver rank
-     * \return A pointer to the active message. The active message is stored in `this` and should not be freed by the user.
-     */
-    template <typename F>
-    typename ActiveMsg_type<decltype(&F::operator())>::type *make_active_msg(F fun);
-
-    /**
-     * Set the logger
-     * \param logger a pointer to the logger. The logger is not owned by `this`.
-     */
-    void set_logger(Logger *logger);
 
     /**
      * Queue a message in the internal message queue. Name is used to annotate the message. Message will be Isent later.
@@ -135,7 +121,6 @@ public:
      * \param name the message name
      * \param m a message
      */
-    template <typename... Ps>
     void queue_named_message(std::string name, std::unique_ptr<message> m);
 
     /**
@@ -144,7 +129,6 @@ public:
      * Thread-safe
      * \param m a message
      */
-    template <typename... Ps>
     void queue_message(std::unique_ptr<message> m);
 
     /**
@@ -152,35 +136,90 @@ public:
      * Should be called from thread that called MPI_Init_Thread
      * \param m a message
      */
-    template <typename... Ps>
     void blocking_send(std::unique_ptr<message> m);
 
+    /**
+     * Create a message of a given size to dest
+     * Message can later be filled with the data to be sent
+     */
+    std::unique_ptr<message> make_active_message(int dest, size_t size);
+
+public:
+
+    /**
+     * \brief Creates an Communicator.
+     * 
+     * \param[in] verb the verbose level: 0 = no printing. > 0 = more and more printing
+     */
+    Communicator(int verb = 0);
+
+    /**
+     * \brief Creates an active message tied to function fun.
+     * 
+     * \param[in] fun the active function to be run on the receiver rank
+     * 
+     * \return A pointer to the active message. The active message is stored in `this` and should not be freed by the user.
+     */
+    template <typename... Ps>
+    ActiveMsg<Ps...> *make_active_msg(std::function<void(Ps &...)> fun);
+
+    /**
+     * \brief Creates an active message tied to function fun.
+     * 
+     * \param[in] fun the active function to be run on the receiver rank
+     * 
+     * \return A pointer to the active message. The active message is stored in `this` and should not be freed by the user.
+     */
+    template <typename F>
+    typename ActiveMsg_type<decltype(&F::operator())>::type *make_active_msg(F fun);
+
+    /**
+     * \brief Set the logger
+     * 
+     * \param[in] logger a pointer to the logger. The logger is not owned by `this`.
+     */
+    void set_logger(Logger *logger);
+
     /** 
-     * Blocking-receive & process a message. Should be called from thread that called MPI_Init_Thread.
-     * Not thread safe.
+     * \brief Blocking-receive & process a message. 
+     * 
+     * \details Should be called from thread that called MPI_Init_Thread.
+     *          Not thread safe.
      */
     void recv_process();
 
     /**
-     * Asynchronous (queue rpcs & in-flight lpcs) progress. Polls in Irecv and Isend request.
-     * Should be called from thread that called MPI_Init_Thread.
-     * Not thread safe.
+     * \brief Makes progress on the communications
+     * 
+     * \details Asynchronous (queue rpcs & in-flight lpcs) progress. 
+     *          Polls in Irecv and Isend request.
+     *          Should be called from thread that called MPI_Init_Thread.
+     *          Not thread safe.
      */
     void progress();
 
     /**
-     * Check for _local_ completion.
+     * \brief Check for local completion.
+     * 
      * \return true is all queues are empty, false otherwise.
      */
     bool is_done();
 
     /**
-     * \return The number of processed active message. An active message is processed on the receiver when the associated LPC is done running.
+     * \brief Number of locally processed active messages
+     * 
+     * \details An active message is processed on the receiver when the associated LPC is done running.
+     * 
+     * \return The number of processed active message. 
      */
     int get_n_msg_processed();
 
     /**
-     * \return The number of queued active message. An active message is queued on the sender after a call to `am->send(...)`.
+     * \brief Number of locally queued active messages.
+     * 
+     * \details An active message is queued on the sender after a call to `am->send(...)`.
+     * 
+     * \return The number of queued active message. 
      */
     int get_n_msg_queued();
 };
@@ -192,49 +231,6 @@ public:
  */
 
 namespace ttor {
-
-template <typename... Ps>
-void Communicator::queue_named_message(std::string name, std::unique_ptr<message> m)
-{
-    // Increment message counter
-    messages_queued++;
-
-    std::unique_ptr<Event> e;
-    if (log)
-    {
-        e = std::make_unique<Event>();
-        e->name = "rank_" + std::to_string(comm_rank()) + ">qrpc>" + "rank_" + std::to_string(m->other) + ">" + std::to_string(m->tag) + ">" + name;
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(messages_rdy_mtx);
-        if (verb > 2)
-        {
-            printf("[%2d] -> %d: %d pushed, %lu total\n", comm_rank(), m->other, m->tag, messages_rdy.size() + 1);
-        }
-        messages_rdy.push_back(std::move(m));
-    }
-
-    if (log)
-        logger->record(std::move(e));
-}
-
-template <typename... Ps>
-void Communicator::queue_message(std::unique_ptr<message> m)
-{
-    queue_named_message("_", move(m));
-}
-
-// Blocking send
-template <typename... Ps>
-void Communicator::blocking_send(std::unique_ptr<message> m)
-{
-    // Increment message counter
-    messages_queued++;
-
-    Isend_message(m);
-    TASKTORRENT_MPI_CHECK(MPI_Wait(&m->request, MPI_STATUS_IGNORE));
-}
 
 // Create active messages
 template <typename... Ps>

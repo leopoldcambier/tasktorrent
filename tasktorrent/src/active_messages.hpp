@@ -18,97 +18,118 @@ namespace ttor {
 class Communicator;
 
 /**
- * Base Active Message class
- * An active message is two things:
- * - A function 
- * - A payload
- * The function is serialized accross ranks using its ID
- * The payload is send as a buffer of bytes
+ * \brief Base Active Message class
+ * 
+ * \details An active message is two things:
+ *          - A function 
+ *          - A payload
+ *          The function is serialized accross ranks using its ID
+ *          The payload is send as a buffer of bytes
  */
 class ActiveMsgBase
 {
+
 private:
+
     int id_;
+
 public:
+
     /**
-     * Return the ID of the active message.
+     * \brief Return the ID of the active message.
+     * 
      * \return The global ID of the active message
      */
     int get_id() const;
 
     /**
-     * Deserialize the payload and run the associated function.
-     * \param payload a pointer to the payload 
-     * \param size the number of bytes in the payload
+     * \brief Deserialize the payload and run the associated function.
+     * 
+     * \param[in] payload a pointer to the payload 
+     * \param[in] size the number of bytes in the payload
      */
     virtual void run(char * payload, size_t size) = 0;
 
     /**
-     * Creates an active message with corresponding global ID `id`.
+     * \brief Creates an active message
+     * 
      * \param id the global id of that active message. ID should be unique for every active message (on a given rank).
      */
     ActiveMsgBase(int id);
 
     /**
-     * Destroys the active message.
+     * \brief Destroys the active message.
      */
     virtual ~ActiveMsgBase();
 };
 
 /**
- * Implementation of Active Message for a payload of type `Ps...`.
- * An active message is a pair of
- * - A function
- * - A payload
- * tied to an Communicator instance
+ * \brief Implementation of Active Message for a payload of type `Ps...`.
+ * 
+ * \details An active message is a pair of
+ *          - A function
+ *          - A payload
+ *          tied to an Communicator instance
  */
 template <typename... Ps>
 class ActiveMsg : public ActiveMsgBase
 {
+
 private:
+
     Communicator *comm_;
     std::function<void(Ps &...)> fun_;
     std::unique_ptr<message> make_message(int dest, Ps &... ps);
 
 public:
+
     /**
-     * Create an active message with ID `id` tied to function `fun` using communicator `comm` for communications
-     * \param fun the function to be run on the receiver
-     * \param comm the communicator instance to use for communications
-     * \param id the active message unique ID. User is responsible to never reuse ID's.
+     * \brief Create an active message
+     * 
+     * \param[in] fun the function to be run on the receiver
+     * \param[in] comm the communicator instance to use for communications
+     * \param[in] id the active message unique ID. User is responsible to never 
+     *           reuse ID's, and all ranks should use the same ID's to refer
+     *           to the same active function
      */
     ActiveMsg(std::function<void(Ps &...)> fun, Communicator *comm, int id);
     
     virtual void run(char *payload_raw, size_t size);
     
     /**
-     * Immediately sends payload to destination
-     * The function returns when the payload has been sent
-     * This is not thread safe and can only be called by the MPI master thread
-     * \param dest the destination rank
-     * \param ps the payload
+     * \brief Immediately sends payload to destination.
+     * 
+     * \details The function returns when the payload has been sent.
+     *          This is not thread safe and can only be called by the MPI master thread.
+     * 
+     * \param[in] dest the destination rank
+     * \param[in] ps the payload
      */
     void blocking_send(int dest, Ps &... ps);
     
     /**
-     * Queue the payload `ps` to be send later to `dest`
-     * This is thread-safe and can be called by any thread
-     * \param dest the destination rank
-     * \param ps is the payload
+     * \brief Queue the payload to be send later
+     * 
+     * \details This is thread-safe and can be called by any thread
+     * 
+     * \param[in] dest the destination rank
+     * \param[in] ps the payload
      */
     void send(int dest, Ps &... ps);
 
     /**
-     * Queue the payload `ps` to be send later to `dest` and associated name `name` for profiling purposes
-     * This is thread-safe and can be called by any thread
-     * \param dest the destination rank
-     * \param name is the name to associate to this send operation
-     * \param ps is the payload
+     * \brief Queue the payload to be send later
+     * 
+     * \details This is thread-safe and can be called by any thread
+     * 
+     * \param[in] dest the destination rank
+     * \param[in] name the name to associate to this send operation (for logging purposes)
+     * \param[in] ps the payload
      */
     void named_send(int dest, std::string name, Ps &... ps);
 
     /**
-     * Destroys the active message
+     * \brief Destroys the active message
      */
     virtual ~ActiveMsg();
 };

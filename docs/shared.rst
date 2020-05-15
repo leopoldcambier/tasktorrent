@@ -1,5 +1,5 @@
-Shared memory component
-=======================
+Shared memory
+=============
 
 .. doxygenclass:: ttor::Threadpool_shared
    :members:
