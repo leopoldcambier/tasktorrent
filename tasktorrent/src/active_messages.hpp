@@ -21,8 +21,9 @@ class Communicator;
  * \brief Base Active Message class
  * 
  * \details An active message is two (or four) things:
- *          - A payload (header) to be send from the sender to the receiver rank
- *          - [Optional] A payload (body) to be send from the sender to the receiver rank, without intermediary copies.
+ *          - A payload (header) to be send from the sender to the receiver rank.
+ *          - [Optional] A payload (body) to be send from the sender to the receiver rank, without any temporary copy.
+ *          - [Optional] When using a body, a function to be run on the receiver rank indicating where to store the body
  *          - A function to be run on the receiver rank, when the header and the (optional) body have arrived
  * 
  *          The function is serialized accross ranks using its ID.
@@ -46,7 +47,7 @@ public:
     size_t get_id() const;
 
     /**
-     * \brief Deserialize the payload and run the associated function.
+     * \brief Deserialize the (header) payload and run the associated function.
      * 
      * \param[in] payload a pointer to the payload 
      * \param[in] size the number of bytes in the payload
@@ -85,8 +86,9 @@ public:
  * 
  * \details An active message is a pair of
  *          - A function
- *          - A payload
- *          tied to an Communicator instance
+ *          - A payload (header)
+ *          tied to an Communicator instance.
+ *          The active message also had an optional payload (body) and a function to indicate where to store the body on the receiver.
  */
 template <typename... Ps>
 class ActiveMsg : public ActiveMsgBase
@@ -168,7 +170,7 @@ public:
     /**
      * \brief Immediately send the payload, with an accompanying body
      * 
-     * \details The function returns when the payload has been sent.
+     * \details The function returns when the payload (the header, not the body) has been sent.
      *          This is not thread safe and can only be called by the MPI master thread.
      * 
      * \param[in] dest the destination rank
