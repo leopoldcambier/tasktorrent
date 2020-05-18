@@ -6,7 +6,9 @@
 Welcome to TaskTorrent's documentation!
 =======================================
 
-TaskTorrent has two components, see below.
+The Git repository contains a full tutorial at https://github.com/leopoldcambier/tasktorrent.
+
+The documentation for TaskTorrent is split into three components, see below.
 
 .. toctree::
    shared

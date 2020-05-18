@@ -16,13 +16,13 @@ namespace ttor
 {
 
 /**
- * \brief A threadpool associated to active messages and a communicator
+ * \brief A threadpool associated to active messages and a communicator.
  * 
- * \details This class behaves exactly like Threadpool_shared
+ * \details This class behaves exactly like `Threadpool_shared`
  *          except that `join()` is overloaded to complete 
  *          when all threadpools on all ranks have completed
  *          and there are no in-flight active messages 
- *          (i.e. all queued rpcs have been processed)
+ *          (i.e. all queued rpcs have been processed).
  */
 class Threadpool_mpi : public Threadpool_shared
 {
@@ -102,13 +102,17 @@ private:
 public:
 
     /**
-     * \brief Creates a Threadpool associated with a communicator
+     * \brief Creates a Threadpool associated with a communicator.
      * 
-     * \param[in] n_threads the number of threads
-     * \param[in] comm the communicator
-     * \param[in] verb the verbosity level. 0 means not printing; > 0 prints more and more to stdout
-     * \param[in] basename the prefix to be used to identity this Threadpool in all logging operations
-     * \param[in] start_immediately if true, the Threapol starts immediately. Otherwise, the user should call `tp.start()` before `tp.join()`.
+     * \param[in] n_threads the number of threads.
+     * \param[in] comm the communicator.
+     * \param[in] verb the verbosity level. 0 means not printing; > 0 prints more and more to stdout.
+     * \param[in] basename the prefix to be used to identity `this` in all logging operations.
+     * \param[in] start_immediately if true, `this` starts immediately. Otherwise, the user should call `tp.start()` before `tp.join()`.
+     * 
+     * \pre `n_threads >= 1`
+     * \pre `verb >= 0`
+     * \pre `comm` points to a valid `Communicator` which should not be destroyed while `this` is in use.
      */
     Threadpool_mpi(int n_threads, Communicator *comm, int verb = 0, std::string basename = "Wk_", bool start_immediately = true);
 
@@ -118,6 +122,13 @@ public:
      * \details Returns when
      *          1. There are no tasks running or in any queues in all Threadpools associated with the Communicator;
      *          2. There are no messages in flight
+     * 
+     * \pre `this` has been started (through `start()` or the `start_immediately` constructor field).
+     * 
+     * \post After `tp.join`, 
+     *       1. `Threadpool_mpi::is_done()` returns `true` on all ranks;
+     *       2. `Communicator::is_done()` returns `true` on all ranks;
+     *       3. All queued active message on a sender have been processed on a receiver.
      */
     void join();
 

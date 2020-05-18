@@ -21,10 +21,10 @@ class Communicator;
  * \brief Base Active Message class
  * 
  * \details An active message is two things:
- *          - A function 
+ *          - A function
  *          - A payload
- *          The function is serialized accross ranks using its ID
- *          The payload is send as a buffer of bytes
+ *          The function is serialized accross ranks using its ID.
+ *          The payload is sent as a buffer of bytes.
  */
 class ActiveMsgBase
 {
@@ -47,13 +47,17 @@ public:
      * 
      * \param[in] payload a pointer to the payload 
      * \param[in] size the number of bytes in the payload
+     * 
+     * \pre `payload` should be a valid buffer of `size` bytes.
      */
     virtual void run(char * payload, size_t size) = 0;
 
     /**
      * \brief Creates an active message
      * 
-     * \param id the global id of that active message. ID should be unique for every active message (on a given rank).
+     * \param id the global id of that active message. 
+     * 
+     * \pre `id` should be a unique id for that active message, and should be the same for that active message accross all ranks.
      */
     ActiveMsgBase(int id);
 
@@ -84,13 +88,17 @@ private:
 public:
 
     /**
-     * \brief Create an active message
+     * \brief Creates an active message.
      * 
-     * \param[in] fun the function to be run on the receiver
-     * \param[in] comm the communicator instance to use for communications
+     * \param[in] fun the function to be run on the receiver.
+     * \param[in] comm the communicator instance to use for communications.
+     *            The active message does not take ownership of `comm`.
      * \param[in] id the active message unique ID. User is responsible to never 
      *           reuse ID's, and all ranks should use the same ID's to refer
      *           to the same active function
+     * 
+     * \pre `comm` should be a valid pointer to a `Communicator`, which should not be destroyed while the
+     *      active message is in used.
      */
     ActiveMsg(std::function<void(Ps &...)> fun, Communicator *comm, int id);
     
@@ -108,9 +116,9 @@ public:
     void blocking_send(int dest, Ps &... ps);
     
     /**
-     * \brief Queue the payload to be send later
+     * \brief Queue the payload to be send later.
      * 
-     * \details This is thread-safe and can be called by any thread
+     * \details This is thread-safe and can be called by any thread.
      * 
      * \param[in] dest the destination rank
      * \param[in] ps the payload
@@ -118,13 +126,13 @@ public:
     void send(int dest, Ps &... ps);
 
     /**
-     * \brief Queue the payload to be send later
+     * \brief Queue the payload to be send later.
      * 
-     * \details This is thread-safe and can be called by any thread
+     * \details This is thread-safe and can be called by any thread.
      * 
-     * \param[in] dest the destination rank
-     * \param[in] name the name to associate to this send operation (for logging purposes)
-     * \param[in] ps the payload
+     * \param[in] dest the destination rank.
+     * \param[in] name the name to associate to this send operation (for logging purposes).
+     * \param[in] ps the payload.
      */
     void named_send(int dest, std::string name, Ps &... ps);
 

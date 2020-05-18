@@ -61,6 +61,12 @@ struct ActiveMsg_type<Ret (Class::*)(Args &...) const>
     using type = ActiveMsg<Args...>;
 };
 
+/**
+ * \brief Handles all inter-ranks communications.
+ * 
+ * \details Object responsible for communications accross ranks.
+ *          All MPI calls will be funneled through that object.
+ */
 class Communicator
 {
 
@@ -149,14 +155,16 @@ public:
     /**
      * \brief Creates an Communicator.
      * 
-     * \param[in] verb the verbose level: 0 = no printing. > 0 = more and more printing
+     * \param[in] verb the verbose level: 0 = no printing. > 0 = more and more printing.
+     * 
+     * \pre `verb >= 0`.
      */
     Communicator(int verb = 0);
 
     /**
-     * \brief Creates an active message tied to function fun.
+     * \brief Creates an active message tied to function fun..
      * 
-     * \param[in] fun the active function to be run on the receiver rank
+     * \param[in] fun the active function to be run on the receiver rank.
      * 
      * \return A pointer to the active message. The active message is stored in `this` and should not be freed by the user.
      */
@@ -166,7 +174,7 @@ public:
     /**
      * \brief Creates an active message tied to function fun.
      * 
-     * \param[in] fun the active function to be run on the receiver rank
+     * \param[in] fun the active function to be run on the receiver rank.
      * 
      * \return A pointer to the active message. The active message is stored in `this` and should not be freed by the user.
      */
@@ -174,9 +182,11 @@ public:
     typename ActiveMsg_type<decltype(&F::operator())>::type *make_active_msg(F fun);
 
     /**
-     * \brief Set the logger
+     * \brief Set the logger.
      * 
      * \param[in] logger a pointer to the logger. The logger is not owned by `this`.
+     * 
+     * \pre `logger` should be a pointer to a valid `Logger`, that should not be destroyed while `this` is in use.
      */
     void set_logger(Logger *logger);
 
@@ -189,9 +199,9 @@ public:
     void recv_process();
 
     /**
-     * \brief Makes progress on the communications
+     * \brief Makes progress on the communications.
      * 
-     * \details Asynchronous (queue rpcs & in-flight lpcs) progress. 
+     * \details Asynchronous (queue rpcs & in-flight lpcs) progress.
      *          Polls in Irecv and Isend request.
      *          Should be called from thread that called MPI_Init_Thread.
      *          Not thread safe.
@@ -201,14 +211,14 @@ public:
     /**
      * \brief Check for local completion.
      * 
-     * \return true is all queues are empty, false otherwise.
+     * \return `true` if all queues are empty, `false` otherwise.
      */
     bool is_done();
 
     /**
-     * \brief Number of locally processed active messages
+     * \brief Number of locally processed active messages.
      * 
-     * \details An active message is processed on the receiver when the associated LPC is done running.
+     * \details An active message is processed on the receiver when the associated LPC has finished running.
      * 
      * \return The number of processed active message. 
      */
@@ -219,7 +229,7 @@ public:
      * 
      * \details An active message is queued on the sender after a call to `am->send(...)`.
      * 
-     * \return The number of queued active message. 
+     * \return The number of queued active message.
      */
     int get_n_msg_queued();
 };

@@ -15,11 +15,12 @@ namespace ttor
 typedef std::priority_queue<Task *, std::vector<Task *>, less_pTask> queueT;
 
 /**
- * \brief   A set of threads continuously running tasks
+ * \brief   A set of threads continuously running tasks.
  *
- * \details This class represents a set (pool) of threads
- *          Threads in the threadpool continuously run any task given to them
- *          and can in general steal tasks from each other.
+ * \details This class represents a set (pool) of threads.
+ *          Threads in the threadpool continuously receive tasks to run, 
+ *          store them in a queue and run the first one.
+ *          In general, threads can steal tasks from one another.
  *          Once created, a threadpool is started and run until all queues are empty
  *          and all tasks are done running.
  */
@@ -68,12 +69,12 @@ protected:
 public:
 
     /**
-     * \brief Creates a threadpool with a certain number of threads
+     * \brief Creates a threadpool with a certain number of threads.
      * 
      * \param[in] n_threads the number of threads in the threadpool
      * \param[in] verb verbosity level. 0 is quiet, > 0 prints more and more informations to stdout
-     * \param[in] basename used in logging, this will be used to identity this threadpool
-     * \param[in] start_immediately if true, the threadpool starts immediately. Otherwise, use is reponsible for calling `tp.start()` before joining.
+     * \param[in] basename used in logging, this will be used to identify this threadpool
+     * \param[in] start_immediately if true, the threadpool starts immediately. Otherwise, user is reponsible for calling `tp.start()` before joining.
      */
     Threadpool_shared(int n_threads, int verb = 0, std::string basename = "Wk_", bool start_immediately = true);
 
@@ -85,9 +86,9 @@ public:
     void start();
 
     /**
-     * \brief Insert a task
+     * \brief Inserts a task.
      * 
-     * \details Inserts a task on a given thread. By default the task can be stolen by another thread, unless `binding` is set to `false`.
+     * \details Inserts a task on a given thread. By default the task can be stolen by another thread, unless `binding` is set to `true`.
      * 
      * \param[in] t a pointer to the task to insert. The task ownership is taken by the threadpool and the task will be freed when done.
      * \param[in] where the thread to insert the task on
@@ -104,23 +105,23 @@ public:
     void join();
 
     /**
-     * \brief Wether the Threadpool is idle or not.
+     * \brief Wether the threadpool is idle or not.
      * 
-     * \return true is all queues are empty and no tasks are running, false otherwise
+     * \return `true` if all queues are empty and no tasks are running, `false` otherwise.
      */
     bool is_done();
 
     /**
-     * \brief Attach a logger
+     * \brief Attach a logger.
      * 
      * \param[in] logger a pointer to the `Logger`. Logger ownership is left to the user.
      */
     void set_logger(Logger *logger);
 
     /**
-     * \brief The number of threads
+     * \brief The number of threads.
      * 
-     * \return the number of threads in the threadpool
+     * \return the number of threads in the threadpool.
      */
     int size();
 };
