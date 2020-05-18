@@ -20,8 +20,25 @@
 namespace ttor
 {
 
+/**
+ * \brief The rank within the communicator
+ * 
+ * \return The MPI rank of the current processor
+ */
 int comm_rank();
+
+/**
+ * \brief The size of the communicator
+ * 
+ * \return The number of MPI ranks within the communicator
+ */
 int comm_size();
+
+/**
+ * \brief This processors' name
+ * 
+ * \return The hostname of this processor
+ */
 std::string processor_name();
 
 class ActiveMsgBase;
@@ -45,10 +62,17 @@ struct ActiveMsg_type<Ret (Class::*)(Args &...) const>
     using type = ActiveMsg<Args...>;
 };
 
+/**
+ * \brief Handles all inter-ranks communications.
+ * 
+ * \details Object responsible for communications accross ranks.
+ *          All MPI calls will be funneled through that object.
+ */
 class Communicator
 {
 
 private:
+
     const static size_t mega = (1 << 20);
     const static size_t max_int_size = static_cast<size_t>(std::numeric_limits<int>::max());
     const int verb;
@@ -115,7 +139,7 @@ private:
     /**
      * Receiver side
      */
-
+    
     // Probe for a message
     // If probe is true, then Irecv the header and returns true
     // Otherwise, returns false
@@ -141,47 +165,17 @@ private:
     // Test completion of the bodies
     void test_process_bodies();
 
-
-public:
     /**
-     * Create a message tailored for an ActiveMsg of a given size to dest
-     * Message can later be filled with the data to be sent
-     * TODO: This should be hidden from public
-     */
-    std::unique_ptr<message> make_active_message(int dest, size_t header_size);
-
-public:
-
-    /**
-     * Creates an Communicator
-     * - verb_ is the verbose level: 0 = no printing. 4 = lots of printing.
-     * - break_msg_size is used to send smaller message, used mainly for testing and should not be used by the user
-     */
-    Communicator(int verb_ = 0, size_t break_msg_size_ = Communicator::max_int_size);
-
-    /**
-     * Creates an active message tied to function fun
+     * Active Message have access to those functions
      */
     template <typename... Ps>
-    ActiveMsg<Ps...> *make_active_msg(std::function<void(Ps &...)> fun);
-
-    template <typename T, typename... Ps>
-    ActiveMsg<Ps...> *make_large_active_msg(std::function<void(Ps &...)> fun, std::function<T*(Ps &...)> fun_ptr);
+    friend class ActiveMsg;
 
     /**
-     * Creates an active message tied to function fun
-     * fun can be a lambda function
+     * Blocking-send a message
+     * Should be called from thread that called MPI_Init_Thread
      */
-    template <typename F>
-    typename ActiveMsg_type<decltype(&F::operator())>::type *make_active_msg(F f);
-    template <typename F, typename G>
-    typename ActiveMsg_type<decltype(&F::operator())>::type *make_large_active_msg(F f, G g);
-
-
-    /**
-     * Set the logger
-     */
-    void set_logger(Logger *logger_);
+    void blocking_send(std::unique_ptr<message> m);
 
     /**
      * Queue a message in RPCComm internal message queue
@@ -191,37 +185,116 @@ public:
     void queue_message(std::unique_ptr<message> m);
 
     /**
-     * Blocking-send a message
-     * Should be called from thread that called MPI_Init_Thread
+     * Queue a message in the internal message queue. Name is used to annotate the message. Message will be Isent later.
+     * Thread-safe
+     * \param name the message name
+     * \param m a message
      */
-    void blocking_send(std::unique_ptr<message> m);
+    std::unique_ptr<message> make_active_message(int dest, size_t header_size);
+
+public:
+
+    /**
+     * \brief Creates an Communicator.
+     * 
+     * \param[in] verb the verbose level: 0 = no printing. > 0 = more and more printing.
+     * \param[in] break_msg_size the size at which to break large messages into MPI messages. Mainly used for testing.
+     * 
+     * \pre `verb >= 0`.
+     */
+    Communicator(int verb_ = 0, size_t break_msg_size_ = Communicator::max_int_size);
+
+    /**
+     * \brief Creates an active message tied to function fun.
+     * 
+     * \param[in] fun the active function to be run on the receiver rank.
+     * 
+     * \return A pointer to the active message. The active message is stored in `this` and should not be freed by the user.
+     */
+    template <typename... Ps>
+    ActiveMsg<Ps...> *make_active_msg(std::function<void(Ps &...)> fun);
+
+    /**
+     * \brief Creates an active message tied to function fun and body pointer function fun_ptr.
+     * 
+     * \param[in] fun the active function to be run on the receiver rank.
+     * \param[in] fun_ptr the active function to be run on the receiver rank to retreive the body buffer location.
+     * 
+     * \return A pointer to the active message. The active message is stored in `this` and should not be freed by the user.
+     */
+    template <typename T, typename... Ps>
+    ActiveMsg<Ps...> *make_large_active_msg(std::function<void(Ps &...)> fun, std::function<T*(Ps &...)> fun_ptr);
+
+    /**
+     * \brief Creates an active message tied to function fun.
+     * 
+     * \param[in] fun the active function to be run on the receiver rank.
+     * 
+     * \return A pointer to the active message. The active message is stored in `this` and should not be freed by the user.
+     */
+    template <typename F>
+    typename ActiveMsg_type<decltype(&F::operator())>::type *make_active_msg(F fun);
+
+    /**
+     * \brief Creates an active message tied to function fun and body pointer function fun_ptr.
+     * 
+     * \param[in] fun the active function to be run on the receiver rank.
+     * \param[in] fun_ptr the active function to be run on the receiver rank to retreive the body buffer location.
+     * 
+     * \return A pointer to the active message. The active message is stored in `this` and should not be freed by the user.
+     */
+    template <typename F, typename G>
+    typename ActiveMsg_type<decltype(&F::operator())>::type *make_large_active_msg(F fun, G fun_ptr);
+
+    /**
+     * \brief Set the logger.
+     * 
+     * \param[in] logger a pointer to the logger. The logger is not owned by `this`.
+     * 
+     * \pre `logger` should be a pointer to a valid `Logger`, that should not be destroyed while `this` is in use.
+     */
+    void set_logger(Logger *logger);
 
     /** 
-     * Blocking-recv & process a message 
-     * Should be called from thread that called MPI_Init_Thread
+     * \brief Blocking-receive & process a message. 
+     * 
+     * \details Should be called from thread that called MPI_Init_Thread.
+     *          Not thread safe.
      */
     void recv_process();
 
     /**
-     * Asynchronous (queue_rpc & in-flight lpcs) Progress
-     * Polls in Irecv and Isend request
-     * Should be called from thread that called MPI_Init_Thread
+     * \brief Makes progress on the communications.
+     * 
+     * \details Asynchronous (queue rpcs & in-flight lpcs) progress.
+     *          Polls in Irecv and Isend request.
+     *          Should be called from thread that called MPI_Init_Thread.
+     *          Not thread safe.
      */
     void progress();
 
     /**
-     * Returns true is all queues are empty
-     * Returns false otherwise
+     * \brief Check for local completion.
+     * 
+     * \return `true` if all queues are empty, `false` otherwise.
      */
     bool is_done();
 
     /**
-     * Returns the number of received and processed messages
+     * \brief Number of locally processed active messages.
+     * 
+     * \details An active message is processed on the receiver when the associated LPC has finished running.
+     * 
+     * \return The number of processed active message. 
      */
     int get_n_msg_processed();
 
     /**
-     * Returns the number of queued (or sent) messages
+     * \brief Number of locally queued active messages.
+     * 
+     * \details An active message is queued on the sender after a call to `am->send(...)`.
+     * 
+     * \return The number of queued active message.
      */
     int get_n_msg_queued();
 };

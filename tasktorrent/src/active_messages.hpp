@@ -18,31 +18,82 @@ namespace ttor {
 class Communicator;
 
 /**
- * Base Active Message class
+ * \brief Base Active Message class
+ * 
+ * \details An active message is two (or four) things:
+ *          - A payload (header) to be send from the sender to the receiver rank
+ *          - [Optional] A payload (body) to be send from the sender to the receiver rank, without intermediary copies.
+ *          - A function to be run on the receiver rank, when the header and the (optional) body have arrived
+ * 
+ *          The function is serialized accross ranks using its ID.
+ *          The payload (header) is sent as a buffer of bytes, using an intermediary copy where the payload is serialized.
+ *          The payload (body) is directly send (without any intermadiary copy)
  */
 class ActiveMsgBase
 {
+
 private:
+
     size_t id_;
+
 public:
+
+    /**
+     * \brief Return the ID of the active message.
+     * 
+     * \return The global ID of the active message
+     */
     size_t get_id() const;
-    virtual void run(char *, size_t) = 0;
-    virtual char* get_user_buffers(char*, size_t) = 0;
+
+    /**
+     * \brief Deserialize the payload and run the associated function.
+     * 
+     * \param[in] payload a pointer to the payload 
+     * \param[in] size the number of bytes in the payload
+     * 
+     * \pre `payload` should be a valid buffer of `size` bytes.
+     */
+    virtual void run(char *payload, size_t size) = 0;
+
+    /**
+     * \brief Returns the location of where the body should be stored
+     * 
+     * \param[in] payload a pointer to the payload (header)
+     * \param[in] size the number of bytes in the payload (header)
+     * 
+     * \pre `payload` should be a valid buffer of `size` bytes.
+     */
+    virtual char* get_user_buffers(char *payload, size_t size) = 0;
+
+    /**
+     * \brief Creates an active message
+     * 
+     * \param id the global id of that active message. 
+     * 
+     * \pre `id` should be a unique id for that active message, and should be the same for that active message accross all ranks.
+     */
     ActiveMsgBase(size_t id);
+
+    /**
+     * \brief Destroys the active message.
+     */
     virtual ~ActiveMsgBase();
 };
 
 /**
- * Implementation of Active Message
- * An active message is a pair of
- * (1) A local function
- * (2) A remote payload, made of a header (type Ps...) and a body (a buffer of T). The body can be empty
- * tied to an Communicator instance
+ * \brief Implementation of Active Message for a payload of type `Ps...`.
+ * 
+ * \details An active message is a pair of
+ *          - A function
+ *          - A payload
+ *          tied to an Communicator instance
  */
 template <typename... Ps>
 class ActiveMsg : public ActiveMsgBase
 {
+
 private:
+
     Communicator *comm_;
     std::function<void(Ps &...)> fun_;
     std::function<char*(Ps &...)> ptr_fun_;
@@ -54,8 +105,20 @@ private:
     std::unique_ptr<message> make_message(int dest, view<T> body, Ps &... ps);
 
 public:
+
     /**
-     * Create an active message tied to given function fun and that feeds into Communicator comm
+     * \brief Creates an active message.
+     * 
+     * \param[in] fun the function to be run on the receiver.
+     * \param[in] ptr_fun the function to be run on the receiver, giving the location of where the body should be stored.
+     * \param[in] comm the communicator instance to use for communications.
+     *            The active message does not take ownership of `comm`.
+     * \param[in] id the active message unique ID. User is responsible to never 
+     *           reuse ID's, and all ranks should use the same ID's to refer
+     *           to the same active function
+     * 
+     * \pre `comm` should be a valid pointer to a `Communicator`, which should not be destroyed while the
+     *      active message is in used.
      */
     template<typename T>
     ActiveMsg(std::function<void(Ps &...)> fun, std::function<T*(Ps &...)> ptr_fun, Communicator *comm, size_t id) : ActiveMsgBase(id), comm_(comm), fun_(fun) {
@@ -65,34 +128,59 @@ public:
         };
     }
 
-    /**
-     * Deserialize payload_raw and run active message through the RPCComm
-     */
     virtual void run(char *payload_raw, size_t size);
-    /**
-     * Get user buffers
-     */
+    
     virtual char* get_user_buffers(char *payload_raw, size_t size);
+
     /**
-     * Immediately send the payload to be sent to the destination
-     * Should be called from the same thread calling MPI_Init_Thread(...)
+     * \brief Immediately sends payload to destination.
+     * 
+     * \details The function returns when the payload has been sent.
+     *          This is not thread safe and can only be called by the MPI master thread.
+     * 
+     * \param[in] dest the destination rank
+     * \param[in] ps the payload
      */
     void blocking_send(int dest, Ps &... ps);
+    
     /**
-     * Queue the payload to be send later to dest
-     * Thread-safe
+     * \brief Queue the payload to be send later.
+     * 
+     * \details This is thread-safe and can be called by any thread.
+     * 
+     * \param[in] dest the destination rank
+     * \param[in] ps the payload
      */
     void send(int dest, Ps &... ps);
+
     /**
-     * Queue the payload to be send later, with a body
-     * Thread-safe
+     * \brief Queue the payload to be send later, with an accompanying body
+     * 
+     * \details This is thread-safe and can be called by any thread.
+     * 
+     * \param[in] dest the destination rank
+     * \param[in] body a view to the body
+     * \param[in] ps the payload
      */
     template<typename T>
     void send_large(int dest, view<T> body, Ps &... ps);
 
+    /**
+     * \brief Immediately send the payload, with an accompanying body
+     * 
+     * \details The function returns when the payload has been sent.
+     *          This is not thread safe and can only be called by the MPI master thread.
+     * 
+     * \param[in] dest the destination rank
+     * \param[in] body a view to the body
+     * \param[in] ps the payload
+     */
     template<typename T>
     void blocking_send_large(int dest, view<T> body, Ps &... ps);
 
+    /**
+     * \brief Destroys the ActiveMsg
+     */
     virtual ~ActiveMsg();
 };
 
