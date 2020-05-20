@@ -9,7 +9,7 @@ using namespace ttor;
 
 int VERB = 0;
 
-TEST(ActiveMsgLarge, twoSteps)
+TEST(ActiveMsgBody, twoStepsBlocking)
 {
     const int rank = comm_rank();
     const int nranks = comm_size();
@@ -25,37 +25,43 @@ TEST(ActiveMsgLarge, twoSteps)
     for(int i = 0; i < N; i++) data[rank][i] = rank * N + i;
 
     auto am = comm.make_large_active_msg(
-        [&](int& from, int&){
+        [&](int& from, int& to){
+            EXPECT_EQ(to, rank);
             EXPECT_FALSE(received[from]);
             received[from] = true;
         },
-        [&](int& from, int&){
+        [&](int& from, int& to){
+            EXPECT_EQ(to, rank);
             char* buf = (char*)(data[from].data());
             return buf;
         },
         [&](int& from, int& to){
-            EXPECT_NE(from, to);
+            EXPECT_EQ(from, rank);
             EXPECT_FALSE(completed[to]);
             completed[to] = true;
         });
 
-    for(int r = 0; r < nranks; r++) {
-        int from = rank;
-        if(r != rank) {
-            auto v = view<int>(data[rank].data(), data[rank].size());
-            am->blocking_send_large(r, v, from, r);
+    for(int s = 0; s < nranks; s++) { // Sender
+        if(rank == s) {
+            for(int r = 0; r < nranks; r++) {
+                if(r != s) {
+                    int from = rank;
+                    auto v = view<int>(data[rank].data(), data[rank].size());
+                    am->blocking_send_large(r, v, from, r);
+                }
+            }
+        } else { // Receiver
+            comm.recv_process();
         }
     }
 
     for(int r = 0; r < nranks; r++) {
-        if(r != rank) comm.recv_process();
-    }
-
-    for(int r = 0; r < nranks; r++) {
-        EXPECT_TRUE(received[r]);
-        EXPECT_TRUE(completed[r]) << "Completed false at " << r << " for rank " << rank;
-        for(int i = 0; i < N; i++) {
-            EXPECT_EQ(data[r][i], r * N + i);
+        if(r != rank) {
+            EXPECT_TRUE(received[r]);
+            EXPECT_TRUE(completed[r]) << "Completed false at " << r << " for rank " << rank;
+            for(int i = 0; i < N; i++) {
+                EXPECT_EQ(data[r][i], r * N + i);
+            }
         }
     }
 
@@ -65,7 +71,7 @@ TEST(ActiveMsgLarge, twoSteps)
     MPI_Barrier(MPI_COMM_WORLD); // recv_process doesn't filter per source, so yes we really need this
 }
 
-TEST(ActiveMsgLarge, mixed)
+TEST(ActiveMsgBody, twoStepsMixedNonBlocking)
 {
     const int rank = comm_rank();
     const int nranks = comm_size();
@@ -75,69 +81,70 @@ TEST(ActiveMsgLarge, mixed)
 
     vector<vector<int>> data(nranks, vector<int>(N,0));
     vector<int> received(nranks, 0);
-    int completed = 0;
+    vector<int> completed(nranks, 0);
+    const int expected = 3 * nranks;
+    int done = 0;
     for(int i = 0; i < N; i++) data[rank][i] = rank * N + i;
 
     auto am0 = comm.make_active_msg(
-        [&](int& from){
+        [&](int& from, int& dest){
+            EXPECT_EQ(dest, rank);
             received[from] ++;
+            done++;
         });
 
     auto am1 = comm.make_large_active_msg(
-        [&](int& from){
+        [&](int& from, int& dest){
+            EXPECT_EQ(dest, rank);
             received[from] ++;
+            done++;
         },
-        [&](int& from){
+        [&](int& from, int& dest){
+            EXPECT_EQ(dest, rank);
             char* buf = (char*)(data[from].data());
             return buf;
         },
-        [&](int&) {
-            completed++;
+        [&](int& from, int& dest) {
+            EXPECT_EQ(from, rank);
+            EXPECT_EQ(completed[dest], 0);
+            completed[dest]++;
         });
 
     auto am2 = comm.make_active_msg(
-        [&](int& from){
+        [&](int& from, int& dest){
+            EXPECT_EQ(dest, rank);
             received[from] ++;
+            done++;
         });
 
-    for(int r = 0; r < nranks; r++) {
+    for(int dest = 0; dest < nranks; dest++) {
         int from = rank;
-        if(r != rank) {
-            auto v = view<int>(data[rank].data(), data[rank].size());
-            am0->blocking_send(r, from);
-            am1->blocking_send_large(r, v, from);
-            am2->blocking_send(r, from);
-        }
+        auto v = view<int>(data[from].data(), data[from].size());
+        am0->send(dest, from, dest);
+        am1->send_large(dest, v, from, dest);
+        am2->send(dest, from, dest);
+    }
+
+    // While there is something to send or we haven't received everything
+    while ( (!comm.is_done()) || (done != expected) ) {
+        comm.progress();
     }
 
     for(int r = 0; r < nranks; r++) {
-        if(r != rank) {
-            comm.recv_process();
-            comm.recv_process();
-            comm.recv_process();
+        EXPECT_EQ(completed[r], 1);
+        EXPECT_EQ(received[r], 3);
+        for(int i = 0; i < N; i++) {
+            EXPECT_EQ(data[r][i], r * N + i);
         }
     }
 
-    for(int r = 0; r < nranks; r++) {
-        if(r != rank) {
-            EXPECT_EQ(received[r], 3);
-            for(int i = 0; i < N; i++) {
-                EXPECT_EQ(data[r][i], r * N + i);
-            }
-        } else {
-            EXPECT_EQ(received[r], 0);
-        }
-    }
-
-    EXPECT_EQ(comm.get_n_msg_processed(), 3 * (nranks - 1));
-    EXPECT_EQ(comm.get_n_msg_queued(), 3 * (nranks - 1));
-    EXPECT_EQ(completed, (nranks-1));
+    EXPECT_EQ(comm.get_n_msg_processed(), 3 * nranks);
+    EXPECT_EQ(comm.get_n_msg_queued(), 3 * nranks);
 
     MPI_Barrier(MPI_COMM_WORLD); // recv_process doesn't filter per source, so yet we really need this
-
 }
 
-TEST(ActiveMsgLarge, multipleBodiesBreakSize)
+TEST(ActiveMsgBody, multipleBodiesBreakSize)
 {
     vector<double> sizes = {0.001, 0.1, 0.9, 1.1, 1.5, 4.0, 8.0}; 
     const size_t break_size = (1 << 22); // Larger than 1MB but smaller than 2^31

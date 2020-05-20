@@ -20,8 +20,9 @@ public:
     // AM ID (size_t) | Body_size (size_t) | Arguments ...
     // Body is a user provided buffer
 
-    // Source or destination
-    int other;
+    // Source and destination
+    int source;
+    int dest;
 
     // Header
     bool header_processed;
@@ -31,9 +32,10 @@ public:
 
     // Body
     int body_tag;                           // Tag used to communicate the body
-    char* body_buffer;                      // "Large" body buffer (user provided)
+    char* body_send_buffer;                 // "Large" body buffer (user provided) on the sender
+    char* body_recv_buffer;                 // "Large" body buffer (user provided) on the receiver
     size_t body_size;                       // Sizes
-    std::vector<MPI_Request> body_requests; // Associated requests (multiple needed if message > 2 GB)
+    std::vector<MPI_Request> body_requests; // Associated requests (multiple needed if message > 2 GB since we sent multiple messages)
 
     message();
 };

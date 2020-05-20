@@ -163,6 +163,8 @@ public:
      * 
      * \param[in] dest the destination rank
      * \param[in] ps the payload
+     * 
+     * \pre `dest != ttor::comm_rank()`
      */
     void blocking_send(int dest, Ps &... ps);
     
@@ -197,6 +199,8 @@ public:
      * \param[in] dest the destination rank
      * \param[in] body a view to the body
      * \param[in] ps the payload
+     * 
+     * \pre `dest != ttor::comm_rank()`
      */
     template<typename T>
     void blocking_send_large(int dest, view<T> body, Ps &... ps);
@@ -264,7 +268,7 @@ std::unique_ptr<message> ActiveMsg<Ps...>::make_message(int dest, view<T> body, 
     size_t header_size = s.size(id, body_size, ps...);
     std::unique_ptr<message> m = comm_->make_active_message(dest, header_size);
     s.write_buffer(m->header_buffer.data(), m->header_buffer.size(), id, body_size, ps...);
-    m->body_buffer = (char*)body.data();
+    m->body_send_buffer = (char*)body.data();
     m->body_size = body_size;
     return m;
 }

@@ -41,6 +41,7 @@ std::string processor_name()
  */
 
 Communicator::Communicator(int verb_, size_t break_msg_size_) : 
+    my_rank(comm_rank()),
     verb(verb_), 
     logger(nullptr), 
     log(false), 
@@ -62,7 +63,8 @@ void Communicator::set_logger(Logger *logger_)
 std::unique_ptr<message> Communicator::make_active_message(int dest, size_t header_size)
 {
     auto m = std::make_unique<message>();
-    m->other = dest;
+    m->source = my_rank;
+    m->dest = dest;
     size_t header_buffer_size = 0;
     if(header_size > break_msg_size) {
         header_buffer_size = mega * ((header_size + mega - 1) / mega); // pad so that the total size if a multiple of mega (2^20)
@@ -83,13 +85,31 @@ void Communicator::queue_message(std::unique_ptr<message> m)
     messages_rdy.push_back(std::move(m));
 }
 
+void Communicator::self_Isend_header_body_process_complete(std::unique_ptr<message> &m)
+{
+    assert(m->source == my_rank);
+    assert(m->dest == my_rank);
+    // 1. Fetch location on receiver
+    process_header(m);
+    // 2. Copy the view (~Isend/Irecv for body)
+    if(m->body_size > 0) { // memcpy cannot technically be called with nullptr source/dest even if size is 0
+        memcpy(m->body_recv_buffer, m->body_send_buffer, m->body_size);
+    }
+    // 3. Run the AM
+    process_body(m);
+    // 4. Complete
+    process_completed_body(m);
+    if(verb > 1)
+        printf("[%3d] -> %3d: header and body non-blocking local sent completed [tags %d and %d], sizes %zd and %zd B\n", my_rank, m->dest, m->header_tag, m->body_tag, m->header_buffer.size(), m->body_size);
+}
+
 void Communicator::Isend_header_body(std::unique_ptr<message> &m)
 {
     // Send the header
     if(m->header_tag == 0) {
         const size_t size = m->header_buffer.size();
         assert(size <= break_msg_size);
-        TASKTORRENT_MPI_CHECK(MPI_Isend(m->header_buffer.data(), static_cast<int>(size), MPI_BYTE, m->other, m->header_tag, MPI_COMM_WORLD, &(m->header_request)));
+        TASKTORRENT_MPI_CHECK(MPI_Isend(m->header_buffer.data(), static_cast<int>(size), MPI_BYTE, m->dest, m->header_tag, MPI_COMM_WORLD, &(m->header_request)));
     } else if(m->header_tag == 1) {
         assert(m->header_buffer.size() > break_msg_size);
         assert(m->header_buffer.size() % mega == 0);
@@ -99,7 +119,7 @@ void Communicator::Isend_header_body(std::unique_ptr<message> &m)
             MPI_Finalize();
             exit(1);
         }
-        TASKTORRENT_MPI_CHECK(MPI_Isend(m->header_buffer.data(), static_cast<int>(size), MPI_MEGABYTE, m->other, m->header_tag, MPI_COMM_WORLD, &(m->header_request)));
+        TASKTORRENT_MPI_CHECK(MPI_Isend(m->header_buffer.data(), static_cast<int>(size), MPI_MEGABYTE, m->dest, m->header_tag, MPI_COMM_WORLD, &(m->header_request)));
     } else {
         assert(false);
     }
@@ -113,21 +133,21 @@ void Communicator::Isend_header_body(std::unique_ptr<message> &m)
         m->body_tag = 3;
 
     // Send the bodies
-    char* start = m->body_buffer;
+    char* start = m->body_send_buffer;
     size_t size = m->body_size;
     if(start == nullptr) assert(n_bodies == 0 && size == 0);
     for(int i = 0; i < n_bodies; i++) {
         assert(size > 0);
         const size_t to_send = (size >= break_msg_size ? break_msg_size : size);
         assert(to_send <= max_int_size);
-        TASKTORRENT_MPI_CHECK(MPI_Isend(start, static_cast<int>(to_send), MPI_BYTE, m->other, m->body_tag, MPI_COMM_WORLD, &(m->body_requests[i])));
+        TASKTORRENT_MPI_CHECK(MPI_Isend(start, static_cast<int>(to_send), MPI_BYTE, m->dest, m->body_tag, MPI_COMM_WORLD, &(m->body_requests[i])));
         size -= to_send;
         start += to_send;
     }
     assert(size == 0);
 
     if (verb > 1)
-        printf("[%3d] -> %3d: sending header & bodies [tags %d, %d], n_bodies %d, sizes %zd, %zd B\n", comm_rank(), m->other, m->header_tag, m->body_tag, n_bodies, m->header_buffer.size(), m->body_size);
+        printf("[%3d] -> %3d: sending header & bodies [tags %d, %d], n_bodies %d, sizes %zd, %zd B\n", my_rank, m->dest, m->header_tag, m->body_tag, n_bodies, m->header_buffer.size(), m->body_size);
 }
 
 // Return true if there is a message and we started an Irecv; false otherwise
@@ -149,7 +169,8 @@ bool Communicator::probe_Irecv_header(std::unique_ptr<message> &m)
     int source = mpi_status.MPI_SOURCE;
     size_t buffer_size = 0;
     m = std::make_unique<message>();
-    m->other = source;
+    m->source = source;
+    m->dest = my_rank;
     if(mpi_tag == 0) { // We are receiving MPI_BYTE
         TASKTORRENT_MPI_CHECK(MPI_Get_count(&mpi_status, MPI_BYTE, &mpi_size));
         buffer_size = static_cast<size_t>(mpi_size);
@@ -162,12 +183,12 @@ bool Communicator::probe_Irecv_header(std::unique_ptr<message> &m)
     m->header_buffer.resize(buffer_size);
     m->header_tag = mpi_tag;
     if (verb > 1)
-        printf("[%3d] <- %3d: receiving header [tag %d], size %zd B\n", comm_rank(), source, mpi_tag, buffer_size);
+        printf("[%3d] <- %3d: receiving header [tag %d], size %zd B\n", my_rank, m->source, mpi_tag, buffer_size);
 
     if(mpi_tag == 0) { // We are receiving MPI_BYTE
-        TASKTORRENT_MPI_CHECK(MPI_Irecv(m->header_buffer.data(), mpi_size, MPI_BYTE, m->other, m->header_tag, MPI_COMM_WORLD, &m->header_request));
+        TASKTORRENT_MPI_CHECK(MPI_Irecv(m->header_buffer.data(), mpi_size, MPI_BYTE, m->source, m->header_tag, MPI_COMM_WORLD, &m->header_request));
     } else if(mpi_tag == 1) {
-        TASKTORRENT_MPI_CHECK(MPI_Irecv(m->header_buffer.data(), mpi_size, MPI_MEGABYTE, m->other, m->header_tag, MPI_COMM_WORLD, &m->header_request));
+        TASKTORRENT_MPI_CHECK(MPI_Irecv(m->header_buffer.data(), mpi_size, MPI_MEGABYTE, m->source, m->header_tag, MPI_COMM_WORLD, &m->header_request));
     } else {
         assert(false);
     }
@@ -189,17 +210,17 @@ void Communicator::Irecv_body(std::unique_ptr<message> &m) {
         assert(false);
     }
 
-    char* start = m->body_buffer;
+    char* start = m->body_recv_buffer;
     size_t size = m->body_size;
     assert(size > 0);
     if (verb > 1) {
-        printf("[%3d] <- %3d: receiving bodies [tag %d], size %zd B, num bodies %zd\n", comm_rank(), m->other, m->body_tag, m->body_size, n_bodies);
+        printf("[%3d] <- %3d: receiving bodies [tag %d], size %zd B, num bodies %zd\n", my_rank, m->source, m->body_tag, m->body_size, n_bodies);
     }
     for(size_t i = 0; i < n_bodies; i++) {
         assert(size > 0);
         const size_t to_recv = (size >= break_msg_size ? break_msg_size : size);
         assert(to_recv <= max_int_size);
-        TASKTORRENT_MPI_CHECK(MPI_Irecv(start, static_cast<int>(to_recv), MPI_BYTE, m->other, m->body_tag, MPI_COMM_WORLD, &m->body_requests[i]));
+        TASKTORRENT_MPI_CHECK(MPI_Irecv(start, static_cast<int>(to_recv), MPI_BYTE, m->source, m->body_tag, MPI_COMM_WORLD, &m->body_requests[i]));
         size -= to_recv;
         start += to_recv;
     }
@@ -214,7 +235,7 @@ void Communicator::process_header(std::unique_ptr<message> &m) {
     const size_t body_size = std::get<1>(tup);
     m->body_size = body_size;
     assert(am_id < active_messages.size());
-    m->body_buffer = active_messages.at(am_id)->get_user_buffers(m->header_buffer.data(), m->header_buffer.size());
+    m->body_recv_buffer = active_messages.at(am_id)->get_user_buffers(m->header_buffer.data(), m->header_buffer.size());
     m->header_processed = true;
 }
 
@@ -245,8 +266,13 @@ void Communicator::Isend_queued_messages()
     }
     for (auto &m : to_Isend)
     {
-        Isend_header_body(m);
-        messages_Isent.push_back(std::move(m));
+        assert(m->source == my_rank);
+        if(m->dest == my_rank) {
+            self_Isend_header_body_process_complete(m);
+        } else {
+            Isend_header_body(m);
+            messages_Isent.push_back(std::move(m));
+        }
     }
 }
 
@@ -263,7 +289,7 @@ void Communicator::test_Isent_messages()
         if (flag_header && flag_bodies) { // Header and bodies sends are completed
             process_completed_body(m);
             if (verb > 1)
-                printf("[%3d] -> %3d: header and body non-blocking sent completed [tags %d and %d], sizes %zd and %zd B\n", comm_rank(), m->other, m->header_tag, m->body_tag, m->header_buffer.size(), m->body_size);
+                printf("[%3d] -> %3d: header and body non-blocking sent completed [tags %d and %d], sizes %zd and %zd B\n", my_rank, m->dest, m->header_tag, m->body_tag, m->header_buffer.size(), m->body_size);
         } else {
             messages_Isent_new.push_back(std::move(m));
         }
@@ -306,7 +332,7 @@ void Communicator::test_process_Ircvd_headers_Irecv_bodies()
         {
             if(! m->header_processed) {
                 if(verb > 1)
-                    printf("[%3d] <- %3d: header receive completed [tag %d], size %zd B\n", comm_rank(), m->other, m->header_tag, m->header_buffer.size());
+                    printf("[%3d] <- %3d: header receive completed [tag %d], size %zd B\n", my_rank, m->source, m->header_tag, m->header_buffer.size());
                 process_header(m);
             }
             /**
@@ -321,19 +347,19 @@ void Communicator::test_process_Ircvd_headers_Irecv_bodies()
              * We can only receive the bodies in the same order the headers are received
              * FIXME: this is too conservative, we can also discriminate per tags
              */
-            } else if(first_with_body_seen.count(m->other) == 0) {
-                first_with_body_seen.insert(m->other);
+            } else if(first_with_body_seen.count(m->source) == 0) {
+                first_with_body_seen.insert(m->source);
                 Irecv_body(m);
                 bodies_Ircvd.push_back(std::move(m));
             /**
              * If there _is_ a body coming later, but we are not the latest header from that particular rank, we have to wait before calling MPI_Irecv
              */
             } else {
-                assert(first_with_body_seen.count(m->other) == 1);
+                assert(first_with_body_seen.count(m->source) == 1);
                 headers_Ircvd_new.push_back(std::move(m));
             }
         } else {
-            first_with_body_seen.insert(m->other);
+            first_with_body_seen.insert(m->source);
             headers_Ircvd_new.push_back(std::move(m));
         }
     }
@@ -349,7 +375,7 @@ void Communicator::test_process_bodies()
         TASKTORRENT_MPI_CHECK(MPI_Testall(m->body_requests.size(), m->body_requests.data(), &body_flag, MPI_STATUSES_IGNORE));
         if (body_flag) {
             if(verb > 1)
-                printf("[%3d] <- %3d: body receive completed [tag %d], size %zd B\n", comm_rank(), m->other, m->body_tag, m->body_size);
+                printf("[%3d] <- %3d: body receive completed [tag %d], size %zd B\n", my_rank, m->source, m->body_tag, m->body_size);
             process_body(m);
         } else {
             bodies_Ircvd_new.push_back(std::move(m));
@@ -375,7 +401,7 @@ void Communicator::blocking_send(std::unique_ptr<message> m) {
     TASKTORRENT_MPI_CHECK(MPI_Waitall(m->body_requests.size(), m->body_requests.data(), MPI_STATUSES_IGNORE));
     process_completed_body(m);
     if(verb > 1) 
-        printf("[%3d] -> %3d: header and body blocking sent completed [tags %d and %d], sizes %zd and %zd B\n", comm_rank(), m->other, m->header_tag, m->body_tag, m->header_buffer.size(), m->body_size);
+        printf("[%3d] -> %3d: header and body blocking sent completed [tags %d and %d], sizes %zd and %zd B\n", my_rank, m->dest, m->header_tag, m->body_tag, m->header_buffer.size(), m->body_size);
 }
 
 void Communicator::recv_process() {
@@ -386,12 +412,12 @@ void Communicator::recv_process() {
         if (success) {
             TASKTORRENT_MPI_CHECK(MPI_Wait(&m->header_request, MPI_STATUS_IGNORE));
             if(verb > 1) 
-                printf("[%3d] <- %3d: header completed [tag %d], size %zd B\n", comm_rank(), m->other, m->header_tag, m->header_buffer.size());
+                printf("[%3d] <- %3d: header completed [tag %d], size %zd B\n", my_rank, m->source, m->header_tag, m->header_buffer.size());
             process_header(m);
             Irecv_body(m);
             TASKTORRENT_MPI_CHECK(MPI_Waitall(m->body_requests.size(), m->body_requests.data(), MPI_STATUSES_IGNORE));
             if(verb > 1)
-                printf("[%3d] <- %3d: bodies completed [tag %d], size %zd B\n", comm_rank(), m->other, m->body_tag, m->body_size);
+                printf("[%3d] <- %3d: bodies completed [tag %d], size %zd B\n", my_rank, m->source, m->body_tag, m->body_size);
             process_body(m);
             break;
         }

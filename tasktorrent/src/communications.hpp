@@ -75,6 +75,7 @@ private:
 
     const static size_t mega = (1 << 20);
     const static size_t max_int_size = static_cast<size_t>(std::numeric_limits<int>::max());
+    const int my_rank;
     const int verb;
     Logger *logger;
     bool log;
@@ -127,6 +128,9 @@ private:
 
     // Immediately Isend the message
     void Isend_header_body(std::unique_ptr<message> &m);
+
+    // Send to myself, copies body, run AM and completion
+    void self_Isend_header_body_process_complete(std::unique_ptr<message> &m);
 
     // Loop through the list of messages sent in by the task flow.
     // Isend all the messages in the ready queue.
