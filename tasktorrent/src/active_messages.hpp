@@ -20,15 +20,19 @@ class Communicator;
 /**
  * \brief Base Active Message class
  * 
- * \details An active message is two (or four) things:
+ * \details An active message is two (or five) things:
  *          - A payload (header) to be send from the sender to the receiver rank.
+ *          - A function to be run on the receiver rank, when the header and the (optional) body have arrived
  *          - [Optional] A payload (body) to be send from the sender to the receiver rank, without any temporary copy.
  *          - [Optional] When using a body, a function to be run on the receiver rank indicating where to store the body
- *          - A function to be run on the receiver rank, when the header and the (optional) body have arrived
+ *          - [Optional] When using a body, a function to be run on the _sender_ rank when the send operation has completed and the
+ *                       body can be reused or freed.
  * 
  *          The function is serialized accross ranks using its ID.
- *          The payload (header) is sent as a buffer of bytes, using an intermediary copy where the payload is serialized.
- *          The payload (body) is directly send (without any intermadiary copy)
+ *          The payload (header) is sent as a buffer of bytes, using an intermediary copy where the payload is serialized. 
+ *          When the send operation returns, the header can be immediately reused.
+ *          The payload (body) is directly send (without any intermadiary copy). 
+ *          The body can only be reused when the completion function has finished.
  */
 class ActiveMsgBase
 {
@@ -67,6 +71,16 @@ public:
     virtual char* get_user_buffers(char *payload, size_t size) = 0;
 
     /**
+     * \brief Function to run when body send operation has completed
+     * 
+     * \param[in] payload a pointer to the payload (header)
+     * \param[in] size the number of bytes in the payload (header)
+     * 
+     * \pre `payload` should be a valid buffer of `size` bytes.
+     */
+    virtual void complete(char *payload, size_t size) = 0;
+
+    /**
      * \brief Creates an active message
      * 
      * \param id the global id of that active message. 
@@ -99,6 +113,7 @@ private:
     Communicator *comm_;
     std::function<void(Ps &...)> fun_;
     std::function<char*(Ps &...)> ptr_fun_;
+    std::function<void(Ps &...)> complete_fun_;
 
     /**
      * Create the message
@@ -113,6 +128,7 @@ public:
      * 
      * \param[in] fun the function to be run on the receiver.
      * \param[in] ptr_fun the function to be run on the receiver, giving the location of where the body should be stored.
+     * \param[in] complete_fun the function to be run on the sender when the body send operation has completed
      * \param[in] comm the communicator instance to use for communications.
      *            The active message does not take ownership of `comm`.
      * \param[in] id the active message unique ID. User is responsible to never 
@@ -123,7 +139,10 @@ public:
      *      active message is in used.
      */
     template<typename T>
-    ActiveMsg(std::function<void(Ps &...)> fun, std::function<T*(Ps &...)> ptr_fun, Communicator *comm, size_t id) : ActiveMsgBase(id), comm_(comm), fun_(fun) {
+    ActiveMsg(std::function<void(Ps &...)> fun, 
+              std::function<T*(Ps &...)> ptr_fun, 
+              std::function<void(Ps &...)> complete_fun, 
+              Communicator *comm, size_t id) : ActiveMsgBase(id), comm_(comm), fun_(fun), complete_fun_(complete_fun) {
         ptr_fun_ = [ptr_fun](Ps &... ps) {
             char* ptr = (char*)ptr_fun(ps...);
             return ptr;
@@ -133,6 +152,8 @@ public:
     virtual void run(char *payload_raw, size_t size);
     
     virtual char* get_user_buffers(char *payload_raw, size_t size);
+
+    virtual void complete(char *payload_raw, size_t size);
 
     /**
      * \brief Immediately sends payload to destination.
@@ -206,6 +227,18 @@ void ActiveMsg<Ps...>::run(char *payload_raw, size_t size)
     assert(std::get<1>(tup) >= 0);
     auto args = tail(tail(tup));
     apply_fun(fun_, args);
+}
+
+template <typename... Ps>
+void ActiveMsg<Ps...>::complete(char *payload_raw, size_t size)
+{
+    // ID, body size, header args...
+    Serializer<size_t, size_t, Ps...> s;
+    auto tup = s.read_buffer(payload_raw, size);
+    assert(std::get<0>(tup) == get_id());
+    assert(std::get<1>(tup) >= 0);
+    auto args = tail(tail(tup));
+    apply_fun(complete_fun_, args);
 }
 
 template <typename... Ps>

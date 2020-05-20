@@ -19,23 +19,31 @@ TEST(ActiveMsgLarge, twoSteps)
 
     vector<vector<int>> data(nranks, vector<int>(N,0));
     vector<bool> received(nranks, false);
+    vector<bool> completed(nranks, false);
     received[rank] = true;
+    completed[rank] = true;
     for(int i = 0; i < N; i++) data[rank][i] = rank * N + i;
 
     auto am = comm.make_large_active_msg(
-        [&](int& from){
+        [&](int& from, int&){
+            EXPECT_FALSE(received[from]);
             received[from] = true;
         },
-        [&](int& from){
+        [&](int& from, int&){
             char* buf = (char*)(data[from].data());
             return buf;
+        },
+        [&](int& from, int& to){
+            EXPECT_NE(from, to);
+            EXPECT_FALSE(completed[to]);
+            completed[to] = true;
         });
 
     for(int r = 0; r < nranks; r++) {
         int from = rank;
         if(r != rank) {
             auto v = view<int>(data[rank].data(), data[rank].size());
-            am->blocking_send_large(r, v, from);
+            am->blocking_send_large(r, v, from, r);
         }
     }
 
@@ -45,6 +53,7 @@ TEST(ActiveMsgLarge, twoSteps)
 
     for(int r = 0; r < nranks; r++) {
         EXPECT_TRUE(received[r]);
+        EXPECT_TRUE(completed[r]) << "Completed false at " << r << " for rank " << rank;
         for(int i = 0; i < N; i++) {
             EXPECT_EQ(data[r][i], r * N + i);
         }
@@ -53,7 +62,7 @@ TEST(ActiveMsgLarge, twoSteps)
     EXPECT_EQ(comm.get_n_msg_processed(), nranks-1);
     EXPECT_EQ(comm.get_n_msg_queued(), nranks-1);
 
-    MPI_Barrier(MPI_COMM_WORLD); // recv_process doesn't filter per source, so yet we really need this
+    MPI_Barrier(MPI_COMM_WORLD); // recv_process doesn't filter per source, so yes we really need this
 }
 
 TEST(ActiveMsgLarge, mixed)
@@ -66,6 +75,7 @@ TEST(ActiveMsgLarge, mixed)
 
     vector<vector<int>> data(nranks, vector<int>(N,0));
     vector<int> received(nranks, 0);
+    int completed = 0;
     for(int i = 0; i < N; i++) data[rank][i] = rank * N + i;
 
     auto am0 = comm.make_active_msg(
@@ -80,6 +90,9 @@ TEST(ActiveMsgLarge, mixed)
         [&](int& from){
             char* buf = (char*)(data[from].data());
             return buf;
+        },
+        [&](int&) {
+            completed++;
         });
 
     auto am2 = comm.make_active_msg(
@@ -118,6 +131,7 @@ TEST(ActiveMsgLarge, mixed)
 
     EXPECT_EQ(comm.get_n_msg_processed(), 3 * (nranks - 1));
     EXPECT_EQ(comm.get_n_msg_queued(), 3 * (nranks - 1));
+    EXPECT_EQ(completed, (nranks-1));
 
     MPI_Barrier(MPI_COMM_WORLD); // recv_process doesn't filter per source, so yet we really need this
 
@@ -134,6 +148,7 @@ TEST(ActiveMsgLarge, multipleBodiesBreakSize)
             int done = 0;
             int rcvd = 0;
             int expected = 1;
+            int completed = 0;
             size_t header_size = break_size * s_header;
             size_t body_size = break_size * s_body;
             char* header_buffer = (char*)calloc(header_size, sizeof(char));
@@ -162,6 +177,9 @@ TEST(ActiveMsgLarge, multipleBodiesBreakSize)
                     EXPECT_EQ(rcvd, 0);
                     rcvd++;
                     return recv_buffer;
+                },
+                [&](view<char>&){
+                    completed++;
                 });
 
             auto body = view<char>(send_buffer, body_size);
@@ -175,6 +193,7 @@ TEST(ActiveMsgLarge, multipleBodiesBreakSize)
             
             EXPECT_EQ(done, expected);
             EXPECT_EQ(rcvd, expected);
+            EXPECT_EQ(completed, 1);
             MPI_Barrier(MPI_COMM_WORLD);
             free(send_buffer);
             free(recv_buffer);
@@ -196,6 +215,7 @@ void test_sizes(vector<size_t> sizes, size_t break_size) {
     int headers_rcvd = 0;
     int bodies_rcvd = 0;
     const int expected = N * N;
+    int completed = 0;
 
     for(int i = 0; i < N; i++) {
         for(int j = 0; j < N; j++) {
@@ -250,6 +270,9 @@ void test_sizes(vector<size_t> sizes, size_t break_size) {
             unsigned char* ptr = recv_buffers.at(k);
             headers_rcvd++;
             return ptr;
+        },
+        [&](int&, int&, view<unsigned char>&) {
+            completed++;
         });
 
     int dest = (comm_rank() + 1) % (comm_size());
@@ -270,6 +293,7 @@ void test_sizes(vector<size_t> sizes, size_t break_size) {
 
     EXPECT_EQ(bodies_rcvd, expected);
     EXPECT_EQ(headers_rcvd, expected);
+    EXPECT_EQ(completed, N*N);
     for(int i = 0; i < N; i++) {
         for(int j = 0; j < N; j++) {
             int k = i + j * N;

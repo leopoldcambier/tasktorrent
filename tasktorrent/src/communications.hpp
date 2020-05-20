@@ -154,6 +154,9 @@ private:
     // Process message
     void process_body(std::unique_ptr<message> &m);
 
+    // Run the complete function when the body has been sent
+    void process_completed_body(std::unique_ptr<message> &m);
+
     // Probe for incoming header
     // Starts MPI_Irecv for all probed headers
     void probe_Irecv_headers();
@@ -219,11 +222,14 @@ public:
      * 
      * \param[in] fun the active function to be run on the receiver rank.
      * \param[in] fun_ptr the active function to be run on the receiver rank to retreive the body buffer location.
+     * \param[in] fun_complete function to be run on the sender when the send operation has complete.
      * 
      * \return A pointer to the active message. The active message is stored in `this` and should not be freed by the user.
      */
     template <typename T, typename... Ps>
-    ActiveMsg<Ps...> *make_large_active_msg(std::function<void(Ps &...)> fun, std::function<T*(Ps &...)> fun_ptr);
+    ActiveMsg<Ps...> *make_large_active_msg(std::function<void(Ps &...)> fun, 
+                                            std::function<T*(Ps &...)> fun_ptr,
+                                            std::function<void(Ps &...)> fun_complete);
 
     /**
      * \brief Creates an active message tied to function fun.
@@ -240,11 +246,14 @@ public:
      * 
      * \param[in] fun the active function to be run on the receiver rank.
      * \param[in] fun_ptr the active function to be run on the receiver rank to retreive the body buffer location.
+     * \param[in] fun_complete function to be run on the sender when the send operation has complete.
      * 
      * \return A pointer to the active message. The active message is stored in `this` and should not be freed by the user.
      */
-    template <typename F, typename G>
-    typename ActiveMsg_type<decltype(&F::operator())>::type *make_large_active_msg(F fun, G fun_ptr);
+    template <typename F, typename G, typename H>
+    typename ActiveMsg_type<decltype(&F::operator())>::type *make_large_active_msg(F fun,
+                                                                                   G fun_ptr,
+                                                                                   H fun_complete);
 
     /**
      * \brief Set the logger.
@@ -314,14 +323,19 @@ ActiveMsg<Ps...> *Communicator::make_active_msg(std::function<void(Ps &...)> fun
     std::function<char*(Ps &...)> fun_ptr = [](Ps &...) {
         return nullptr;
     };
-    return make_large_active_msg(fun, fun_ptr);
+    std::function<void(Ps &...)> fun_complete = [](Ps &...) {
+        return;
+    };
+    return make_large_active_msg(fun, fun_ptr, fun_complete);
 }
 
 // Create large active messages
 template <typename T, typename... Ps>
-ActiveMsg<Ps...> *Communicator::make_large_active_msg(std::function<void(Ps &...)> fun, std::function<T*(Ps &...)> fun_ptr)
+ActiveMsg<Ps...> *Communicator::make_large_active_msg(std::function<void(Ps &...)> fun, 
+                                                      std::function<T*(Ps &...)> fun_ptr,
+                                                      std::function<void(Ps &...)> fun_complete)
 {
-    auto am = std::make_unique<ActiveMsg<Ps...>>(fun, fun_ptr, this, active_messages.size());
+    auto am = std::make_unique<ActiveMsg<Ps...>>(fun, fun_ptr, fun_complete, this, active_messages.size());
     auto am_ = am.get();
     active_messages.push_back(move(am));
 
@@ -341,12 +355,13 @@ typename ActiveMsg_type<decltype(&F::operator())>::type *Communicator::make_acti
     return make_active_msg(fun);
 }
 
-template <typename F, typename G>
-typename ActiveMsg_type<decltype(&F::operator())>::type *Communicator::make_large_active_msg(F f, G g)
+template <typename F, typename G, typename H>
+typename ActiveMsg_type<decltype(&F::operator())>::type *Communicator::make_large_active_msg(F f, G g, H h)
 {
     auto fun = GetStdFunction(f);
     auto fun_ptr = GetStdFunction(g);
-    return make_large_active_msg(fun, fun_ptr);
+    auto fun_complete = GetStdFunction(h);
+    return make_large_active_msg(fun, fun_ptr, fun_complete);
 }
 
 } // namespace ttor

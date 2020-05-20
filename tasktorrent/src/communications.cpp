@@ -227,6 +227,14 @@ void Communicator::process_body(std::unique_ptr<message> &m) {
     messages_processed++;
 }
 
+void Communicator::process_completed_body(std::unique_ptr<message> &m) {
+    Serializer<size_t> s;
+    std::tuple<size_t> tup = s.read_buffer(m->header_buffer.data(), m->header_buffer.size());
+    const size_t am_id = std::get<0>(tup);
+    assert(am_id < active_messages.size());
+    active_messages.at(am_id)->complete(m->header_buffer.data(), m->header_buffer.size());
+}
+
 void Communicator::Isend_queued_messages()
 {
     std::list<std::unique_ptr<message>> to_Isend;
@@ -253,8 +261,9 @@ void Communicator::test_Isent_messages()
         TASKTORRENT_MPI_CHECK(MPI_Testall(m->body_requests.size(), m->body_requests.data(), 
                                           &flag_bodies, MPI_STATUSES_IGNORE));
         if (flag_header && flag_bodies) { // Header and bodies sends are completed
+            process_completed_body(m);
             if (verb > 1)
-                printf("[%3d] -> %3d: header and body sent [tags %d and %d], sizes %zd and %zd B\n", comm_rank(), m->other, m->header_tag, m->body_tag, m->header_buffer.size(), m->body_size);
+                printf("[%3d] -> %3d: header and body non-blocking sent completed [tags %d and %d], sizes %zd and %zd B\n", comm_rank(), m->other, m->header_tag, m->body_tag, m->header_buffer.size(), m->body_size);
         } else {
             messages_Isent_new.push_back(std::move(m));
         }
@@ -310,7 +319,7 @@ void Communicator::test_process_Ircvd_headers_Irecv_bodies()
              * All the complexity is from the fact that we need to order the Isent and Ircvd messages
              * Since bodies are always sent after the header
              * We can only receive the bodies in the same order the headers are received
-             * FIXNE: this is too conservative, we can also discriminate per tags
+             * FIXME: this is too conservative, we can also discriminate per tags
              */
             } else if(first_with_body_seen.count(m->other) == 0) {
                 first_with_body_seen.insert(m->other);
@@ -364,8 +373,9 @@ void Communicator::blocking_send(std::unique_ptr<message> m) {
     Isend_header_body(m);
     TASKTORRENT_MPI_CHECK(MPI_Wait(&m->header_request, MPI_STATUS_IGNORE));
     TASKTORRENT_MPI_CHECK(MPI_Waitall(m->body_requests.size(), m->body_requests.data(), MPI_STATUSES_IGNORE));
+    process_completed_body(m);
     if(verb > 1) 
-        printf("[%3d] -> %3d: header and body sent completed [tags %d and %d], sizes %zd and %zd B\n", comm_rank(), m->other, m->header_tag, m->body_tag, m->header_buffer.size(), m->body_size);
+        printf("[%3d] -> %3d: header and body blocking sent completed [tags %d and %d], sizes %zd and %zd B\n", comm_rank(), m->other, m->header_tag, m->body_tag, m->header_buffer.size(), m->body_size);
 }
 
 void Communicator::recv_process() {
