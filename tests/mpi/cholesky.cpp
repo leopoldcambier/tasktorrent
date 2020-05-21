@@ -93,7 +93,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
     // Factorize
     {
         // Initialize the communicator structure
-        Communicator comm(VERB);
+        Communicator comm(MPI_COMM_WORLD, VERB);
 
         // Threadpool
         Threadpool tp(n_threads, &comm, VERB, "[" + to_string(rank) + "]_");
@@ -304,7 +304,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
 
     // Gather everything on rank 0 and test for accuracy
     {
-        Communicator comm(VERB);
+        Communicator comm(MPI_COMM_WORLD, VERB);
         Threadpool tp(n_threads, &comm, VERB);
         Taskflow<int2> gather_tf(&tp, VERB);
         auto am_gather = comm.make_active_msg(

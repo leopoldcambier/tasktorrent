@@ -20,27 +20,6 @@
 namespace ttor
 {
 
-/**
- * \brief The rank within the communicator
- * 
- * \return The MPI rank of the current processor
- */
-int comm_rank();
-
-/**
- * \brief The size of the communicator
- * 
- * \return The number of MPI ranks within the communicator
- */
-int comm_size();
-
-/**
- * \brief This processors' name
- * 
- * \return The hostname of this processor
- */
-std::string processor_name();
-
 class ActiveMsgBase;
 
 template <typename... Ps>
@@ -75,6 +54,7 @@ private:
 
     const static size_t mega = (1 << 20);
     const static size_t max_int_size = static_cast<size_t>(std::numeric_limits<int>::max());
+    const MPI_Comm comm;
     const int my_rank;
     const int verb;
     Logger *logger;
@@ -204,12 +184,13 @@ public:
     /**
      * \brief Creates an Communicator.
      * 
+     * \param[in] comm the MPI communicator to use in communications.
      * \param[in] verb the verbose level: 0 = no printing. > 0 = more and more printing.
      * \param[in] break_msg_size the size at which to break large messages into MPI messages. Mainly used for testing.
      * 
      * \pre `verb >= 0`.
      */
-    Communicator(int verb_ = 0, size_t break_msg_size_ = Communicator::max_int_size);
+    Communicator(MPI_Comm comm = MPI_COMM_WORLD, int verb_ = 0, size_t break_msg_size_ = Communicator::max_int_size);
 
     /**
      * \brief Creates an active message tied to function fun.
@@ -310,6 +291,20 @@ public:
      * \return The number of queued active message.
      */
     int get_n_msg_queued();
+
+    /**
+     * \brief The rank within the communicator
+     * 
+     * \return The MPI rank of the current processor
+     */
+    int comm_rank();
+
+    /**
+     * \brief The size of the communicator
+     * 
+     * \return The number of MPI ranks within the communicator
+     */
+    int comm_size();
 };
 
 } // namespace ttor

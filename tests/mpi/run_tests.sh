@@ -51,14 +51,14 @@ done
 
 for nrank in 1 2 3 4
 do
-    $CMD_MPIRUN -n ${nrank} ./tests_communicator 1 0 --gtest_filter=*mini
+    $CMD_MPIRUN -n ${nrank} ./tests_communicator 1 0 --gtest_filter=*mini*
 
     if [ $? != "0" ]
     then
         exit 1
     fi
 
-    $CMD_MPIRUN -n ${nrank} ./tests_communicator 1 0 --gtest_filter=*sparse_graph
+    $CMD_MPIRUN -n ${nrank} ./tests_communicator 1 0 --gtest_filter=*sparseGraph
 
     if [ $? != "0" ]
     then
@@ -66,21 +66,21 @@ do
     fi
 done
 
-$CMD_MPIRUN -n 2 ./tests_communicator 1 0 --gtest_filter=*ring
+$CMD_MPIRUN -n 2 ./tests_communicator 1 0 --gtest_filter=*ring*
 
 if [ $? != "0" ]
 then
     exit 1
 fi
 
-$CMD_MPIRUN -n 2 ./tests_communicator 1 0 --gtest_filter=*pingpong
+$CMD_MPIRUN -n 2 ./tests_communicator 1 0 --gtest_filter=*pingpong*
 
 if [ $? != "0" ]
 then
     exit 1
 fi
 
-$CMD_MPIRUN -n 1 ./tests_communicator 2 0 --gtest_filter=*critical
+$CMD_MPIRUN -n 1 ./tests_communicator 2 0 --gtest_filter=*critical*
 
 if [ $? != "0" ]
 then
@@ -111,3 +111,13 @@ if [ $? != "0" ]
 then
     exit 1
 fi
+
+for nrank in 1 2 4
+do
+    $CMD_MPIRUN -n $nrank ./tests_communicator --gtest_filter=ttor.newCommunicator --gtest_repeat=10 --gtest_break_on_failure
+
+    if [ $? != "0" ]
+    then
+        exit 1
+    fi
+done

@@ -10,31 +10,31 @@ using namespace ttor;
 
 typedef Taskflow<int> tflow_t;
 
-int n_threads = 2;
-int verb = 0; // Can be changed to vary the verbosity of the messages
+int N_THREADS = 2;
+int VERB = 0; // Can be changed to vary the verbosity of the messages
 
 TEST(completion, mini)
 {
     const int rank = comm_rank();
 
     // Initialize the communicator structure
-    Communicator comm(verb);
+    Communicator comm(MPI_COMM_WORLD, VERB);
 
     // Initialize the runtime structures
-    Threadpool tp(n_threads, &comm, verb, "mini_" + to_string(rank) + "_");
-    tflow_t tf(&tp, verb);
+    Threadpool tp(N_THREADS, &comm, VERB, "mini_" + to_string(rank) + "_");
+    tflow_t tf(&tp, VERB);
 
     atomic<int> test_var(0);
 
     // Define the tasks
     tf.set_mapping([&](int k) {
-            return (k % n_threads);
+            return (k % N_THREADS);
         })
         .set_indegree([&](int) {
             return 1;
         })
         .set_task([&](int k) {
-            if (verb > 0)
+            if (VERB > 0)
                 printf("mini %d running on rank %d\n", k, comm_rank());
             ++test_var;
         })
@@ -43,14 +43,14 @@ TEST(completion, mini)
         });
 
     // Seed initial tasks
-    for (int i = 0; i < n_threads; ++i)
+    for (int i = 0; i < N_THREADS; ++i)
         tf.fulfill_promise(i); // Task 0 starts on rank 0
 
     // Run until completion
     tp.join();
     // Done!
 
-    ASSERT_EQ(test_var.load(), n_threads);
+    ASSERT_EQ(test_var.load(), N_THREADS);
 
     MPI_Barrier(MPI_COMM_WORLD);
 }
@@ -58,18 +58,18 @@ TEST(completion, mini)
 TEST(completion, line)
 {
     const int rank = comm_rank();
-    const int ntasks = comm_size() * n_threads;
+    const int ntasks = comm_size() * N_THREADS;
 
     auto task_2_rank = [&](int k){
-        return k / n_threads;
+        return k / N_THREADS;
     };
 
     // Initialize the communicator structure
-    Communicator comm(verb);
+    Communicator comm(MPI_COMM_WORLD, VERB);
 
     // Initialize the runtime structures
-    Threadpool tp(n_threads, &comm, verb, "line_" + to_string(rank) + "_");
-    tflow_t tf(&tp, verb);
+    Threadpool tp(N_THREADS, &comm, VERB, "line_" + to_string(rank) + "_");
+    tflow_t tf(&tp, VERB);
     auto am = comm.make_active_msg(
         [&](int &k) {
             ASSERT_EQ(task_2_rank(k), rank);
@@ -80,13 +80,13 @@ TEST(completion, line)
 
     // Define the tasks
     tf.set_mapping([&](int k) {
-            return (k % n_threads);
+            return (k % N_THREADS);
         })
         .set_indegree([&](int) {
             return 1;
         })
         .set_task([&](int k) {
-            if (verb > 0)
+            if (VERB > 0)
                 printf("line TF %d running on rank %d\n", k, comm_rank());
             int next_k = k+1;
             if(next_k < ntasks) { // not the last task
@@ -111,7 +111,7 @@ TEST(completion, line)
     // Run until completion
     tp.join();
 
-    ASSERT_EQ(tasks_done.load(), n_threads);
+    ASSERT_EQ(tasks_done.load(), N_THREADS);
 
     MPI_Barrier(MPI_COMM_WORLD);
 }
@@ -129,12 +129,12 @@ int main(int argc, char **argv)
 
     if (argc >= 2)
     {
-        n_threads = atoi(argv[1]);
+        N_THREADS = atoi(argv[1]);
     }
 
     if (argc >= 3)
     {
-        verb = atoi(argv[2]);
+        VERB = atoi(argv[2]);
     }
 
     const int return_flag = RUN_ALL_TESTS();

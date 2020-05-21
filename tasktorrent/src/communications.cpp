@@ -14,33 +14,22 @@
 namespace ttor
 {
 
-int comm_rank()
-{
-    int world_rank;
-    TASKTORRENT_MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &world_rank));
-    return world_rank;
-}
-
-int comm_size()
-{
-    int world_size;
-    TASKTORRENT_MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &world_size));
-    return world_size;
-}
-
-std::string processor_name()
-{
-    char name[MPI_MAX_PROCESSOR_NAME];
-    int size;
-    TASKTORRENT_MPI_CHECK(MPI_Get_processor_name(name, &size));
-    return std::string(name);
-}
-
 /**
  * Communicator
  */
 
-Communicator::Communicator(int verb_, size_t break_msg_size_) : 
+int Communicator::comm_rank()
+{
+    return ttor::comm_rank(comm);
+}
+
+int Communicator::comm_size()
+{
+    return ttor::comm_size(comm);
+}
+
+Communicator::Communicator(MPI_Comm comm_, int verb_, size_t break_msg_size_) : 
+    comm(comm_),
     my_rank(comm_rank()),
     verb(verb_), 
     logger(nullptr), 
@@ -109,7 +98,7 @@ void Communicator::Isend_header_body(std::unique_ptr<message> &m)
     if(m->header_tag == 0) {
         const size_t size = m->header_buffer.size();
         assert(size <= break_msg_size);
-        TASKTORRENT_MPI_CHECK(MPI_Isend(m->header_buffer.data(), static_cast<int>(size), MPI_BYTE, m->dest, m->header_tag, MPI_COMM_WORLD, &(m->header_request)));
+        TASKTORRENT_MPI_CHECK(MPI_Isend(m->header_buffer.data(), static_cast<int>(size), MPI_BYTE, m->dest, m->header_tag, comm, &(m->header_request)));
     } else if(m->header_tag == 1) {
         assert(m->header_buffer.size() > break_msg_size);
         assert(m->header_buffer.size() % mega == 0);
@@ -119,7 +108,7 @@ void Communicator::Isend_header_body(std::unique_ptr<message> &m)
             MPI_Finalize();
             exit(1);
         }
-        TASKTORRENT_MPI_CHECK(MPI_Isend(m->header_buffer.data(), static_cast<int>(size), MPI_MEGABYTE, m->dest, m->header_tag, MPI_COMM_WORLD, &(m->header_request)));
+        TASKTORRENT_MPI_CHECK(MPI_Isend(m->header_buffer.data(), static_cast<int>(size), MPI_MEGABYTE, m->dest, m->header_tag, comm, &(m->header_request)));
     } else {
         assert(false);
     }
@@ -140,7 +129,7 @@ void Communicator::Isend_header_body(std::unique_ptr<message> &m)
         assert(size > 0);
         const size_t to_send = (size >= break_msg_size ? break_msg_size : size);
         assert(to_send <= max_int_size);
-        TASKTORRENT_MPI_CHECK(MPI_Isend(start, static_cast<int>(to_send), MPI_BYTE, m->dest, m->body_tag, MPI_COMM_WORLD, &(m->body_requests[i])));
+        TASKTORRENT_MPI_CHECK(MPI_Isend(start, static_cast<int>(to_send), MPI_BYTE, m->dest, m->body_tag, comm, &(m->body_requests[i])));
         size -= to_send;
         start += to_send;
     }
@@ -156,7 +145,7 @@ bool Communicator::probe_Irecv_header(std::unique_ptr<message> &m)
     MPI_Status mpi_status;
     int mpi_size, mpi_flag; // MPI uses int for message count (mpi_size)
     for(int tag = 0; tag < 2; tag++) {
-        TASKTORRENT_MPI_CHECK(MPI_Iprobe(MPI_ANY_SOURCE, tag, MPI_COMM_WORLD, &mpi_flag, &mpi_status));
+        TASKTORRENT_MPI_CHECK(MPI_Iprobe(MPI_ANY_SOURCE, tag, comm, &mpi_flag, &mpi_status));
         if(mpi_flag) {
             break;
         }
@@ -186,9 +175,9 @@ bool Communicator::probe_Irecv_header(std::unique_ptr<message> &m)
         printf("[%3d] <- %3d: receiving header [tag %d], size %zd B\n", my_rank, m->source, mpi_tag, buffer_size);
 
     if(mpi_tag == 0) { // We are receiving MPI_BYTE
-        TASKTORRENT_MPI_CHECK(MPI_Irecv(m->header_buffer.data(), mpi_size, MPI_BYTE, m->source, m->header_tag, MPI_COMM_WORLD, &m->header_request));
+        TASKTORRENT_MPI_CHECK(MPI_Irecv(m->header_buffer.data(), mpi_size, MPI_BYTE, m->source, m->header_tag, comm, &m->header_request));
     } else if(mpi_tag == 1) {
-        TASKTORRENT_MPI_CHECK(MPI_Irecv(m->header_buffer.data(), mpi_size, MPI_MEGABYTE, m->source, m->header_tag, MPI_COMM_WORLD, &m->header_request));
+        TASKTORRENT_MPI_CHECK(MPI_Irecv(m->header_buffer.data(), mpi_size, MPI_MEGABYTE, m->source, m->header_tag, comm, &m->header_request));
     } else {
         assert(false);
     }
@@ -220,7 +209,7 @@ void Communicator::Irecv_body(std::unique_ptr<message> &m) {
         assert(size > 0);
         const size_t to_recv = (size >= break_msg_size ? break_msg_size : size);
         assert(to_recv <= max_int_size);
-        TASKTORRENT_MPI_CHECK(MPI_Irecv(start, static_cast<int>(to_recv), MPI_BYTE, m->source, m->body_tag, MPI_COMM_WORLD, &m->body_requests[i]));
+        TASKTORRENT_MPI_CHECK(MPI_Irecv(start, static_cast<int>(to_recv), MPI_BYTE, m->source, m->body_tag, comm, &m->body_requests[i]));
         size -= to_recv;
         start += to_recv;
     }

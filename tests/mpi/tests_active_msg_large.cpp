@@ -15,7 +15,7 @@ TEST(ActiveMsgBody, twoStepsBlocking)
     const int nranks = comm_size();
     const int N = 64;
 
-    Communicator comm(VERB);
+    Communicator comm(MPI_COMM_WORLD, VERB);
 
     vector<vector<int>> data(nranks, vector<int>(N,0));
     vector<bool> received(nranks, false);
@@ -77,7 +77,7 @@ TEST(ActiveMsgBody, twoStepsMixedNonBlocking)
     const int nranks = comm_size();
     const int N = 64;
 
-    Communicator comm(VERB);
+    Communicator comm(MPI_COMM_WORLD, VERB);
 
     vector<vector<int>> data(nranks, vector<int>(N,0));
     vector<int> received(nranks, 0);
@@ -151,7 +151,7 @@ TEST(ActiveMsgBody, multipleBodiesBreakSize)
     for(auto s_header: sizes) {
         for(auto s_body: sizes) {
             if(VERB) printf("Size factor = %e, %e=======================\n", s_header, s_body);
-            Communicator comm(VERB, break_size);
+            Communicator comm(MPI_COMM_WORLD, VERB, break_size);
             int done = 0;
             int rcvd = 0;
             int expected = 1;
@@ -210,7 +210,7 @@ TEST(ActiveMsgBody, multipleBodiesBreakSize)
 }
 
 void test_sizes(vector<size_t> sizes, size_t break_size) {
-    Communicator comm(VERB, break_size);
+    Communicator comm(MPI_COMM_WORLD, VERB, break_size);
 
     int N = sizes.size();
 

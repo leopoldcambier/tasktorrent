@@ -685,7 +685,7 @@ struct DistMat
         timer t0 = wctime();
         printf("Rank %d starting w/ %d threads\n", comm_rank(), n_threads);
         Logger log(1000000);
-        Communicator comm(VERB);
+        Communicator comm(MPI_COMM_WORLD, VERB);
         Threadpool tp(n_threads, &comm, VERB, "[" + to_string(comm_rank()) + "]_");
         Taskflow<int> pf(&tp, VERB);
         Taskflow<int2> tf(&tp, VERB);

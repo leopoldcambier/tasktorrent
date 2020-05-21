@@ -27,7 +27,7 @@ int VERB = 0;
 TEST(ttor, activeMessages)
 {
     int rank = comm_rank();
-    Communicator comm(VERB);
+    Communicator comm(MPI_COMM_WORLD, VERB);
 
     double local = 0.0;
     bool done = false;
@@ -85,7 +85,7 @@ TEST(ttor, blocking)
 
     local_t l = {0, 0.0};
     vector<double> payload = {3.14, 2.71, 9.99};
-    Communicator comm(VERB);
+    Communicator comm(MPI_COMM_WORLD, VERB);
     // Define the active messages
     auto am0 = comm.make_active_msg([&](int &i, int &j) {
         l.data += i;
@@ -174,7 +174,7 @@ TEST(ttor, nonblocking)
         expected += k;
     }
     local2_t l = {0, 0};
-    Communicator comm(VERB);
+    Communicator comm(MPI_COMM_WORLD, VERB);
     comm.set_logger(&log);
     auto am = comm.make_active_msg([&](int &value) {
         l.value += value;
@@ -257,7 +257,7 @@ TEST(ttor, many2)
         int done;
     };
     local_t l = {0};
-    Communicator comm(VERB);
+    Communicator comm(MPI_COMM_WORLD, VERB);
     int rank = comm_rank();
     vector<int> payload(size, rank);
     auto am = comm.make_active_msg(
@@ -340,7 +340,7 @@ TEST(ttor, breakSize)
     const size_t break_size = (1 << 22); // Larger than 1MB but smaller than 2^31
     for(auto s: sizes) {
         if(VERB) printf("Size factor = %e =======================\n", s);
-        Communicator comm(VERB, break_size);
+        Communicator comm(MPI_COMM_WORLD, VERB, break_size);
         int done = 0;
         int expected = 1;
         size_t size = break_size * s;

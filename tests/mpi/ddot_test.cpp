@@ -67,7 +67,7 @@ void ddot(int n_threads, int block_size)
     double ddot_sum = 0.0;
 
     // Initialize the communicator structure
-    Communicator comm(VERB);
+    Communicator comm(MPI_COMM_WORLD, VERB);
 
     // Threadpool
     Threadpool tp(n_threads, &comm, VERB);
