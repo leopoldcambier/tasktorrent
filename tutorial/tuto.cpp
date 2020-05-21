@@ -46,7 +46,7 @@ void tuto_1(int n_threads, int verb)
     };
 
     // Initialize the communicator structure
-    Communicator comm(verb);
+    Communicator comm(MPI_COMM_WORLD, verb);
 
     // Initialize the runtime structures
     Threadpool tp(n_threads, &comm, verb, "WkTuto_" + to_string(rank) + "_");
