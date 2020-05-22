@@ -6,6 +6,7 @@
 #include <mutex>
 #include <iostream>
 #include <map>
+#include <tuple>
 #include <gtest/gtest.h>
 #include <mpi.h>
 
@@ -120,16 +121,22 @@ void cholesky(int n_threads, int n, int N, int p, int q)
             });
 
         // Sends a panel bloc and trigger multiple gemms
-        auto am_gemm = comm.make_active_msg(
-            [&](view<double> &Lij, int& i, int& j, view<int2>& ijs) {
-                Mat.at({i,j}) = Map<MatrixXd>(Lij.data(), n, n);
+        auto am_gemm = comm.make_large_active_msg(
+            [&](int&, int& j, view<int2>& ijs) {
                 for(auto& ij: ijs) {
                     int gi = ij[0];
                     int gj = ij[1];
                     int gk = j;
                     gemm_tf.fulfill_promise({gi,gj,gk});
                 }
+            },
+            [&](int& i, int& j, view<int2>&) {
+                return Mat.at({i,j}).data();
+            },
+            [&](int&, int&, view<int2>&) {
+                return;
             });
+
 
         // potf 
         potf_tf.set_mapping([&](int j) {
@@ -227,7 +234,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                     } else {
                         auto Lijv = view<double>(Mat.at({i,j}).data(), n*n);
                         auto ijsv = view<int2>(p.second.data(), p.second.size());
-                        am_gemm->send(r, Lijv, i, j, ijsv);
+                        am_gemm->send_large(r, Lijv, i, j, ijsv);
                     }
                 } 
             })
@@ -376,6 +383,26 @@ TEST(cholesky, one)
     int q = q_;
     cholesky(n_threads, n, N, p, q);
 }
+
+class ManyTest : public ::testing::Test, public ::testing::WithParamInterface<tuple<int, int, int>> {};
+
+TEST_P(ManyTest, MixedTwoSteps) {
+    int n_threads, n, N;
+    std::tie(n_threads, n, N) = GetParam();
+    cholesky(n_threads, n, N, p_, q_);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    cholesky, ManyTest,
+    ::testing::Combine(
+        ::testing::Values(1, 4),
+        ::testing::Values(1, 5, 10),
+        ::testing::Values(1, 16, 64)
+    ),
+    [](const ::testing::TestParamInfo<ManyTest::ParamType>& info) -> string {
+        return "nt" + to_string(get<0>(info.param)) + "n" + to_string(get<1>(info.param)) + "N" + to_string(get<2>(info.param));
+    }
+);
 
 
 int main(int argc, char **argv)

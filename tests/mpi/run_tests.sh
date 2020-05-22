@@ -8,14 +8,14 @@ fi
 
 echo "Using ${CMD_MPIRUN} as mpirun command"
 
-$CMD_MPIRUN -n 2 ./cholesky 2 5 10 1 2 --gtest_repeat=5 --gtest_break_on_failure
+$CMD_MPIRUN -n 2 ./cholesky 1 1 1 1 2 --gtest_filter=*ManyTest* --gtest_break_on_failure
 
 if [ $? != "0" ]
 then
     exit 1
 fi
 
-$CMD_MPIRUN -n 4 ./cholesky 1 5 32 2 2 --gtest_repeat=5 --gtest_break_on_failure
+$CMD_MPIRUN -n 4 ./cholesky 1 1 1 2 2 --gtest_filter=*ManyTest* --gtest_break_on_failure
 
 if [ $? != "0" ]
 then

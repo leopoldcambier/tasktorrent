@@ -66,17 +66,17 @@ void test(int n_threads, int n, double p) {
     gen.seed(n * p + 2021);
 
     // Assign tasks to ranks
-    vector<int> task_2_rank(n);
+    vector<int> task_2_rank(n, 0);
     std::uniform_int_distribution<> dist1(0, n_ranks-1);
     for(int i = 0; i < n; i++) task_2_rank[i] = dist1(gen);
  
     // Decide if header or header+body
-    vector<int> msg_kind(n);
+    vector<int> msg_kind(n, 0);
     std::uniform_int_distribution<> dist2(0, 1);
-    for(int i = 0; i < n; i++) task_2_rank[i] = dist2(gen);
+    for(int i = 0; i < n; i++) msg_kind[i] = dist2(gen);
 
     // Count in_deps
-    vector<int> in_degree(n);
+    vector<int> in_degree(n, 0);
     for (int k = 0; k < G.outerSize(); ++k) {
         for (SpMat::InnerIterator it(G, k); it; ++it) {
             in_degree[it.row()]++;
