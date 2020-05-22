@@ -121,3 +121,13 @@ do
         exit 1
     fi
 done
+
+for nrank in 1 2 4
+do
+    $CMD_MPIRUN -n $nrank ./random_graph_test --gtest_break_on_failure
+
+    if [ $? != "0" ]
+    then
+        exit 1
+    fi
+done

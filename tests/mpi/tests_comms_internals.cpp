@@ -333,52 +333,58 @@ TEST(mpi, largeProbeGetCount)
     }
 }
 
-TEST(ttor, breakSize)
-{
-    // Don't go too high. This ensures that we try sizes smaller and larger than 2^31 / 16 B.
-    vector<double> sizes = {0.001, 0.01, 0.1, 0.5, 0.9, 1.1, 1.2, 1.3, 1.5, 2.0, 4.0, 5.5, 6.0, 7.8}; 
+class BreakSize : public ::testing::Test, public ::testing::WithParamInterface<tuple<double>> {};
+
+TEST_P(BreakSize, Check) {
+    double s = 0;
+    std::tie(s) = GetParam();
     const size_t break_size = (1 << 22); // Larger than 1MB but smaller than 2^31
-    for(auto s: sizes) {
-        if(VERB) printf("Size factor = %e =======================\n", s);
-        Communicator comm(MPI_COMM_WORLD, VERB, break_size);
-        int done = 0;
-        int expected = 1;
-        size_t size = break_size * s;
-        char* buffer = (char*)calloc(size, sizeof(char));
-        buffer[0] = 'l';
-        buffer[1] = 'e';
-        buffer[size/4] = 'o';
-        buffer[size/2] = 'p';
-        buffer[3*size/4] = 'o';
-        buffer[size-2] = 'l';
-        buffer[size-1] = 'd';
-        auto am = comm.make_active_msg(
-            [&](view<char> &p) {
-                char* buffer = p.data();
-                size_t actual_size = p.size();
-                EXPECT_EQ(size, actual_size);
-                EXPECT_EQ(buffer[0],'l');
-                EXPECT_EQ(buffer[1],'e');
-                EXPECT_EQ(buffer[actual_size/4],'o');
-                EXPECT_EQ(buffer[actual_size/2],'p');
-                EXPECT_EQ(buffer[3*actual_size/4],'o');
-                EXPECT_EQ(buffer[actual_size-2],'l');
-                EXPECT_EQ(buffer[actual_size-1],'d');
-                done++;
-            });
+    if(VERB) printf("Size factor = %e =======================\n", s);
+    Communicator comm(MPI_COMM_WORLD, VERB, break_size);
+    int done = 0;
+    int expected = 1;
+    size_t size = break_size * s;
+    char* buffer = (char*)calloc(size, sizeof(char));
+    buffer[0] = 'l';
+    buffer[1] = 'e';
+    buffer[size/4] = 'o';
+    buffer[size/2] = 'p';
+    buffer[3*size/4] = 'o';
+    buffer[size-2] = 'l';
+    buffer[size-1] = 'd';
+    auto am = comm.make_active_msg(
+        [&](view<char> &p) {
+            char* buffer = p.data();
+            size_t actual_size = p.size();
+            EXPECT_EQ(size, actual_size);
+            EXPECT_EQ(buffer[0],'l');
+            EXPECT_EQ(buffer[1],'e');
+            EXPECT_EQ(buffer[actual_size/4],'o');
+            EXPECT_EQ(buffer[actual_size/2],'p');
+            EXPECT_EQ(buffer[3*actual_size/4],'o');
+            EXPECT_EQ(buffer[actual_size-2],'l');
+            EXPECT_EQ(buffer[actual_size-1],'d');
+            done++;
+        });
 
-        auto v = view<char>(buffer, size);
-        am->send( (comm_rank() + 1) % (comm_size()) , v);
+    auto v = view<char>(buffer, size);
+    am->send( (comm_rank() + 1) % (comm_size()) , v);
 
-        while ( (!comm.is_done()) || (done != expected) ) {
-            comm.progress();
-        }
-        
-        EXPECT_EQ(done, expected);
-        MPI_Barrier(MPI_COMM_WORLD);
-        free(buffer);
+    while ( (!comm.is_done()) || (done != expected) ) {
+        comm.progress();
     }
+    
+    EXPECT_EQ(done, expected);
+    MPI_Barrier(MPI_COMM_WORLD);
+    free(buffer);
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    Ttor, BreakSize,
+    ::testing::Combine(
+        ::testing::Values(0.001, 0.01, 0.1, 0.5, 0.9, 1.1, 1.2, 1.3, 1.5, 2.0, 4.0, 5.5, 6.0, 7.8)
+    )
+);
 
 int main(int argc, char **argv)
 {
