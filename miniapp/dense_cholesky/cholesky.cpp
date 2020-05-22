@@ -206,7 +206,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
     }
 
     // Initialize the communicator structure
-    Communicator comm(verb);
+    Communicator comm(MPI_COMM_WORLD, verb);
 
     // Initialize the runtime structures
     Threadpool tp(n_threads, &comm, verb, "Wk_Chol_" + to_string(rank) + "_");

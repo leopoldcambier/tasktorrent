@@ -68,7 +68,7 @@ auto task_2_rank = [&](int k) {
 4. We create a thread pool, a task flow and a communicator structure:
 ```
 // Initialize the communicator structure
-Communicator comm(verb);
+Communicator comm(MPI_COMM_WORLD, verb);
 
 // Initialize the runtime structures
 Threadpool tp(n_threads, &comm, verb, "WkTuto_" + to_string(rank) + "_");

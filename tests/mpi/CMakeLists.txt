@@ -1,5 +1,5 @@
 find_package(Eigen3 3.3 REQUIRED)
-foreach (test tests_completion cholesky ddot_test tests_comms_internals tests_communicator)
+foreach (test tests_completion cholesky ddot_test tests_comms_internals tests_communicator tests_active_msg_large random_graph_test)
     add_executable(${test} ${test}.cpp)
     target_link_libraries(${test} PRIVATE TaskTorrent)
     target_include_directories(${test} PRIVATE ${EIGEN3_INCLUDE_DIR})

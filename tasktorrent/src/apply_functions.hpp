@@ -20,9 +20,9 @@ constexpr auto apply(F &f, T &t)
 }
 
 template <typename T, typename F>
-void apply_fun(F &&fn, T &t)
+auto apply_fun(F &&fn, T &t)
 {
-    apply(fn, t);
+    return apply(fn, t);
 }
 
 } // namespace ttor

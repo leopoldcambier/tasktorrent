@@ -36,13 +36,17 @@ void tuto_1(int n_threads, int verb)
     indegree[2] = 1;
     indegree[3] = 2;
 
+    // Large data buffer
+    vector<vector<double>> large_data(4);
+    for(int k = 0; k < 4; k++) large_data[k] = vector<double>(1000, (double)rank);
+
     // Map tasks to rank
     auto task_2_rank = [&](int k) {
         return k / n_tasks_per_rank;
     };
 
     // Initialize the communicator structure
-    Communicator comm(verb);
+    Communicator comm(MPI_COMM_WORLD, verb);
 
     // Initialize the runtime structures
     Threadpool tp(n_threads, &comm, verb, "WkTuto_" + to_string(rank) + "_");
@@ -74,6 +78,7 @@ void tuto_1(int n_threads, int verb)
                     // Satisfy remote task
                     // Send k and k_ to rank dest using an MPI non-blocking send.
                     // The type of k and k_ must match the declaration of am above.
+                    // am->send(dest, k, k_);
                     am->send(dest, k, k_);
                 }
             }

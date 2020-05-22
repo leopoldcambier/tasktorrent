@@ -20,18 +20,26 @@ class Communicator;
 /**
  * \brief Base Active Message class
  * 
- * \details An active message is two things:
- *          - A function
- *          - A payload
+ * \details An active message is two (or five) things:
+ *          - A payload (header) to be send from the sender to the receiver rank.
+ *          - A function to be run on the receiver rank, when the header and the (optional) body have arrived
+ *          - [Optional] A payload (body) to be send from the sender to the receiver rank, without any temporary copy.
+ *          - [Optional] When using a body, a function to be run on the receiver rank indicating where to store the body
+ *          - [Optional] When using a body, a function to be run on the _sender_ rank when the send operation has completed and the
+ *                       body can be reused or freed.
+ * 
  *          The function is serialized accross ranks using its ID.
- *          The payload is sent as a buffer of bytes.
+ *          The payload (header) is sent as a buffer of bytes, using an intermediary copy where the payload is serialized. 
+ *          When the send operation returns, the header can be immediately reused.
+ *          The payload (body) is directly send (without any intermadiary copy). 
+ *          The body can only be reused when the completion function has finished.
  */
 class ActiveMsgBase
 {
 
 private:
 
-    int id_;
+    size_t id_;
 
 public:
 
@@ -40,17 +48,37 @@ public:
      * 
      * \return The global ID of the active message
      */
-    int get_id() const;
+    size_t get_id() const;
 
     /**
-     * \brief Deserialize the payload and run the associated function.
+     * \brief Deserialize the (header) payload and run the associated function.
      * 
      * \param[in] payload a pointer to the payload 
      * \param[in] size the number of bytes in the payload
      * 
      * \pre `payload` should be a valid buffer of `size` bytes.
      */
-    virtual void run(char * payload, size_t size) = 0;
+    virtual void run(char *payload, size_t size) = 0;
+
+    /**
+     * \brief Returns the location of where the body should be stored
+     * 
+     * \param[in] payload a pointer to the payload (header)
+     * \param[in] size the number of bytes in the payload (header)
+     * 
+     * \pre `payload` should be a valid buffer of `size` bytes.
+     */
+    virtual char* get_user_buffers(char *payload, size_t size) = 0;
+
+    /**
+     * \brief Function to run when body send operation has completed
+     * 
+     * \param[in] payload a pointer to the payload (header)
+     * \param[in] size the number of bytes in the payload (header)
+     * 
+     * \pre `payload` should be a valid buffer of `size` bytes.
+     */
+    virtual void complete(char *payload, size_t size) = 0;
 
     /**
      * \brief Creates an active message
@@ -59,7 +87,7 @@ public:
      * 
      * \pre `id` should be a unique id for that active message, and should be the same for that active message accross all ranks.
      */
-    ActiveMsgBase(int id);
+    ActiveMsgBase(size_t id);
 
     /**
      * \brief Destroys the active message.
@@ -72,8 +100,9 @@ public:
  * 
  * \details An active message is a pair of
  *          - A function
- *          - A payload
- *          tied to an Communicator instance
+ *          - A payload (header)
+ *          tied to an Communicator instance.
+ *          The active message also had an optional payload (body) and a function to indicate where to store the body on the receiver.
  */
 template <typename... Ps>
 class ActiveMsg : public ActiveMsgBase
@@ -83,7 +112,14 @@ private:
 
     Communicator *comm_;
     std::function<void(Ps &...)> fun_;
-    std::unique_ptr<message> make_message(int dest, Ps &... ps);
+    std::function<char*(Ps &...)> ptr_fun_;
+    std::function<void(Ps &...)> complete_fun_;
+
+    /**
+     * Create the message
+     */
+    template<typename T>
+    std::unique_ptr<message> make_message(int dest, view<T> body, Ps &... ps);
 
 public:
 
@@ -91,6 +127,8 @@ public:
      * \brief Creates an active message.
      * 
      * \param[in] fun the function to be run on the receiver.
+     * \param[in] ptr_fun the function to be run on the receiver, giving the location of where the body should be stored.
+     * \param[in] complete_fun the function to be run on the sender when the body send operation has completed
      * \param[in] comm the communicator instance to use for communications.
      *            The active message does not take ownership of `comm`.
      * \param[in] id the active message unique ID. User is responsible to never 
@@ -100,10 +138,23 @@ public:
      * \pre `comm` should be a valid pointer to a `Communicator`, which should not be destroyed while the
      *      active message is in used.
      */
-    ActiveMsg(std::function<void(Ps &...)> fun, Communicator *comm, int id);
-    
+    template<typename T>
+    ActiveMsg(std::function<void(Ps &...)> fun, 
+              std::function<T*(Ps &...)> ptr_fun, 
+              std::function<void(Ps &...)> complete_fun, 
+              Communicator *comm, size_t id) : ActiveMsgBase(id), comm_(comm), fun_(fun), complete_fun_(complete_fun) {
+        ptr_fun_ = [ptr_fun](Ps &... ps) {
+            char* ptr = (char*)ptr_fun(ps...);
+            return ptr;
+        };
+    }
+
     virtual void run(char *payload_raw, size_t size);
     
+    virtual char* get_user_buffers(char *payload_raw, size_t size);
+
+    virtual void complete(char *payload_raw, size_t size);
+
     /**
      * \brief Immediately sends payload to destination.
      * 
@@ -112,6 +163,8 @@ public:
      * 
      * \param[in] dest the destination rank
      * \param[in] ps the payload
+     * 
+     * \pre `dest != ttor::comm_rank()`
      */
     void blocking_send(int dest, Ps &... ps);
     
@@ -126,18 +179,34 @@ public:
     void send(int dest, Ps &... ps);
 
     /**
-     * \brief Queue the payload to be send later.
+     * \brief Queue the payload to be send later, with an accompanying body
      * 
      * \details This is thread-safe and can be called by any thread.
      * 
-     * \param[in] dest the destination rank.
-     * \param[in] name the name to associate to this send operation (for logging purposes).
-     * \param[in] ps the payload.
+     * \param[in] dest the destination rank
+     * \param[in] body a view to the body
+     * \param[in] ps the payload
      */
-    void named_send(int dest, std::string name, Ps &... ps);
+    template<typename T>
+    void send_large(int dest, view<T> body, Ps &... ps);
 
     /**
-     * \brief Destroys the active message
+     * \brief Immediately send the payload, with an accompanying body
+     * 
+     * \details The function returns when the payload (the header, not the body) has been sent.
+     *          This is not thread safe and can only be called by the MPI master thread.
+     * 
+     * \param[in] dest the destination rank
+     * \param[in] body a view to the body
+     * \param[in] ps the payload
+     * 
+     * \pre `dest != ttor::comm_rank()`
+     */
+    template<typename T>
+    void blocking_send_large(int dest, view<T> body, Ps &... ps);
+
+    /**
+     * \brief Destroys the ActiveMsg
      */
     virtual ~ActiveMsg();
 };
@@ -153,47 +222,85 @@ public:
 namespace ttor {
 
 template <typename... Ps>
-ActiveMsg<Ps...>::ActiveMsg(std::function<void(Ps &...)> fun, Communicator *comm, int id) : ActiveMsgBase(id), comm_(comm), fun_(fun) {}
-
-template <typename... Ps>
 void ActiveMsg<Ps...>::run(char *payload_raw, size_t size)
 {
-    Serializer<int, Ps...> s;
+    // ID, body size, header args...
+    Serializer<size_t, size_t, Ps...> s;
     auto tup = s.read_buffer(payload_raw, size);
-    assert(get_id() == std::get<0>(tup));
-    auto args = tail(tup);
+    assert(std::get<0>(tup) == get_id());
+    assert(std::get<1>(tup) >= 0);
+    auto args = tail(tail(tup));
     apply_fun(fun_, args);
 }
 
 template <typename... Ps>
-std::unique_ptr<message> ActiveMsg<Ps...>::make_message(int dest, Ps &... ps)
+void ActiveMsg<Ps...>::complete(char *payload_raw, size_t size)
 {
-    Serializer<int, Ps...> s;
-    int id = get_id();
-    size_t size = s.size(id, ps...);
-    std::unique_ptr<message> m = comm_->make_active_message(dest, size);
-    s.write_buffer(m->buffer.data(), m->buffer.size(), id, ps...);
+    // ID, body size, header args...
+    Serializer<size_t, size_t, Ps...> s;
+    auto tup = s.read_buffer(payload_raw, size);
+    assert(std::get<0>(tup) == get_id());
+    assert(std::get<1>(tup) >= 0);
+    auto args = tail(tail(tup));
+    apply_fun(complete_fun_, args);
+}
+
+template <typename... Ps>
+char* ActiveMsg<Ps...>::get_user_buffers(char *payload_raw, size_t size)
+{
+    // ID, body size, header args...
+    Serializer<size_t, size_t, Ps...> s;
+    auto tup = s.read_buffer(payload_raw, size);
+    assert(std::get<0>(tup) == get_id());
+    assert(std::get<1>(tup) >= 0);
+    auto args = tail(tail(tup));
+    return apply_fun(ptr_fun_, args);
+}
+
+template <typename... Ps>
+template <typename T>
+std::unique_ptr<message> ActiveMsg<Ps...>::make_message(int dest, view<T> body, Ps &... ps)
+{
+    // ID, body size, header args...
+    Serializer<size_t, size_t, Ps...> s;
+    size_t id = get_id();
+    size_t body_size = body.size() * sizeof(T);
+    size_t header_size = s.size(id, body_size, ps...);
+    std::unique_ptr<message> m = comm_->make_active_message(dest, header_size);
+    s.write_buffer(m->header_buffer.data(), m->header_buffer.size(), id, body_size, ps...);
+    m->body_send_buffer = (char*)body.data();
+    m->body_size = body_size;
     return m;
 }
 
 template <typename... Ps>
 void ActiveMsg<Ps...>::blocking_send(int dest, Ps &... ps)
 {
-    auto m = make_message(dest, ps...);
-    comm_->blocking_send(move(m));
+    view<char> body(nullptr, 0);
+    blocking_send_large(dest, body, ps...);
 }
 
 template <typename... Ps>
 void ActiveMsg<Ps...>::send(int dest, Ps &... ps)
 {
-    named_send(dest, "_", ps...);
+    view<char> body(nullptr, 0);
+    send_large(dest, body, ps...);
 }
 
 template <typename... Ps>
-void ActiveMsg<Ps...>::named_send(int dest, std::string name, Ps &... ps)
+template <typename T>
+void ActiveMsg<Ps...>::send_large(int dest, view<T> body, Ps &... ps)
 {
-    auto m = make_message(dest, ps...);
-    comm_->queue_named_message(name, move(m));
+    auto m = make_message(dest, body, ps...);
+    comm_->queue_message(move(m));
+}
+
+template <typename... Ps>
+template <typename T>
+void ActiveMsg<Ps...>::blocking_send_large(int dest, view<T> body, Ps &... ps)
+{
+    auto m = make_message(dest, body, ps...);
+    comm_->blocking_send(move(m));
 }
 
 template <typename... Ps>

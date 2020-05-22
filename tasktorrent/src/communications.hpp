@@ -8,6 +8,7 @@
 #include <memory>
 #include <functional>
 #include <list>
+#include <map>
 
 #include <mpi.h>
 
@@ -18,27 +19,6 @@
 
 namespace ttor
 {
-
-/**
- * \brief The rank within the communicator
- * 
- * \return The MPI rank of the current processor
- */
-int comm_rank();
-
-/**
- * \brief The size of the communicator
- * 
- * \return The number of MPI ranks within the communicator
- */
-int comm_size();
-
-/**
- * \brief This processors' name
- * 
- * \return The hostname of this processor
- */
-std::string processor_name();
 
 class ActiveMsgBase;
 
@@ -74,41 +54,103 @@ private:
 
     const static size_t mega = (1 << 20);
     const static size_t max_int_size = static_cast<size_t>(std::numeric_limits<int>::max());
-
+    const MPI_Comm comm;
+    const int my_rank;
     const int verb;
     Logger *logger;
     bool log;
     std::vector<std::unique_ptr<ActiveMsgBase>> active_messages;
-    std::atomic<int> messages_queued; // queued messages
+    std::atomic<int> messages_queued;    // queued messages
     std::atomic<int> messages_processed; // received and processed messages
     MPI_Datatype MPI_MEGABYTE; // used to send large message larger than 4GB
+    const size_t break_msg_size; // really mainly used for testing, where we make message artificially smaller, so we can actually test them
 
-    /** Small messages                        
-     *  This class maintains three lists to handle "small" messages, for which we allocate memory internally.
-     *  messages_rdy is a list containing all messages "ready" to be send (memory allocated and buffer ready).
-     *      Any thread can add to this list. messages_rdy_mtx protects access.
-     *  messages_Isent is a list containing all messages sent (Isent called, message pending). This is only manipulated by the master thread
-     *  messages_Ircvd is a list containing all messages recv (Irecv called, message pending). This is only manipulated by the master thread
+    /**
+     * We have different channels for different kinds of messages
+     *
+     *  Two-steps message: Header           0 (count of 1 = 1 B)
+     *                                      1 (count of 1 = 1 MB)
+     *                     Body             2 (if header tag = 0) 
+     *                                      3 (if header tag = 1)
+     * 
+     * The header Size (using B or MB) is encoded in the tag using 0 or 1
+     * The bodies Size are encoded in the header, but use tag 2 or 3 depending on the header tag
+     * 
+     * We need those four tags to create different communication channels.
+     * MPI messages are ordered between source and destination
+     * With those tags we make sure that the MPI_Irecv and MPI_Isend are properly matching
      */
-    std::list<std::unique_ptr<message>> messages_rdy;
+
+    /**
+     * Where we store temporary data
+     */
+
+    // Sender side
     std::mutex messages_rdy_mtx;
+    // The messages pushed by the compute threads, protected by the above mutex
+    std::list<std::unique_ptr<message>> messages_rdy;
+    // The messages for which we called MPI_Isend
     std::list<std::unique_ptr<message>> messages_Isent;
-    std::list<std::unique_ptr<message>> messages_Ircvd;
+
+    // Receiver side
+    // The headers on which we called MPI_Irecv
+    std::list<std::unique_ptr<message>> headers_Ircvd;
+    // The bodies for which we called MPI_Irecv 
+    std::list<std::unique_ptr<message>> bodies_Ircvd;
 
     /** 
      * Messages management Isend/Irecv
      */
-    void Isend_message(const std::unique_ptr<message> &m);
-    // Loop through the list of messages to send in the task flow.
+
+    /**
+     * Sender size
+     */
+
+    // Immediately Isend the message
+    void Isend_header_body(std::unique_ptr<message> &m);
+
+    // Send to myself, copies body, run AM and completion
+    void self_Isend_header_body_process_complete(std::unique_ptr<message> &m);
+
+    // Loop through the list of messages sent in by the task flow.
     // Isend all the messages in the ready queue.
     void Isend_queued_messages();
+
     // Test to see whether the Isent has completed or not
+    // Free those Isent
     void test_Isent_messages();
-    // Probe for message received
-    // If probe is true, then Irecv the message
-    bool probe_Irecv_message(std::unique_ptr<message> &m);
-    // Run all lpcs that have been received
-    void process_Ircvd_messages();
+
+    /**
+     * Receiver side
+     */
+    
+    // Probe for a message
+    // If probe is true, then Irecv the header and returns true
+    // Otherwise, returns false
+    bool probe_Irecv_header(std::unique_ptr<message> &m);
+
+    // Process the header
+    void process_header(std::unique_ptr<message> &m);
+    
+    // Irecv the body
+    void Irecv_body(std::unique_ptr<message> &m);
+
+    // Process message
+    void process_body(std::unique_ptr<message> &m);
+
+    // Run the complete function when the body has been sent
+    void process_completed_body(std::unique_ptr<message> &m);
+
+    // Probe for incoming header
+    // Starts MPI_Irecv for all probed headers
+    void probe_Irecv_headers();
+
+    // Process ready headers
+    // If possible (taking ordering of MPI messages into account), Irecv their bodies
+    void test_process_Ircvd_headers_Irecv_bodies();
+
+    // Test completion of the bodies
+    void test_process_bodies();
 
     /**
      * Active Message have access to those functions
@@ -116,10 +158,18 @@ private:
     template <typename... Ps>
     friend class ActiveMsg;
 
-    /** 
-     * Process message (only Active message management so far)
+    /**
+     * Blocking-send a message
+     * Should be called from thread that called MPI_Init_Thread
      */
-    void process_message(const std::unique_ptr<message> &m);
+    void blocking_send(std::unique_ptr<message> m);
+
+    /**
+     * Queue a message in RPCComm internal message queue
+     * Message will be Isent later
+     * Thread-safe
+     */
+    void queue_message(std::unique_ptr<message> m);
 
     /**
      * Queue a message in the internal message queue. Name is used to annotate the message. Message will be Isent later.
@@ -127,42 +177,23 @@ private:
      * \param name the message name
      * \param m a message
      */
-    void queue_named_message(std::string name, std::unique_ptr<message> m);
-
-    /**
-     * Queue a message in RPCComm internal message queue
-     * Message will be Isent later
-     * Thread-safe
-     * \param m a message
-     */
-    void queue_message(std::unique_ptr<message> m);
-
-    /**
-     * Blocking-send a message
-     * Should be called from thread that called MPI_Init_Thread
-     * \param m a message
-     */
-    void blocking_send(std::unique_ptr<message> m);
-
-    /**
-     * Create a message of a given size to dest
-     * Message can later be filled with the data to be sent
-     */
-    std::unique_ptr<message> make_active_message(int dest, size_t size);
+    std::unique_ptr<message> make_active_message(int dest, size_t header_size);
 
 public:
 
     /**
      * \brief Creates an Communicator.
      * 
+     * \param[in] comm the MPI communicator to use in communications.
      * \param[in] verb the verbose level: 0 = no printing. > 0 = more and more printing.
+     * \param[in] break_msg_size the size at which to break large messages into MPI messages. Mainly used for testing.
      * 
      * \pre `verb >= 0`.
      */
-    Communicator(int verb = 0);
+    Communicator(MPI_Comm comm = MPI_COMM_WORLD, int verb_ = 0, size_t break_msg_size_ = Communicator::max_int_size);
 
     /**
-     * \brief Creates an active message tied to function fun..
+     * \brief Creates an active message tied to function fun.
      * 
      * \param[in] fun the active function to be run on the receiver rank.
      * 
@@ -170,6 +201,20 @@ public:
      */
     template <typename... Ps>
     ActiveMsg<Ps...> *make_active_msg(std::function<void(Ps &...)> fun);
+
+    /**
+     * \brief Creates an active message tied to function fun and body pointer function fun_ptr.
+     * 
+     * \param[in] fun the active function to be run on the receiver rank.
+     * \param[in] fun_ptr the active function to be run on the receiver rank to retreive the body buffer location.
+     * \param[in] fun_complete function to be run on the sender when the send operation has complete.
+     * 
+     * \return A pointer to the active message. The active message is stored in `this` and should not be freed by the user.
+     */
+    template <typename T, typename... Ps>
+    ActiveMsg<Ps...> *make_large_active_msg(std::function<void(Ps &...)> fun, 
+                                            std::function<T*(Ps &...)> fun_ptr,
+                                            std::function<void(Ps &...)> fun_complete);
 
     /**
      * \brief Creates an active message tied to function fun.
@@ -180,6 +225,20 @@ public:
      */
     template <typename F>
     typename ActiveMsg_type<decltype(&F::operator())>::type *make_active_msg(F fun);
+
+    /**
+     * \brief Creates an active message tied to function fun and body pointer function fun_ptr.
+     * 
+     * \param[in] fun the active function to be run on the receiver rank.
+     * \param[in] fun_ptr the active function to be run on the receiver rank to retreive the body buffer location.
+     * \param[in] fun_complete function to be run on the sender when the send operation has complete.
+     * 
+     * \return A pointer to the active message. The active message is stored in `this` and should not be freed by the user.
+     */
+    template <typename F, typename G, typename H>
+    typename ActiveMsg_type<decltype(&F::operator())>::type *make_large_active_msg(F fun,
+                                                                                   G fun_ptr,
+                                                                                   H fun_complete);
 
     /**
      * \brief Set the logger.
@@ -232,6 +291,20 @@ public:
      * \return The number of queued active message.
      */
     int get_n_msg_queued();
+
+    /**
+     * \brief The rank within the communicator
+     * 
+     * \return The MPI rank of the current processor
+     */
+    int comm_rank();
+
+    /**
+     * \brief The size of the communicator
+     * 
+     * \return The number of MPI ranks within the communicator
+     */
+    int comm_size();
 };
 
 } // namespace ttor
@@ -246,8 +319,23 @@ namespace ttor {
 template <typename... Ps>
 ActiveMsg<Ps...> *Communicator::make_active_msg(std::function<void(Ps &...)> fun)
 {
-    auto am = std::make_unique<ActiveMsg<Ps...>>(fun, this, active_messages.size());
-    ActiveMsg<Ps...> *am_ = am.get();
+    std::function<char*(Ps &...)> fun_ptr = [](Ps &...) {
+        return nullptr;
+    };
+    std::function<void(Ps &...)> fun_complete = [](Ps &...) {
+        return;
+    };
+    return make_large_active_msg(fun, fun_ptr, fun_complete);
+}
+
+// Create large active messages
+template <typename T, typename... Ps>
+ActiveMsg<Ps...> *Communicator::make_large_active_msg(std::function<void(Ps &...)> fun, 
+                                                      std::function<T*(Ps &...)> fun_ptr,
+                                                      std::function<void(Ps &...)> fun_complete)
+{
+    auto am = std::make_unique<ActiveMsg<Ps...>>(fun, fun_ptr, fun_complete, this, active_messages.size());
+    auto am_ = am.get();
     active_messages.push_back(move(am));
 
     if (verb > 0)
@@ -264,6 +352,15 @@ typename ActiveMsg_type<decltype(&F::operator())>::type *Communicator::make_acti
 {
     auto fun = GetStdFunction(f);
     return make_active_msg(fun);
+}
+
+template <typename F, typename G, typename H>
+typename ActiveMsg_type<decltype(&F::operator())>::type *Communicator::make_large_active_msg(F f, G g, H h)
+{
+    auto fun = GetStdFunction(f);
+    auto fun_ptr = GetStdFunction(g);
+    auto fun_complete = GetStdFunction(h);
+    return make_large_active_msg(fun, fun_ptr, fun_complete);
 }
 
 } // namespace ttor

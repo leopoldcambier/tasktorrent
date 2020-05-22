@@ -6,6 +6,7 @@
 #include <mutex>
 #include <iostream>
 #include <map>
+#include <tuple>
 #include <gtest/gtest.h>
 #include <mpi.h>
 
@@ -18,7 +19,8 @@ using namespace ttor;
 typedef array<int, 2> int2;
 typedef array<int, 3> int3;
 
-int VERB = 1;
+int VERB = 0;
+bool LOG = false;
 int n_threads_ = 4;
 int n_ = 100;
 int N_ = 20;
@@ -30,7 +32,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
     // MPI info
     const int rank = comm_rank();
     const int n_ranks = comm_size();
-    printf("[%d] Hello from %s\n", comm_rank(), processor_name().c_str());
+    if(VERB) printf("[%d] Hello from %s\n", comm_rank(), processor_name().c_str());
 
     assert(p * q == n_ranks);
     assert(p >= 1);
@@ -92,7 +94,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
     // Factorize
     {
         // Initialize the communicator structure
-        Communicator comm(VERB);
+        Communicator comm(MPI_COMM_WORLD, VERB);
 
         // Threadpool
         Threadpool tp(n_threads, &comm, VERB, "[" + to_string(rank) + "]_");
@@ -103,8 +105,10 @@ void cholesky(int n_threads, int n, int N, int p, int q)
         // Log
         DepsLogger dlog(1000000);
         Logger log(1000000);
-        tp.set_logger(&log);
-        comm.set_logger(&log);
+        if(LOG) {
+            tp.set_logger(&log);
+            comm.set_logger(&log);
+        }
         
         // Active messages
         // Sends a pivot and trigger multiple trsms in one columns
@@ -117,16 +121,22 @@ void cholesky(int n_threads, int n, int N, int p, int q)
             });
 
         // Sends a panel bloc and trigger multiple gemms
-        auto am_gemm = comm.make_active_msg(
-            [&](view<double> &Lij, int& i, int& j, view<int2>& ijs) {
-                Mat.at({i,j}) = Map<MatrixXd>(Lij.data(), n, n);
+        auto am_gemm = comm.make_large_active_msg(
+            [&](int&, int& j, view<int2>& ijs) {
                 for(auto& ij: ijs) {
                     int gi = ij[0];
                     int gj = ij[1];
                     int gk = j;
                     gemm_tf.fulfill_promise({gi,gj,gk});
                 }
+            },
+            [&](int& i, int& j, view<int2>&) {
+                return Mat.at({i,j}).data();
+            },
+            [&](int&, int&, view<int2>&) {
+                return;
             });
+
 
         // potf 
         potf_tf.set_mapping([&](int j) {
@@ -224,7 +234,7 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                     } else {
                         auto Lijv = view<double>(Mat.at({i,j}).data(), n*n);
                         auto ijsv = view<int2>(p.second.data(), p.second.size());
-                        am_gemm->send(r, Lijv, i, j, ijsv);
+                        am_gemm->send_large(r, Lijv, i, j, ijsv);
                     }
                 } 
             })
@@ -290,16 +300,18 @@ void cholesky(int n_threads, int n, int N, int p, int q)
                 cout << "Time : " << elapsed(t0, t1) << endl;
             }
 
-            std::ofstream logfile;
-            string filename = "cholesky_"+ to_string(n_ranks)+".log."+to_string(rank);
-            logfile.open(filename);
-            logfile << log;
-            logfile.close();
+            if(LOG) {
+                std::ofstream logfile;
+                string filename = "cholesky_"+ to_string(n_ranks)+".log."+to_string(rank);
+                logfile.open(filename);
+                logfile << log;
+                logfile.close();
+            }
     }
 
     // Gather everything on rank 0 and test for accuracy
     {
-        Communicator comm(VERB);
+        Communicator comm(MPI_COMM_WORLD, VERB);
         Threadpool tp(n_threads, &comm, VERB);
         Taskflow<int2> gather_tf(&tp, VERB);
         auto am_gather = comm.make_active_msg(
@@ -371,6 +383,26 @@ TEST(cholesky, one)
     int q = q_;
     cholesky(n_threads, n, N, p, q);
 }
+
+class ManyTest : public ::testing::Test, public ::testing::WithParamInterface<tuple<int, int, int>> {};
+
+TEST_P(ManyTest, MixedTwoSteps) {
+    int n_threads, n, N;
+    std::tie(n_threads, n, N) = GetParam();
+    cholesky(n_threads, n, N, p_, q_);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    cholesky, ManyTest,
+    ::testing::Combine(
+        ::testing::Values(1, 4),
+        ::testing::Values(1, 5, 10),
+        ::testing::Values(1, 16, 64)
+    ),
+    [](const ::testing::TestParamInfo<ManyTest::ParamType>& info) -> string {
+        return "nt" + to_string(get<0>(info.param)) + "n" + to_string(get<1>(info.param)) + "N" + to_string(get<2>(info.param));
+    }
+);
 
 
 int main(int argc, char **argv)

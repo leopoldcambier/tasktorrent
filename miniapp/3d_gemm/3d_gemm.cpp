@@ -160,7 +160,7 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     /**
      * Initialize the runtime structures
      **/
-    ttor::Communicator comm(verb);
+    ttor::Communicator comm(MPI_COMM_WORLD, verb);
     ttor::Threadpool tp(n_threads, &comm, verb, "Wk_Gemm_" + to_string(rank) + "_");
 
     // send is indexed by int2, which are the sub blocks
@@ -437,7 +437,7 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
         int n_received = 0;
         int n_expected = (rank == 0 ? n * n * n_ranks_1d * n_ranks_1d : 0);
         Eigen::MatrixXd C_test = Eigen::MatrixXd::Zero(N, N);
-        ttor::Communicator comm(verb);
+        ttor::Communicator comm(MPI_COMM_WORLD, verb);
         auto am = comm.make_active_msg([&](ttor::view<double>& A, int& rank_i_from, int& rank_j_from, int& sub_i, int& sub_j){
             C_test.block(rank_i_from * Nr + sub_i * Nt, rank_j_from * Nr + sub_j * Nt, Nt, Nt) = make_from_view(A, Nt);
             n_received++;

@@ -4,7 +4,9 @@
 #ifndef TTOR_SHARED
 
 #include <mpi.h>
-#include <stdio.h>
+#include <cstdio>
+#include <cstdlib>
+#include <string>
 
 #define TASKTORRENT_MPI_CHECK( call ) do { \
     int err = call; \
@@ -14,6 +16,35 @@
         MPI_Finalize(); \
         exit(1); \
     }   } while(0)
+
+namespace ttor {
+
+/**
+ * Return this processor's rank within comm
+ * 
+ * \param[in] comm the MPI communicator
+ * 
+ * \return the rank of this processor within comm
+ */
+int comm_rank(MPI_Comm comm = MPI_COMM_WORLD);
+
+/**
+ * Return comm's size
+ * 
+ * \param[in] comm the MPI communicator
+ * 
+ * \return the number of processors in comm
+ */
+int comm_size(MPI_Comm comm = MPI_COMM_WORLD);
+
+/**
+ * Return the hostname
+ * 
+ * \return the hostname of this processor
+ */
+std::string processor_name();
+
+}
 
 #endif
 

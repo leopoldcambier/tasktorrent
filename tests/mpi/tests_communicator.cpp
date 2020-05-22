@@ -39,7 +39,7 @@ TEST(ttor, miniV0)
 
     Logger log(1);
 
-    Communicator comm(VERB);
+    Communicator comm(MPI_COMM_WORLD, VERB);
 
     Threadpool tp(n_threads, &comm, VERB, "WkMini_v0_" + to_string(rank) + "_");
     Taskflow<int> tf(&tp, VERB);
@@ -95,7 +95,7 @@ TEST(ttor, miniV1)
 
     Logger log(1);
 
-    Communicator comm(VERB);
+    Communicator comm(MPI_COMM_WORLD, VERB);
 
     Threadpool tp(n_threads, &comm, VERB, "WkMini_v1_" + to_string(rank) + "_");
     Taskflow<int> tf(&tp, VERB);
@@ -154,7 +154,7 @@ void test_ttor_mini(int n_tasks_per_rank, bool self)
 
     Logger log(1000000);
 
-    Communicator comm(VERB);
+    Communicator comm(MPI_COMM_WORLD, VERB);
 
     Threadpool tp(n_threads, &comm, VERB, "WkMini_" + to_string(rank) + "_");
     taskflow_t tf(&tp, VERB);
@@ -260,7 +260,7 @@ TEST(ttor, critical1)
 
     Logger log(1000000);
 
-    Communicator comm(VERB);
+    Communicator comm(MPI_COMM_WORLD, VERB);
 
     Threadpool tp(n_threads, &comm, VERB, "WkCritical_1_" + to_string(rank) + "_");
     Taskflow<int> tf_0(&tp, VERB);
@@ -332,7 +332,7 @@ TEST(ttor, critical2)
 
     Logger log(1000000);
 
-    Communicator comm(VERB);
+    Communicator comm(MPI_COMM_WORLD, VERB);
 
     Threadpool tp(n_threads, &comm, VERB, "WkCritical_2_" + to_string(rank) + "_");
     Taskflow<int> tf_0(&tp, VERB);
@@ -408,7 +408,7 @@ void test_sparse_graph(int n_tasks_per_rank, bool self)
 
     Logger log(1000000);
 
-    Communicator comm(VERB);
+    Communicator comm(MPI_COMM_WORLD, VERB);
 
     Threadpool tp(n_threads, &comm, VERB, "WkSparseDAG_" + to_string(rank) + "_");
     Taskflow<int> tf(&tp, VERB);
@@ -539,7 +539,7 @@ TEST(ttor, ring)
     const int n_rounds = 8;
     const int expected = n_rounds * (rank > 0 ? rank - 1 : n_ranks - 1);
 
-    Communicator comm(VERB);
+    Communicator comm(MPI_COMM_WORLD, VERB);
 
     Threadpool tp(2, &comm, VERB, "WkRing_" + to_string(rank) + "_");
 
@@ -630,7 +630,7 @@ TEST(ttor, pingpong)
     const int expected = n_rounds * (rank + other);
     const int expected_lpcs = n_rounds;
 
-    Communicator comm(VERB);
+    Communicator comm(MPI_COMM_WORLD, VERB);
 
     Threadpool tp(n_threads, &comm, VERB, "Wk_" + to_string(rank) + "_");
     Taskflow<int> ppf(&tp, VERB);
@@ -674,6 +674,53 @@ TEST(ttor, pingpong)
     ASSERT_EQ(n_lpcs, expected_lpcs);
 
     MPI_Barrier(MPI_COMM_WORLD); // This is required in case we call this function repeatedly
+}
+
+// This checks that using a custom communicator
+// allows to interleave MPI comms from different communicators
+TEST(ttor, newCommunicator) {
+    MPI_Comm new_world;
+    MPI_Comm_dup(MPI_COMM_WORLD, &new_world);
+
+    const int n_ranks = comm_size(MPI_COMM_WORLD);
+    const int rank = comm_rank(MPI_COMM_WORLD);
+    const int other = (rank + 1) % n_ranks;
+    int expected = 1;
+    int done = 0;
+
+    EXPECT_EQ(n_ranks, comm_size(new_world));
+    EXPECT_EQ(rank,    comm_rank(new_world));
+
+    Communicator comm(new_world, VERB);
+    auto am = comm.make_active_msg([&]() { done++; });
+
+    EXPECT_EQ(comm.comm_size(), n_ranks);
+    EXPECT_EQ(comm.comm_rank(), rank);
+
+    MPI_Request req_0, req_1;
+    int send = 3;
+    int recv = 0;
+    MPI_Isend(&send, 1, MPI_INT, other, 0, MPI_COMM_WORLD, &req_0);
+    am->send(other);
+
+    {
+        int send_2 = 1;
+        int recv_2 = 0;
+        MPI_Allreduce(&send_2, &recv_2, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+        EXPECT_EQ(recv_2, n_ranks);
+    }
+
+    while ( (!comm.is_done()) || (done != expected) ) {
+        comm.progress();
+    }
+
+    MPI_Irecv(&recv, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &req_1);
+    MPI_Wait(&req_0, MPI_STATUS_IGNORE);
+    MPI_Wait(&req_1, MPI_STATUS_IGNORE);
+    EXPECT_EQ(recv, 3);
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Comm_free(&new_world);
 }
 
 int main(int argc, char **argv)
