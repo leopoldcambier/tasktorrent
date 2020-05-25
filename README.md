@@ -24,7 +24,7 @@ Nodes communicate through active messages. These are messages that contain data 
 But let's start with a simple example to illustrate the syntax and logic of TaskTorrent.
 
 1. First, we begin with some basic MPI-like information
-```
+```cpp
 const int rank = comm_rank();
 const int n_ranks = comm_size();
 if (n_ranks < 2)
@@ -36,7 +36,7 @@ printf("Rank %d hello from %s\n", rank, processor_name().c_str());
 ```
 
 2. Then, referring to each task by an integer from 0 to 3, we declare some information regarding their dependencies
-```
+```cpp
 // Number of tasks
 int n_tasks_per_rank = 2;
 
@@ -58,7 +58,7 @@ This is not in general how dependencies would be computed since this approach do
 Note that node 0 and 2 are listed as having 1 dependency. This is because they need to be started or "seeded" by the main thread. This is done by calling `tf.fulfill_promise(0 /* or 2 */)` as shown below. All tasks are therefore started either: by other tasks, or by the main thread when the computation starts. The indegree for all tasks that need to be run must be greater or equal to 1 as a result.
 
 3. We then create a function mapping tasks to ranks
-```
+```cpp
 // Map tasks to rank
 auto task_2_rank = [&](int k) {
     return k / n_tasks_per_rank;
@@ -66,7 +66,7 @@ auto task_2_rank = [&](int k) {
 ```
 
 4. We create a thread pool, a task flow and a communicator structure:
-```
+```cpp
 // Initialize the communicator structure
 Communicator comm(MPI_COMM_WORLD, verb);
 
@@ -80,7 +80,7 @@ Taskflow<int> tf(&tp, verb);
 The task flow `tf` needs to point to the thread pool `&tp` that will be executing the tasks the local node.
   
 5. We create a remote procedure call. This registers a function that will be executed on the receiving rank using the provided arguments, which are sent over the network using MPI (the MPI calls are all made by the TaskTorrent library). All MPI send and receive calls made by the library are non-blocking.
-```
+```cpp
 // Create active message
 auto am = comm.make_active_msg(
     [&](int &k, int &k_) {
@@ -91,7 +91,7 @@ auto am = comm.make_active_msg(
 The local structure `tf` is accessed by reference capture (`[&]`). Note that since this function is run on the remote node, in this call, we need to understand that `tf` refers to the variable `tf` on the remote node, not on the local node that issues the active message.
   
 6. We declare the tasks using a parametrized task-graph model. 
-```
+```cpp
 // Define the task flow
 tf.set_task([&](int k) {
         printf("Task %d is now running on rank %d\n", k, comm_rank());
@@ -151,14 +151,14 @@ The following functions may be defining optionally:
  * `set_priority(fun)` where `fun` is a `double(K)` function, returning the priority of the task. Higher priority tasks are run first. The default priority is 0. 
 
  The line `am->send(dest, k, k_)` sends the data from the remote rank to rank `dest`. The data being sent are two integers, `k`, and `k_`. Arbitrary data can be included in `am->send`. The types of these data must match the declaration of the active message:
- ```
+ ```cpp
 auto am = comm.make_active_msg(
     [&](int &k, int &k_) {
         ...
     });
 ```
 The variables `k` and `k_` in `am->send(dest, k, k_)` correspond to the arguments `[&](int &k, int &k_)` in the lambda function above. The library will take variables `k` and `k_` on the remote rank, send the data over the network to rank `dest`, and call the active message using these data on rank `dest`. Note that the lambda function associated with the active message
-```
+```cpp
 [&](int &k, int &k_) {...}
 ```
 is run by the main thread of the program through the `comm` object defined previously. Worker threads that compute the DAG tasks are not involved in processing active messages. Consequently, TaskTorrent assumes that relatively few flops need to be performed in each active message since limited computational resources are assigned to running them.
@@ -168,7 +168,7 @@ The active message can be used to fulfill dependencies but can also be used for 
 It is possible to use `am->send(dest, k, k_)` for a processor to send a message to itself (i.e., `dest == this_processor_rank`). This may be useful in some rare cases. It is in general more efficient to simply run a function using the current worker thread. For example, in this program we simply call `tf.fulfill_promise(k_)` on the current rank. 
 
 However, calling `am->send(dest, k, k_)` can simplify the code since we do not have to distinguish whether `dest` is the local or a remote processor. In both cases, we can simply call `m->send(dest, k, k_)`. For example, a piece code equivalent to the one above would be:
-```
+```cpp
 [...]
 .set_fulfill([&](int k) {
     for (int k_ : out_deps[k]) // outgoing dependency edges
@@ -181,7 +181,7 @@ However, calling `am->send(dest, k, k_)` can simplify the code since we do not h
 ```
 There are also cases where it is advantageous to run this code using `am->send` and an active message. In that case, no message is actually sent. Instead the main program thread uses the data provided in `am->send` and runs the active message on the local processor. Note that this is not visible to the user. The `comm` object is responsible for this. The main difference is therefore that the body of the active message (in this example `tf.fulfill_promise(k_)`) is run by the main program thread, which is in charge of the MPI communications (using the `comm` object), instead of a worker thread. This is a small difference but it is important when, for example, a reduction is performed inside the active message, for example `x += ...`. Consider the following fictitious example:
 
-```
+```cpp
 int x;
 auto am = comm.make_active_msg(
     [&](int &k_) {
@@ -214,7 +214,7 @@ tf.set_task([&](int k) {})
 This code has a race condition because the main thread running the active message performs an update on `x` while a worker thread may concurrently do the same thing. However, if both operations are done through an active message, all `x` updates are done using the same thread (the main program thread) and therefore the race condition is eliminated.
 
 The following code no longer has a race condition because all `x` updates are done through an active message:
-```
+```cpp
 int x;
 auto am = comm.make_active_msg(
     [&](int &k_) {
@@ -240,7 +240,7 @@ tf.set_task([&](int k) {})
 In conclusion, this example shows that, in some rare cases, it may be useful to use active messages even to run a task on the local processor.
 
 7. Finally, the initial tasks are "seeded" (i.e., started and sent for execution to the thread pool). The threads will run until: (1) all tasks in the DAG (the direct acyclic graph that defines all the tasks and their dependencies) have been executed, (2) and all communications are complete (i.e., the non-blocking MPI send and receive are complete). Both conditions need to be satisfied globally, across all nodes, before the threads can return.
-```
+```cpp
 // Seed initial tasks
 if (rank == task_2_rank(0))
 {
@@ -252,7 +252,7 @@ else if (rank == task_2_rank(2))
 }
 ```
 Then run until completion:
-```
+```cpp
 tp.join();
 ```
 The function [join()](https://en.cppreference.com/w/cpp/thread/thread/join) is similar to the C++ `join()` function and will block until all worker threads return. `join()` contains a synchronization point across all nodes. Note that this synchronization point exists before the threads actually return. To be specific, this synchronization point occurs when rank 0 notifies all threads across all nodes that the DAG has been completely executed. The synchronization point does not occur after the threads return. Consequently, in some cases, it may be useful to add [MPI_Barrier()](https://www.open-mpi.org/doc/v4.0/man3/MPI_Barrier.3.php) after `join()` if one needs to make sure all threads have returned on all nodes before proceeding with the rest of the program execution.
@@ -260,7 +260,7 @@ The function [join()](https://en.cppreference.com/w/cpp/thread/thread/join) is s
 ### How to send an array of data
 
 The previous examples demonstrate how to send C++ objects using active messages. Be careful that only the data contained in the object is sent over the network. For example, data "associated with" a pointer are not sent. Consider this class:
-```
+```cpp
 class my_vector {
 public:
     double * p;
@@ -272,13 +272,13 @@ When sending `my_vector v` using an active message, the value of the pointer `p`
 When one wants to send data associated with a contiguous memory space, for example to send an array or a vector containing data, a special type called `views` should be used. `views` allow providing a pointer `p` and integer size `s`; the active message will then send all the data from `p[0]` to `p[s-1]`. Here is example of the syntax to use. 
 
 This is the code to use inside a task to send a view:
-```
+```cpp
 auto vector_view = view<double>(p, s);
 am->send(dest, vector_view);
 ```
 
 The active message declaration looks like this:
-```
+```cpp
 auto am = comm.make_active_msg(
     [&](view<double> &vector_view) {
         /*
@@ -294,7 +294,7 @@ auto am = comm.make_active_msg(
 ### MPI note
 
 The communication layer uses MPI. Since the code is multithreaded, the code requires `MPI_THREAD_FUNELLED`. This means that, in the runtime library, only the main thread makes MPI calls (i.e., all MPI calls are funneled to the main thread). So you need to initialize like this
-```
+```cpp
 int req = MPI_THREAD_FUNNELED;
 int prov = -1;
 MPI_Init_thread(NULL, NULL, req, &prov);
@@ -313,15 +313,15 @@ To build this example, you will need
 
 Once you have this:
 - First, navigate to the `tutorial` folder
-```
+```bash
 cd tutorial
 ```
 - Build the example. This assumes that [mpicxx](https://www.open-mpi.org/doc/v4.0/man1/mpicxx.1.php) is a valid MPI/C++ compiler.
-```
+```bash
 make
 ```
 - Run the example, using 2 MPI ranks. This assumes that [mpirun](https://www.open-mpi.org/doc/v4.0/man1/mpirun.1.php) is your MPI-wrapper.
-```
+```bash
 mpirun -n 2 ./tuto
 ```
 
