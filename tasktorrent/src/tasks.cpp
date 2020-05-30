@@ -3,7 +3,7 @@
 
 #include "tasks.hpp"
 
-Task::Task() : priority(0), name("_") {}
+Task::Task() : run([](){}), fulfill([](){}), priority(0), name("_") {}
 
 const char *Task::c_name()
 {

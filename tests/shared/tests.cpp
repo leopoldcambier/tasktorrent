@@ -69,9 +69,9 @@ SpMat random_dag(int n, double p)
 TEST(threadpool, tasksrun)
 {
     int n_threads = n_threads_;
-    int n_tasks = 10;
+    int n_tasks = 150;
     vector<int> ok(n_tasks, 0);
-    Threadpool tp(n_threads);
+    Threadpool_shared tp(n_threads);
 
     for (int k = 0; k < n_tasks; k++)
     {
@@ -86,6 +86,41 @@ TEST(threadpool, tasksrun)
 
     for (int k = 0; k < n_tasks; k++)
         ASSERT_EQ(ok[k], 1);
+}
+
+/**
+ * Checks that
+ * - bound tasks are running on the right thread
+ * - priorities are correctly taken into account when running tasks
+ */
+TEST(threadpool, priorities_bound)
+{
+    int n_threads = n_threads_;
+    int n_tasks = 50;
+    vector<int> counts(n_threads, n_tasks);
+    Threadpool_shared tp(n_threads, VERB, "WK_", false);
+
+    for (int t = 0; t < n_threads; t++) 
+    {
+        for (int k = 0; k < n_tasks; k++)
+        {
+            Task *task = new Task();
+            task->priority = (double)k;
+            task->run = [k,t,&counts]() { 
+                counts[t]--;
+                EXPECT_EQ(counts[t], k);
+            };
+            task->fulfill = [](){};
+            tp.insert(task, t, true);
+        }
+    }
+
+    tp.start();
+    tp.join();
+
+    for (int k = 0; k < n_threads; k++) {
+        EXPECT_EQ(counts[k], 0);
+    }
 }
 
 /**
@@ -159,7 +194,7 @@ TEST(reduction, concurrent)
     for (int i = 0; i < n_reds; i++)
         is_running[i].store(false);
 
-    Threadpool tp(n_threads, VERB);
+    Threadpool_shared tp(n_threads, VERB);
     Taskflow<int2> reduction_tf(&tp, VERB);
 
     reduction_tf.set_mapping([&](int2 ij) {
@@ -194,7 +229,7 @@ TEST(reduction, reduc)
     atomic<bool> is_running(false);
     atomic<int> sum(0); // where we do all the reductions
 
-    Threadpool tp(n_threads, VERB);
+    Threadpool_shared tp(n_threads, VERB);
     Taskflow<int> tf(&tp, VERB); // first & last task
     Taskflow<int> tr(&tp, VERB); // all tasks in the middle
 
@@ -285,7 +320,7 @@ TEST(graph, randomdag)
                     count_in_deps[k].store(indegree[k]);
                 }
 
-                Threadpool tp(n_threads, VERB);
+                Threadpool_shared tp(n_threads, VERB);
                 Taskflow<int> rand_graph_tf(&tp, VERB);
 
                 rand_graph_tf.set_mapping([n_threads](int k) {
@@ -337,7 +372,7 @@ void gemm(int n_threads, int n, int N)
     MatrixXd Cref = A * B;
     timer trefend = wctime();
 
-    Threadpool tp(n_threads, VERB);
+    Threadpool_shared tp(n_threads, VERB);
     Taskflow<int3> gemm_tf(&tp, VERB);
 
     gemm_tf.set_mapping([n_threads, N](int3 id) {
@@ -412,7 +447,7 @@ void cholesky(int n_threads, int n, int N)
     A = A.triangularView<Lower>();
     MatrixXd Aref = A;
 
-    Threadpool tp(n_threads, VERB);
+    Threadpool_shared tp(n_threads, VERB);
     Taskflow<int> potf_tf(&tp, VERB);
     Taskflow<int2> trsm_tf(&tp, VERB);
     Taskflow<int3> gemm_tf(&tp, VERB);
@@ -606,7 +641,7 @@ TEST(ttor, mapreduce)
     int reduce_deps = N / n_buckets;
     assert(N % n_buckets == 0);
 
-    Threadpool tp(n_threads, VERB);
+    Threadpool_shared tp(n_threads, VERB);
     Taskflow<int> mf(&tp, VERB);
     Taskflow<int> rf(&tp, VERB);
     vector<Data> reddata(n_buckets);

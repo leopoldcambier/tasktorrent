@@ -5,13 +5,13 @@
 #include <numeric>
 #include <algorithm>
 
-#include "threadpool_mpi.hpp"
+#include "threadpool_dist.hpp"
 
 namespace ttor {
 
 // Update counts on master
 // We use step, provided by the worker, to update msg_queued and msg_processed with the latest information
-void Threadpool_mpi::set_msg_counts_master(int from, int msg_queued, int msg_processed) {
+void Threadpool_dist::set_msg_counts_master(int from, int msg_queued, int msg_processed) {
     if (verb > 1) {
         printf("[%s] <- %d, Message counts (%d %d)\n", name.c_str(), from, msg_queued, msg_processed);
     }
@@ -27,7 +27,7 @@ void Threadpool_mpi::set_msg_counts_master(int from, int msg_queued, int msg_pro
 
 // Ask confirmation on worker
 // If step is the latest information send, and if we're still idle and there were no new messages in between, reply with the tag
-void Threadpool_mpi::ask_confirmation(int msg_queued, int msg_processed, int tag) {
+void Threadpool_dist::ask_confirmation(int msg_queued, int msg_processed, int tag) {
     assert(my_rank != 0);
     assert(msg_queued >= 0);
     assert(msg_processed >= 0);
@@ -42,7 +42,7 @@ void Threadpool_mpi::ask_confirmation(int msg_queued, int msg_processed, int tag
 }
 
 // Update tags on master with the latest confirmation tag
-void Threadpool_mpi::confirm(int from, int tag) {
+void Threadpool_dist::confirm(int from, int tag) {
     if (verb > 1) {
         printf("[%s] <- %d, Confirmation OK tag %d\n", name.c_str(), from, tag);
     }
@@ -52,7 +52,7 @@ void Threadpool_mpi::confirm(int from, int tag) {
 }
 
 // Shut down the TF
-void Threadpool_mpi::shutdown_tf() {
+void Threadpool_dist::shutdown_tf() {
     if (verb > 0) {
         printf("[%s] Shutting down tf\n", name.c_str());
     }
@@ -61,11 +61,11 @@ void Threadpool_mpi::shutdown_tf() {
 }
 
 // Everything is done in join
-void Threadpool_mpi::test_completion() {
+void Threadpool_dist::test_completion() {
     // Nothing
 }
 
-Threadpool_mpi::Threadpool_mpi(int n_threads, Communicator *comm_, int verb_, std::string basename_, bool start_immediately)
+Threadpool_dist::Threadpool_dist(int n_threads, Communicator *comm_, int verb_, std::string basename_, bool start_immediately)
     : Threadpool_shared(n_threads, verb_, basename_, false),
         my_rank(comm_rank()),
         msgs_queued(comm_size(), -1),       // -1 means no count received yet             [rank 0 only]
@@ -121,7 +121,7 @@ Threadpool_mpi::Threadpool_mpi(int n_threads, Communicator *comm_, int verb_, st
         start();
 }
 
-void Threadpool_mpi::join()
+void Threadpool_dist::join()
 {
     assert(tasks_in_flight.load() > 0);
     --tasks_in_flight;
@@ -155,14 +155,14 @@ void Threadpool_mpi::join()
 }
 
 // Return the number of internal queued rpcs
-int Threadpool_mpi::get_intern_n_msg_queued() {
+int Threadpool_dist::get_intern_n_msg_queued() {
     int nq = comm->get_n_msg_queued() - intern_queued;
     assert(nq >= 0);
     return nq;
 }
 
 // Return the number of internal processed lpcs
-int Threadpool_mpi::get_intern_n_msg_processed() {
+int Threadpool_dist::get_intern_n_msg_processed() {
     int np = comm->get_n_msg_processed() - intern_processed;
     assert(np >= 0);
     return np;
@@ -170,7 +170,7 @@ int Threadpool_mpi::get_intern_n_msg_processed() {
 
 // Only MPI Master thread runs this function, on all ranks
 // When done, this function set done to true and is_done() now returns true
-void Threadpool_mpi::test_completion_join()
+void Threadpool_dist::test_completion_join()
 {
 
     /**

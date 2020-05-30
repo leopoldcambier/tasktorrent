@@ -1,5 +1,5 @@
-#ifndef __TTOR_SRC_THREADPOOL_MPI_HPP__
-#define __TTOR_SRC_THREADPOOL_MPI_HPP__
+#ifndef __TTOR_SRC_Threadpool_dist_HPP__
+#define __TTOR_SRC_Threadpool_dist_HPP__
 
 #ifndef TTOR_SHARED
 
@@ -24,7 +24,7 @@ namespace ttor
  *          and there are no in-flight active messages 
  *          (i.e. all queued rpcs have been processed).
  */
-class Threadpool_mpi : public Threadpool_shared
+class Threadpool_dist : public Threadpool_shared
 {
     
 private:
@@ -114,7 +114,7 @@ public:
      * \pre `verb >= 0`
      * \pre `comm` points to a valid `Communicator` which should not be destroyed while `this` is in use.
      */
-    Threadpool_mpi(int n_threads, Communicator *comm, int verb = 0, std::string basename = "Wk_", bool start_immediately = true);
+    Threadpool_dist(int n_threads, Communicator *comm, int verb = 0, std::string basename = "Wk_", bool start_immediately = true);
 
     /**
      * \brief Complete accross all ranks
@@ -126,7 +126,7 @@ public:
      * \pre `this` has been started (through `start()` or the `start_immediately` constructor field).
      * 
      * \post After `tp.join`, 
-     *       1. `Threadpool_mpi::is_done()` returns `true` on all ranks;
+     *       1. `Threadpool_dist::is_done()` returns `true` on all ranks;
      *       2. `Communicator::is_done()` returns `true` on all ranks;
      *       3. All queued active message on a sender have been processed on a receiver.
      */
@@ -134,7 +134,7 @@ public:
 
 };
 
-typedef Threadpool_mpi Threadpool;
+typedef Threadpool_dist Threadpool;
 
 } // namespace ttor
 

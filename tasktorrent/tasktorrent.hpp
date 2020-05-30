@@ -7,7 +7,7 @@
  */
 
 #include "src/threadpool_shared.hpp"
-#include "src/threadpool_mpi.hpp"
+#include "src/threadpool_dist.hpp"
 #include "src/active_messages.hpp"
 #include "src/communications.hpp"
 #include "src/taskflow.hpp"
