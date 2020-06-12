@@ -1,6 +1,6 @@
 include Makefile.conf
 
-CFLAGS   = -pthread -O3 -g -std=c++14 -DEIGEN_NO_DEBUG ${USE_MKL}
+CFLAGS   += -pthread -O3 -g -std=c++14 -DEIGEN_NO_DEBUG
 INCLUDE  += -I../../
 LIBS     += 
 SRCDIR   = ../../tasktorrent/src

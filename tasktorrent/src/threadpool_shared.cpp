@@ -89,6 +89,7 @@ void Threadpool_shared::start()
     for (int self = 0; self < n_threads; self++)
     {
         threads[self] = std::thread([self, n_threads, this]() {
+
             // This is the function all threads are continuously running
 
             std::string name = basename + std::to_string(self);

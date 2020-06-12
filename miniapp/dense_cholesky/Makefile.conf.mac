@@ -1,4 +1,4 @@
 MPICXX  = mpicxx
-USE_MKL = -DUSE_MKL
+CFLAGS  = -DUSE_MKL
 INCLUDE = -I/usr/local/Cellar/eigen/3.3.7/include/eigen3/ -m64 -I${MKLROOT}/include
 LIBS    = -L${MKLROOT}/lib -Wl,-rpath,${MKLROOT}/lib -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl

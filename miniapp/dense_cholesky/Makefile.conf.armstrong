@@ -1,4 +1,4 @@
 MPICXX  = mpiicpc
-USE_MKL = -DUSE_MKL
+CFLAGS  = -DUSE_MKL
 INCLUDE = -I${HOME}/Softwares/eigen -I${MKLROOT}/include
-LIBS    = -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_lp64.a ${MKLROOT}/lib/intel64/libmkl_sequential.a ${MKLROOT}/lib/intel64/libmkl_core.a -Wl,--end-group -lpthread -lm -ldl -ltbbmalloc
+LIBS    = -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_lp64.a ${MKLROOT}/lib/intel64/libmkl_sequential.a ${MKLROOT}/lib/intel64/libmkl_core.a -Wl,--end-group -lpthread -lm -ldl
