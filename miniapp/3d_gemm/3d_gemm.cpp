@@ -1,69 +1,4 @@
-#include "tasktorrent/tasktorrent.hpp"
-#include <Eigen/Core>
-#include <Eigen/Cholesky>
-#include <fstream>
-#include <array>
-#include <random>
-#include <mutex>
-#include <iostream>
-#include <map>
-#include <memory>
-
-#include <mpi.h>
-
-typedef array<int, 2> int2;
-typedef array<int, 3> int3;
-typedef array<int, 4> int4;
-typedef array<int, 5> int5;
-typedef array<int, 6> int6;
-typedef array<int, 7> int7;
-
-struct scoped_timer {
-  private:
-    std::atomic<long long int>* time_us_;
-    ttor::timer time_init_;
-  public:
-    scoped_timer(std::atomic<long long int>* time_us) {
-        time_us_ = time_us;
-        time_init_= ttor::wctime();
-    }
-    ~scoped_timer() {
-        ttor::timer time_end_ = ttor::wctime();
-        *time_us_ += static_cast<long long int>(1e6 * ttor::elapsed(time_init_, time_end_));
-    }
-};
-
-ttor::view<double> make_view(Eigen::MatrixXd* A) {
-    return ttor::view<double>(A->data(), A->size());
-}
-
-Eigen::MatrixXd make_from_view(ttor::view<double> A, int nrows) {
-    Eigen::MatrixXd Add = Eigen::MatrixXd::Zero(nrows, nrows);
-    assert(nrows * nrows == A.size());
-    memcpy(Add.data(), A.data(), sizeof(double) * A.size());
-    return Add;
-}
-
-void copy_from_view(Eigen::MatrixXd* dest, const ttor::view<double> A) {
-    assert(dest->size() == A.size());
-    memcpy(dest->data(), A.data(), sizeof(double) * A.size());
-}
-
-void accumulate(Eigen::MatrixXd* dest, const Eigen::MatrixXd* src) {
-    assert(dest->size() == src->size());
-    #pragma omp parallel for
-    for(int k = 0; k < dest->size(); k++) {
-        (*dest)(k) += (*src)(k);
-    }
-}
-
-std::string to_string(int2 ij) {
-    return to_string(ij[0]) + "_" + to_string(ij[1]);
-}
-
-std::string to_string(int3 ijk) {
-    return to_string(ijk[0]) + "_" + to_string(ijk[1]) + "_" + to_string(ijk[2]);
-}
+#include "gemm_shared.hpp"
 
 /**
  * Matrix is of size N (global)
@@ -126,7 +61,6 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     std::vector<std::vector<Eigen::MatrixXd>> C_ij(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(Nt, Nt)));
     std::vector<std::vector<Eigen::MatrixXd>> B_ij(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(Nt, Nt)));
 
-    auto val_global = [](int i, int j) { return static_cast<double>(1 + i + j); };
     if(rank_k == 0) {
         for(int i = 0; i < n; i++) {
             for(int j = 0; j < n; j++) {
@@ -183,17 +117,17 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
      * Send
      **/
 
-    auto send_Aij_am = comm.make_active_msg([&](ttor::view<double>& Aij, int& sub_i, int& sub_j) {
-        scoped_timer t(&send_am_us_t);
-        copy_from_view(&A_ijk[sub_i][sub_j], Aij);
+    auto send_Aij_am = comm.make_large_active_msg([&](int& sub_i, int& sub_j) {
         bcst_Aij.fulfill_promise({sub_i, sub_j});
-    });
+    }, [&](int& sub_i, int& sub_j) {
+        return A_ijk[sub_i][sub_j].data();
+    }, [&](int& sub_i, int& sub_j){});
 
-    auto send_Bij_am = comm.make_active_msg([&](ttor::view<double>& Bij, int& sub_i, int& sub_j) {
-        scoped_timer t(&send_am_us_t);
-        copy_from_view(&B_ijk[sub_i][sub_j], Bij);
+    auto send_Bij_am = comm.make_large_active_msg([&](int& sub_i, int& sub_j) {
         bcst_Bij.fulfill_promise({sub_i, sub_j});
-    });
+    }, [&](int& sub_i, int& sub_j) {
+        return B_ijk[sub_i][sub_j].data();
+    }, [&](int& sub_i, int& sub_j){});
 
     // (i,j,0) sends A_ij to (i,j,j) for all i,j
     send_Aij.set_task([&](int2 sub_ij){
@@ -207,19 +141,16 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
             A_ijk[sub_i][sub_j] = A_ij[sub_i][sub_j];
             bcst_Aij.fulfill_promise({sub_i, sub_j});
         } else {
-            send_Aij_am->send(dest, A_view, sub_i, sub_j);
+            send_Aij_am->send_large(dest, A_view, sub_i, sub_j);
         }
     }).set_indegree([&](int2) {
         return 1;
     }).set_mapping([&](int2 sub_ij) {
-        // return (sub_ij[0] + n * sub_ij[1]) % n_threads;
-        // return 0;
         return sub_ij[0] % n_threads;
     }).set_priority([&](int2 sub_ij){
         return 1.0 * n + (n - sub_ij[1]);
     }).set_binding([&](int2 sub_ij){
         return false;
-        // return true;
     }).set_name([&](int2 sub_ij) { return "send_A_" + to_string(sub_ij) + "_" + to_string(rank_ijk); });
 
     // (i,j,0) sends B_ij to (i,j,i) for all i,j
@@ -234,38 +165,37 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
             B_ijk[sub_i][sub_j] = B_ij[sub_i][sub_j];
             bcst_Bij.fulfill_promise({sub_i, sub_j});
         } else {
-            send_Bij_am->send(dest, B_view, sub_i, sub_j);
+            send_Bij_am->send_large(dest, B_view, sub_i, sub_j);
         }
     }).set_indegree([&](int2) {
         return 1;
     }).set_mapping([&](int2 sub_ij) {
-        // return (sub_ij[0] + n * sub_ij[1]) % n_threads;
-        // return 0;
         return (sub_ij[1] % n_threads);
     }).set_priority([&](int2 sub_ij){
         return 1.0 * n + (n - sub_ij[0]);
     }).set_binding([&](int2 sub_ij){
         return false;
-        //return true;
     }).set_name([&](int2 sub_ij) { return "send_B_" + to_string(sub_ij) + "_" + to_string(rank_ijk); });
 
     /** 
      * Broadcast
      **/
 
-    auto bcst_Aij_am = comm.make_active_msg([&](ttor::view<double>& Aij, int &sub_i, int &sub_j) {
-        scoped_timer t(&bcst_am_us_t);
-        copy_from_view(&A_ijk[sub_i][sub_j], Aij);
-        for(int k = 0; k < n; k++)
+    auto bcst_Aij_am = comm.make_large_active_msg([&](int &sub_i, int &sub_j) {
+        for(int k = 0; k < n; k++) {
             gemm_Cijk.fulfill_promise({sub_i, k, sub_j});
-    });
+        }
+    }, [&](int& sub_i, int& sub_j) {
+        return A_ijk[sub_i][sub_j].data();
+    }, [&](int& sub_i, int& sub_j) {});
 
-    auto bcst_Bij_am = comm.make_active_msg([&](ttor::view<double>& Bij, int &sub_i, int &sub_j) {
-        scoped_timer t(&bcst_am_us_t);
-        copy_from_view(&B_ijk[sub_i][sub_j], Bij);
-        for(int k = 0; k < n; k++)
+    auto bcst_Bij_am = comm.make_large_active_msg([&](int &sub_i, int &sub_j) {
+        for(int k = 0; k < n; k++) {
             gemm_Cijk.fulfill_promise({k, sub_j, sub_i});
-    });
+        }
+    }, [&](int& sub_i, int& sub_j) {
+        return B_ijk[sub_i][sub_j].data();
+    }, [&](int& sub_i, int& sub_j) {});
 
     // (i,j,j) sends A_ij along j to all (i,*,j) for all i,j
     bcst_Aij.set_task([&](int2 sub_ij){
@@ -277,23 +207,21 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
         for(int k = 0; k < n_ranks_1d; k++) {
             int dest = rank_ijk_to_rank(rank_i, k, rank_j);
             if(dest == rank) {
-                for(int l = 0; l < n; l++)
+                for(int l = 0; l < n; l++) {
                     gemm_Cijk.fulfill_promise({sub_i, l, sub_j});
+                }
             } else {
-                bcst_Aij_am->send(dest, A_view, sub_i, sub_j);
+                bcst_Aij_am->send_large(dest, A_view, sub_i, sub_j);
             }
         }
     }).set_indegree([&](int2) {
         return 1;
     }).set_mapping([&](int2 sub_ij) {
-        // return (sub_ij[0] + n * sub_ij[1]) % n_threads;
-        // return 0;
         return (sub_ij[0] % n_threads);
     }).set_priority([&](int2 sub_ij){
         return 1.0 * n + (n - sub_ij[1]);
     }).set_binding([&](int2 sub_ij){
         return false;
-        //return true;
     }).set_name([&](int2 sub_ij) { return "bcast_A_" + to_string(sub_ij) + "_" + to_string(rank_ijk); });
 
     // (i,j,i) sends B_ij along i to all (*,j,i) for all i,j
@@ -309,31 +237,28 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
                 for(int l = 0; l < n; l++)
                     gemm_Cijk.fulfill_promise({l, sub_j, sub_i});
             } else {
-                bcst_Bij_am->send(dest, B_view, sub_i, sub_j);
+                bcst_Bij_am->send_large(dest, B_view, sub_i, sub_j);
             }
         }
     }).set_indegree([&](int2) {
         return 1;
     }).set_mapping([&](int2 sub_ij) {
-        // return (sub_ij[0] + n * sub_ij[1]) % n_threads;
-        // return 0;
         return (sub_ij[1] % n_threads);
     }).set_priority([&](int2 sub_ij){
         return 1.0 * n + (n - sub_ij[0]);
     }).set_binding([&](int2 sub_ij){
         return false;
-        // return true;
     }).set_name([&](int2 sub_ij) { return "bcast_B_" + to_string(sub_ij) + "_" + to_string(rank_ijk); });
 
     /** 
      * GEMM
      **/
 
-    auto gemm_Cijk_am = comm.make_active_msg([&](ttor::view<double>& Cijk, int &sub_i, int &sub_j, int& from) {
-        scoped_timer t(&gemm_am_us_t);
-        copy_from_view(&C_ijk_accu[sub_i][sub_j][from], Cijk);
+    auto gemm_Cijk_am = comm.make_large_active_msg([&](int &sub_i, int &sub_j, int& from) {
         accu_Cij.fulfill_promise({sub_i, sub_j, from});
-    });
+    }, [&](int& sub_i, int& sub_j, int& from) {
+        return C_ijk_accu[sub_i][sub_j][from].data();
+    }, [&](int& sub_i, int& sub_j, int& from) {});
 
     // (i,j,k) compute C_ijk = A_ik * B_kj
     gemm_Cijk.set_task([&](int3 sub_ijk){
@@ -344,12 +269,10 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
             scoped_timer t(&gemm_us_t);
             C_ijk[sub_i][sub_j].noalias() += A_ijk[sub_i][sub_k] * B_ijk[sub_k][sub_j];
         }
-        //(*(C_ijk_counts[sub_i * n + sub_j]))++;
         scoped_timer t(&gemm_copy_us_t);
         if(sub_ijk[2] < n-1) {
             gemm_Cijk.fulfill_promise({sub_i, sub_j, sub_k+1});
         } else {
-        //if(C_ijk_counts[sub_i * n + sub_j]->load() == n) {
             auto C_ijk_view = make_view(&C_ijk[sub_i][sub_j]);
             int dest = rank_ijk_to_rank(rank_i, rank_j, 0);
             if(dest == rank) {
@@ -357,17 +280,13 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
                 accu_Cij.fulfill_promise({sub_i, sub_j, rank_k});
             } else {
                 int k = rank_k;
-                gemm_Cijk_am->send(dest, C_ijk_view, sub_i, sub_j, k);
+                gemm_Cijk_am->send_large(dest, C_ijk_view, sub_i, sub_j, k);
             }
         }
     }).set_indegree([&](int3 sub_ijk) {
         return sub_ijk[2] == 0 ? 2 : 3; // 2 A_ik and B_kj blocks, + previous gemm
-        // return 2;
     }).set_mapping([&](int3 sub_ijk) {
-        if(n_threads == 1) return 0;
-        // else return max(1, (sub_ijk[0] + sub_ijk[1] * n) % n_threads);
-        else return max(1, (sub_ijk[0] + sub_ijk[1] * n) % n_threads); // + sub_ijk[2] * n * n) % n_threads);
-        // return (sub_ijk[0] + sub_ijk[1] * n + sub_ijk[2] * n * n) % n_threads;
+        return (sub_ijk[0] + sub_ijk[1] * n + sub_ijk[2] * n * n) % n_threads;
     }).set_binding([&](int3 sub_ijk) {
         return false;
     }).set_priority([&](int3 sub_ijk){
@@ -384,9 +303,9 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     }).set_indegree([&](int3) {
         return 1;
     }).set_mapping([&](int3 sub_ij_from) {
-        if(n_threads == 1) return 0;
-        else return max(1, (sub_ij_from[0] + n * sub_ij_from[1]) % n_threads);
-        // return (sub_ij_from[0] + n * sub_ij_from[1]) % n_threads;
+        // if(n_threads == 1) return 0;
+        // else return max(1, (sub_ij_from[0] + n * sub_ij_from[1]) % n_threads);
+        return (sub_ij_from[0] + n * sub_ij_from[1]) % n_threads;
     }).set_binding([&](int3) {
         return true;
     }).set_priority([&](int3){
@@ -419,8 +338,8 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     printf("gemm_am_us_t,%e\n",gemm_am_us_t.load() * 1e-6);
     printf("accu_us_t,%e\n",accu_us_t.load() * 1e-6);
     // For easy CSV parsing
-    printf("[rank]>>>>Ntot,Nrank,Ntile,rank,n_ranks,nthreads,tot_time,gemm_time,gemm_time_per_thread\n");
-    printf("[%d]>>>>%d,%d,%d,%d,%d,%d,%e,%e,%e\n",rank,N,Nr,Nt,rank,n_ranks,n_threads,total_time,gemm_time,gemm_time_per_thread);
+    printf("[rank]>>>>matrix_size,rank_block_size,block_size,rank,n_ranks,nthreads,tot_time,gemm_time,gemm_time_per_thread\n");
+    printf("[%d]>>>>ttor_3d_gemm,%d,%d,%d,%d,%d,%d,%e,%e,%e\n",rank,N,Nr,Nt,rank,n_ranks,n_threads,total_time,gemm_time,gemm_time_per_thread);
 
     if(logfile.size() > 0) {
         std::ofstream logstream;
@@ -455,8 +374,8 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
         }
         // Compute reference on 0
         if(rank == 0) {
-            Eigen::MatrixXd A_ref = Eigen::MatrixXd::NullaryExpr(N, N, val_global);
-            Eigen::MatrixXd B_ref = Eigen::MatrixXd::NullaryExpr(N, N, val_global);
+            Eigen::MatrixXd A_ref = Eigen::MatrixXd::NullaryExpr(N, N, [](int i, int j){return val_global(i,j);});
+            Eigen::MatrixXd B_ref = Eigen::MatrixXd::NullaryExpr(N, N, [](int i, int j){return val_global(i,j);});
             ttor::timer t0 = ttor::wctime();
             Eigen::MatrixXd C_ref = A_ref * B_ref;
             ttor::timer t1 = ttor::wctime();
@@ -481,7 +400,7 @@ int main(int argc, char **argv)
     int Nt = 8;
     int n_threads = 1;
     int verb = 0;
-    bool test = true;
+    bool test = false;
     std::string logfile = "";
 
     if (argc >= 2)
@@ -503,6 +422,9 @@ int main(int argc, char **argv)
 
     if (argc >= 5) {
         logfile = argv[4];
+        if(logfile == string("NONE")) {
+            logfile = "";
+        }
     }
 
     if (argc >= 6) {
@@ -514,7 +436,7 @@ int main(int argc, char **argv)
         test = static_cast<bool>(atoi(argv[6]));
     }
 
-    if(ttor::comm_rank() == 0) printf("Usage: ./3d_gemm N Nt n_threads logfile verb test\n");
+    if(ttor::comm_rank() == 0) printf("Usage: ./3d_gemm matrix_size block_size n_threads logfile verb test\n");
     if(ttor::comm_rank() == 0) printf("Arguments: N (global matrix size) %d, Nt (smallest block size) %d, n_threads %d, logfile %s, verb %d, test %d\n", N, Nt, n_threads, logfile.c_str(), verb, test);
 
     gemm(N, Nt, n_threads, logfile, verb, test);
