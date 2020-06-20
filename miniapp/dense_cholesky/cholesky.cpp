@@ -85,7 +85,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
                     blocks[ii+jj*num_blocks]=make_unique<MatrixXd>(block_size,block_size);
                     *blocks[ii+jj*num_blocks]=MatrixXd::NullaryExpr(block_size, block_size, val_loc);
                 } else {
-                    blocks[ii+jj*num_blocks]=make_unique<MatrixXd>(block_size,block_size);
+                    blocks[ii+jj*num_blocks]=make_unique<MatrixXd>(0,0);
                 }
             }
         }
@@ -248,6 +248,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
                 }
             },
             [&](int& j) {
+                blocks[j+j*num_blocks]->resize(block_size,block_size);
                 return blocks[j+j*num_blocks]->data();
             },
             [&](int&){
@@ -325,6 +326,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
             }
         },
         [&](int& i, int& j) {
+            blocks[i+j*num_blocks]->resize(block_size,block_size);
             return blocks[i+j*num_blocks]->data();
         },
         [&](int& i, int& j) {
