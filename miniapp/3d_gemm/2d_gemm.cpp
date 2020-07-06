@@ -180,10 +180,12 @@ void gemm(const int matrix_size, const int block_size, const int n_threads, int 
     tp.join();
     ttor::timer t1 = ttor::wctime();
     double total_time = ttor::elapsed(t0, t1);
+    long long int flops_per_rank = ((long long int)matrix_size) * ((long long int)matrix_size) * ((long long int)matrix_size) / ((long long int)n_ranks);
+    long long int flops_per_core = flops_per_rank / ((long long int)n_threads);
     // For easy CSV parsing
     printf("%e\n", ttor::elapsed(t0, t_overhead));
-    printf("[rank]>>>>rank,n_ranks,nthreads,nprows,npcols,use_large,matrix_size,num_blocks,block_size,tot_time,\n");
-    printf("[%d]>>>>ttor_2d_gemm,%d,%d,%d,%d,%d,%d,%d,%d,%d,%e\n",rank,rank,n_ranks,n_threads,nprows,npcols,use_large,matrix_size,num_blocks,block_size,total_time);
+    printf("[rank]>>>>rank,n_ranks,nthreads,nprows,npcols,use_large,matrix_size,num_blocks,block_size,tot_time,flops_per_core,flops_per_rank\n");
+    printf("[%d]>>>>ttor_2d_gemm %d %d %d %d %d %d %d %d %d %e %llu %llu\n",rank,rank,n_ranks,n_threads,nprows,npcols,use_large,matrix_size,num_blocks,block_size,total_time,flops_per_core,flops_per_rank);
 
     MPI_Barrier(MPI_COMM_WORLD);
     if(test) {

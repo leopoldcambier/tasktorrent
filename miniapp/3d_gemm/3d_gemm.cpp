@@ -77,17 +77,12 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     std::vector<std::vector<Eigen::MatrixXd>> A_ijk(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(Nt, Nt)));
     std::vector<std::vector<Eigen::MatrixXd>> C_ijk(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(Nt, Nt)));
     std::vector<std::vector<Eigen::MatrixXd>> B_ijk(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(Nt, Nt)));
-    std::vector<std::unique_ptr<std::atomic<int>>> C_ijk_counts(n * n);
-    for(int i = 0; i < n*n; i++) {
-        C_ijk_counts[i] = std::make_unique<std::atomic<int>>();
-        C_ijk_counts[i]->store(0);
-    }
     
     // C_ijk_accu[sub_i][sub_j][from] stores the results for (sub_i, sub_j) to be accumulated, from rank from
     std::vector<std::vector<std::vector<Eigen::MatrixXd>>> C_ijk_accu(
         n, std::vector<std::vector<Eigen::MatrixXd>>(
         n, std::vector<Eigen::MatrixXd>(
-        n_ranks_1d, Eigen::MatrixXd::Zero(Nt, Nt))));
+        n_ranks_1d, Eigen::MatrixXd(0, 0))));
     
     MPI_Barrier(MPI_COMM_WORLD);
 
@@ -257,6 +252,7 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     auto gemm_Cijk_am = comm.make_large_active_msg([&](int &sub_i, int &sub_j, int& from) {
         accu_Cij.fulfill_promise({sub_i, sub_j, from});
     }, [&](int& sub_i, int& sub_j, int& from) {
+        C_ijk_accu[sub_i][sub_j][from].resize(Nt, Nt);
         return C_ijk_accu[sub_i][sub_j][from].data();
     }, [&](int& sub_i, int& sub_j, int& from) {});
 
@@ -303,8 +299,6 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     }).set_indegree([&](int3) {
         return 1;
     }).set_mapping([&](int3 sub_ij_from) {
-        // if(n_threads == 1) return 0;
-        // else return max(1, (sub_ij_from[0] + n * sub_ij_from[1]) % n_threads);
         return (sub_ij_from[0] + n * sub_ij_from[1]) % n_threads;
     }).set_binding([&](int3) {
         return true;
@@ -338,8 +332,10 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     printf("gemm_am_us_t,%e\n",gemm_am_us_t.load() * 1e-6);
     printf("accu_us_t,%e\n",accu_us_t.load() * 1e-6);
     // For easy CSV parsing
-    printf("[rank]>>>>matrix_size,rank_block_size,block_size,rank,n_ranks,nthreads,tot_time,gemm_time,gemm_time_per_thread\n");
-    printf("[%d]>>>>ttor_3d_gemm,%d,%d,%d,%d,%d,%d,%e,%e,%e\n",rank,N,Nr,Nt,rank,n_ranks,n_threads,total_time,gemm_time,gemm_time_per_thread);
+    long long int flops_per_rank = (long long int)(N) * (long long int)(N) * (long long int)(N) / ((long long int)n_ranks);
+    long long int flops_per_core = flops_per_rank / ((long long int)n_threads);
+    printf("[rank]>>>>matrix_size,rank_block_size,block_size,rank,n_ranks,nthreads,tot_time,gemm_time,gemm_time_per_thread,flops_per_core,flops_per_rank\n");
+    printf("[%d]>>>>ttor_3d_gemm %d %d %d %d %d %d %e %e %e %llu %llu\n",rank,N,Nr,Nt,rank,n_ranks,n_threads,total_time,gemm_time,gemm_time_per_thread,flops_per_core,flops_per_rank);
 
     if(logfile.size() > 0) {
         std::ofstream logstream;
