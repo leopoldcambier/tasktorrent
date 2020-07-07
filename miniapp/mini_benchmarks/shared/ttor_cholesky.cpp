@@ -1,4 +1,3 @@
-#include "tasktorrent/tasktorrent.hpp"
 #include <fstream>
 #include <array>
 #include <random>
@@ -6,6 +5,8 @@
 #include <iostream>
 #include <map>
 #include <memory>
+
+#include "tasktorrent/tasktorrent.hpp"
 
 void spin_for(double time) {
     auto t0 = ttor::wctime();

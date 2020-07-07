@@ -34,7 +34,9 @@ int wait_chain_deps(const int n_threads, const int n_rows, const int n_edges, co
         return (ij[1] == 0 ? 1 : n_edges);
     })
     .set_task([&](int2 ij) {
+#ifdef CHECK_NTASKS
         n_tasks++;
+#endif
         spin_for(sleep_for);
         if(ij[1] < n_cols-1) {
             for(int k = 0; k < n_edges; k++) {
@@ -54,7 +56,9 @@ int wait_chain_deps(const int n_threads, const int n_rows, const int n_edges, co
     double time = ttor::elapsed(t0, t1);
     if(verb) printf("n_threads,n_rows,n_edges,n_cols,sleep_for,time,total_tasks,efficiency\n");
     int total_tasks = n_rows * n_cols;
+#ifdef CHECK_NTASKS
     assert(n_tasks.load() == total_tasks);
+#endif
     double speedup = (double)(total_tasks) * (double)(sleep_for) / (double)(time);
     double efficiency = speedup / (double)(n_threads);
     printf("%d,%d,%d,%d,%e,%e,%d,%e\n", n_threads, n_rows, n_edges, n_cols, sleep_for, time, total_tasks, efficiency);

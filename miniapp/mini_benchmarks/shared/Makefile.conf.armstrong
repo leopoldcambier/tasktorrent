@@ -1,0 +1,6 @@
+CC      = icpc
+CFLAGS  = -O3 -Wall
+INCLUDE =
+LIBS    =
+OMP_FLAGS = -qopenmp
+STARPU_FLAGS = -I${HOME}/Softwares/hwloc-2.2.0/install/include -I${HOME}/Softwares/starpu-1.3.2/install/include/starpu/1.3 -lpthread -L${HOME}/Softwares/hwloc-2.2.0/install/lib -L${HOME}/Softwares/starpu-1.3.2/install/lib  -lstarpu-1.3 -lhwloc
