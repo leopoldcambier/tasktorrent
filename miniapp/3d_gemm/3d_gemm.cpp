@@ -295,7 +295,7 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
         int sub_i = sub_ij_from[0];
         int sub_j = sub_ij_from[1];
         int from  = sub_ij_from[2];
-        C_ij[sub_i][sub_j] += C_ijk_accu[sub_i][sub_j][from];
+        C_ij[sub_i][sub_j].noalias() += C_ijk_accu[sub_i][sub_j][from];
     }).set_indegree([&](int3) {
         return 1;
     }).set_mapping([&](int3 sub_ij_from) {

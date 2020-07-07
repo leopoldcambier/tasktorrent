@@ -158,12 +158,8 @@ void gemm(const int matrix_size, const int block_size, const int n_threads, int 
         }
     }).set_indegree([&](int3 ikj) {
         return (ikj[1] == 0 ? 2 : 3);
-    }).set_priority([&](int3) {
-        return 1.0;
     }).set_mapping([&](int3 ikj) {
         return (ikj[0] / nprows + ikj[2] / npcols * (num_blocks / nprows)) % n_threads;
-    }).set_binding([&](int3 ikj) {
-        return true;
     });
 
     printf("Starting 2D Gemm...\n");
