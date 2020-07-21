@@ -188,7 +188,7 @@ void gemm(const int matrix_size, const int block_size, const int n_threads, int 
     long long int flops_per_core = flops_per_rank / ((long long int)n_threads);
     // For easy CSV parsing
     printf("%e\n", ttor::elapsed(t0, t_overhead));
-    printf("[rank]>>>>rank,n_ranks,n_cores,nthreads,nprows,npcols,use_large,matrix_size,num_blocks,block_size,tot_time,flops_per_core,flops_per_rank\n");
+    printf("[rank]>>>>rank n_ranks n_cores nthreads nprows npcols use_large matrix_size num_blocks block_size total_time flops_per_core flops_per_rank\n");
     printf("[%d]>>>>ttor_2d_gemm %d %d %d %d %d %d %d %d %d %d %e %llu %llu\n",rank,rank,n_ranks,n_ranks*n_threads,n_threads,nprows,npcols,use_large,matrix_size,num_blocks,block_size,total_time,flops_per_core,flops_per_rank);
                 
     if(test) {
