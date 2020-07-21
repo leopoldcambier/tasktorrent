@@ -1,6 +1,11 @@
 #include "tasktorrent/tasktorrent.hpp"
 #include <Eigen/Core>
 #include <Eigen/Cholesky>
+#ifdef USE_MKL
+#include <mkl_cblas.h>
+#else
+#include <cblas.h>
+#endif
 #include <fstream>
 #include <array>
 #include <random>
@@ -67,4 +72,27 @@ std::string to_string(int3 ijk) {
 
 double val_global(int i, int j) { 
     return static_cast<double>( (i % 49) + (j % 37) * 53 ); 
+}
+
+void warmup_mkl(int n_threads) {
+    ttor::Communicator comm(MPI_COMM_WORLD);
+    ttor::Threadpool tp(n_threads, &comm);
+    ttor::Taskflow<int> warmup(&tp);
+    
+    warmup.set_task([&](int i){
+        Eigen::MatrixXd A = Eigen::MatrixXd::Identity(256,256);
+        Eigen::MatrixXd B = Eigen::MatrixXd::Identity(256,256);
+        Eigen::MatrixXd C = Eigen::MatrixXd::Identity(256,256);
+    	cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, 256, 256, 256, 1.0, A.data(), 256, B.data(), 256, 1.0, C.data(), 256);
+    }).set_indegree([&](int i) {
+        return 1;
+    }).set_mapping([&](int i) {
+        return i % n_threads;
+    });
+
+    for(int i = 0; i < 64; i++) {
+        warmup.fulfill_promise(i);
+    }
+    tp.join();
+    MPI_Barrier(MPI_COMM_WORLD);
 }

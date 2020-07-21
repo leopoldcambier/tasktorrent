@@ -1,4 +1,5 @@
 MPICXX  = mpicxx
 CFLAGS  =
 INCLUDE = -I${HOME}/build/leopoldcambier/tasktorrent/eigen -I/usr/include/ -I/usr/include/x86_64-linux-gnu/
-LIBS    = -L/usr/lib/x86_64-linux-gnu/ -lblas -llapacke
+LIBS_SEQ = -L/usr/lib/x86_64-linux-gnu/ -lblas -llapacke
+LIBS_PAR = -L/usr/lib/x86_64-linux-gnu/ -lblas -llapacke

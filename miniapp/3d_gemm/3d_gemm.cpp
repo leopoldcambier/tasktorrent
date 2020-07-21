@@ -36,6 +36,9 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     printf("verb,%d\n", verb);
     printf("test,%d\n", test);
     
+    // You may want to do that to avoid the slow first call to MKL (??)
+    warmup_mkl(n_threads);
+    
     auto rank_ijk_to_rank = [n_ranks_1d](int rank_i, int rank_j, int rank_k) {
         return rank_k * n_ranks_1d * n_ranks_1d + rank_j * n_ranks_1d + rank_i;
     };
@@ -334,8 +337,8 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     // For easy CSV parsing
     long long int flops_per_rank = (long long int)(N) * (long long int)(N) * (long long int)(N) / ((long long int)n_ranks);
     long long int flops_per_core = flops_per_rank / ((long long int)n_threads);
-    printf("[rank]>>>>matrix_size,rank_block_size,block_size,rank,n_ranks,nthreads,tot_time,gemm_time,gemm_time_per_thread,flops_per_core,flops_per_rank\n");
-    printf("[%d]>>>>ttor_3d_gemm %d %d %d %d %d %d %e %e %e %llu %llu\n",rank,N,Nr,Nt,rank,n_ranks,n_threads,total_time,gemm_time,gemm_time_per_thread,flops_per_core,flops_per_rank);
+    printf("[rank]>>>>matrix_size,rank_block_size,block_size,rank,n_ranks,n_cores,nthreads,tot_time,gemm_time,gemm_time_per_thread,flops_per_core,flops_per_rank\n");
+    printf("[%d]>>>>ttor_3d_gemm %d %d %d %d %d %d %d %e %e %e %llu %llu\n",rank,N,Nr,Nt,rank,n_ranks,n_ranks*n_threads,n_threads,total_time,gemm_time,gemm_time_per_thread,flops_per_core,flops_per_rank);
 
     if(logfile.size() > 0) {
         std::ofstream logstream;

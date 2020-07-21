@@ -14,12 +14,19 @@ void gemm(const int matrix_size, const int block_size, const int n_threads, int 
     assert(matrix_size % block_size == 0);
     const int num_blocks = matrix_size / block_size;
     const int verb = 0;
-    
+
+    // You may want to do that to avoid the slow first call to MKL (??)
+    warmup_mkl(n_threads);
+
     std::vector<Eigen::MatrixXd> A_ij(num_blocks * num_blocks, Eigen::MatrixXd());
     std::vector<Eigen::MatrixXd> C_ij(num_blocks * num_blocks, Eigen::MatrixXd());
     std::vector<Eigen::MatrixXd> B_ij(num_blocks * num_blocks, Eigen::MatrixXd());
 
     auto block_2_rank = [&](int i, int j) { return (i % nprows) + (j % npcols) * nprows; };
+    const int rank_i = rank % nprows;
+    const int rank_j = rank / nprows; 
+    const int first_row_rank = rank_i;
+    const int first_col_rank = rank_j * nprows;
 
     for(int i = 0; i < num_blocks; i++) {
         for(int j = 0; j < num_blocks; j++) {
@@ -41,16 +48,16 @@ void gemm(const int matrix_size, const int block_size, const int n_threads, int 
     ttor::Taskflow<int2> send_Aij(&tp, verb); // Send A_ij
     ttor::Taskflow<int2> send_Bij(&tp, verb); // Send B_ij
     ttor::Taskflow<int3> gemm_Cikj(&tp, verb); // += A_ik * B_kj
-
+            
     /** 
      * Send
      **/
 
     auto send_Aij_am_large = comm.make_large_active_msg([&](int& i, int& j) {
-        for(int k = 0; k < num_blocks; k++) {
-            if(block_2_rank(i,k) == rank) {
-                gemm_Cikj.fulfill_promise({i, j, k});
-            }
+        assert(block_2_rank(i,j) != rank);
+        for(int k = rank_j; k < num_blocks; k += npcols) {
+            assert(block_2_rank(i,k) == rank);
+            gemm_Cikj.fulfill_promise({i, j, k});
         }
     }, [&](int& i, int& j) {
         A_ij[i + j*num_blocks].resize(block_size, block_size);
@@ -58,20 +65,20 @@ void gemm(const int matrix_size, const int block_size, const int n_threads, int 
     }, [&](int& i, int& j){});
 
     auto send_Aij_am = comm.make_active_msg([&](ttor::view<double>& Aij, int& i, int& j) {
+        assert(block_2_rank(i,j) != rank);
         A_ij[i + j*num_blocks].resize(block_size, block_size);
         copy_from_view(&A_ij[i + j*num_blocks], Aij);
-        for(int k = 0; k < num_blocks; k++) {
-            if(block_2_rank(i,k) == rank) {
-                gemm_Cikj.fulfill_promise({i, j, k});
-            }
+        for(int k = rank_j; k < num_blocks; k += npcols) {
+            assert(block_2_rank(i,k) == rank);
+            gemm_Cikj.fulfill_promise({i, j, k});
         }
     });
 
     auto send_Bij_am_large = comm.make_large_active_msg([&](int& i, int& j) {
-        for(int k = 0; k < num_blocks; k++) {
-            if(block_2_rank(k,j) == rank) {
-                gemm_Cikj.fulfill_promise({k, i, j});
-            }
+        assert(block_2_rank(i,j) != rank);
+        for(int k = rank_i; k < num_blocks; k += nprows) {
+            assert(block_2_rank(k,j) == rank);
+            gemm_Cikj.fulfill_promise({k, i, j});
         }
     }, [&](int& i, int& j) {
         B_ij[i + j*num_blocks].resize(block_size, block_size);
@@ -79,12 +86,12 @@ void gemm(const int matrix_size, const int block_size, const int n_threads, int 
     }, [&](int& i, int& j){});
 
     auto send_Bij_am = comm.make_active_msg([&](ttor::view<double>& Bij, int& i, int& j) {
+        assert(block_2_rank(i,j) != rank);
         B_ij[i + j*num_blocks].resize(block_size, block_size);
         copy_from_view(&B_ij[i + j*num_blocks], Bij);
-        for(int k = 0; k < num_blocks; k++) {
-            if(block_2_rank(k,j) == rank) {
-                gemm_Cikj.fulfill_promise({k, i, j});
-            }
+        for(int k = rank_i; k < num_blocks; k += nprows) {
+            assert(block_2_rank(k,j) == rank);
+            gemm_Cikj.fulfill_promise({k, i, j});
         }
     });
 
@@ -93,26 +100,23 @@ void gemm(const int matrix_size, const int block_size, const int n_threads, int 
         int j = ij[1];
         assert(block_2_rank(i,j) == rank);
         ttor::view<double> A_view = make_view(&A_ij[i + j*num_blocks]);
-        ttor::view<double> B_view = make_view(&B_ij[i + j*num_blocks]);
         // Send A
-        std::set<int> dest_A;
-        for(int k = 0; k < num_blocks; k++) { dest_A.insert(block_2_rank(i,k)); }
-        for(int dest: dest_A) {
-            if(dest == rank) {
-                for(int k = 0; k < num_blocks; k++) {
-                    if(block_2_rank(i,k) == rank) gemm_Cikj.fulfill_promise({i, j, k});
-                }
+	for(int r = first_row_rank; r < n_ranks; r += nprows) {
+            if(r == rank) {
+                for(int k = rank_j; k < num_blocks; k += npcols) gemm_Cikj.fulfill_promise({i,j,k});
             } else {
-                if(use_large) send_Aij_am_large->send_large(dest, A_view, i, j);
-                else          send_Aij_am->send(dest, A_view, i, j);
+                if(use_large) send_Aij_am_large->send_large(r, A_view, i, j);
+                else          send_Aij_am->send(r, A_view, i, j);
             }
-        }        
+	}
     }).set_indegree([&](int2) {
         return 1;
     }).set_priority([&](int2 ij) {
         return num_blocks - ij[1];
     }).set_mapping([&](int2 ij) {
-        return (ij[0] % n_threads);
+        return (ij[0] / nprows + ij[1] / npcols * (num_blocks / nprows)) % n_threads;
+    }).set_name([&](int2 ij) {
+        return "send_A_" + std::to_string(ij[0]) + "_" + std::to_string(ij[1]);
     });
 
     send_Bij.set_task([&](int2 ij){
@@ -121,16 +125,12 @@ void gemm(const int matrix_size, const int block_size, const int n_threads, int 
         assert(block_2_rank(i,j) == rank);
         ttor::view<double> B_view = make_view(&B_ij[i + j*num_blocks]);
         // Send B
-        std::set<int> dest_B;
-        for(int k = 0; k < num_blocks; k++) { dest_B.insert(block_2_rank(k,j)); }
-        for(int dest: dest_B) {
-            if(dest == rank) {
-                for(int k = 0; k < num_blocks; k++) {
-                    if(block_2_rank(k,j) == rank) gemm_Cikj.fulfill_promise({k, i, j});
-                }
+        for(int r = first_col_rank; r < first_col_rank + nprows; r += 1) {
+            if(r == rank) {
+                for(int k = rank_i; k < num_blocks; k += nprows) gemm_Cikj.fulfill_promise({k,i,j});
             } else {
-                if(use_large) send_Bij_am_large->send_large(dest, B_view, i, j);
-                else          send_Bij_am->send(dest, B_view, i, j);
+                if(use_large) send_Bij_am_large->send_large(r, B_view, i, j);
+                else          send_Bij_am->send(r, B_view, i, j);
             }
         }
     }).set_indegree([&](int2) {
@@ -138,7 +138,9 @@ void gemm(const int matrix_size, const int block_size, const int n_threads, int 
     }).set_priority([&](int2 ij) {
         return num_blocks - ij[0];
     }).set_mapping([&](int2 ij) {
-        return (ij[0] % n_threads);
+        return (ij[0] / nprows + ij[1] / npcols * (num_blocks / nprows)) % n_threads;
+    }).set_name([&](int2 ij) {
+        return "send_B_" + std::to_string(ij[0]) + "_" + std::to_string(ij[1]);
     });
 
     /** 
@@ -150,8 +152,9 @@ void gemm(const int matrix_size, const int block_size, const int n_threads, int 
         int i = ikj[0];
         int k = ikj[1];
         int j = ikj[2];
+        assert(block_2_rank(i,j) == rank);
         ttor::timer t0 = ttor::wctime();
-        C_ij[i + j * num_blocks].noalias() += A_ij[i + k * num_blocks] * B_ij[k + j * num_blocks];
+        cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, block_size, block_size, block_size, 1.0, A_ij[i + k * num_blocks].data(), block_size, B_ij[k + j * num_blocks].data(), block_size, 1.0, C_ij[i + j * num_blocks].data(), block_size);
         ttor::timer t1 = ttor::wctime();
         if(k < num_blocks-1) {
             gemm_Cikj.fulfill_promise({i,k+1,j});
@@ -160,8 +163,12 @@ void gemm(const int matrix_size, const int block_size, const int n_threads, int 
         return (ikj[1] == 0 ? 2 : 3);
     }).set_mapping([&](int3 ikj) {
         return (ikj[0] / nprows + ikj[2] / npcols * (num_blocks / nprows)) % n_threads;
+    }).set_name([&](int3 ikj) {
+        return "prod_C_" + std::to_string(ikj[0]) + "_" + std::to_string(ikj[1]) + "_" + std::to_string(ikj[2]);
     });
 
+
+    MPI_Barrier(MPI_COMM_WORLD);
     printf("Starting 2D Gemm...\n");
     ttor::timer t0 = ttor::wctime();
     for(int i = 0; i < num_blocks; i++) {
@@ -174,16 +181,16 @@ void gemm(const int matrix_size, const int block_size, const int n_threads, int 
     }
     ttor::timer t_overhead = ttor::wctime();
     tp.join();
+    MPI_Barrier(MPI_COMM_WORLD);
     ttor::timer t1 = ttor::wctime();
     double total_time = ttor::elapsed(t0, t1);
     long long int flops_per_rank = ((long long int)matrix_size) * ((long long int)matrix_size) * ((long long int)matrix_size) / ((long long int)n_ranks);
     long long int flops_per_core = flops_per_rank / ((long long int)n_threads);
     // For easy CSV parsing
     printf("%e\n", ttor::elapsed(t0, t_overhead));
-    printf("[rank]>>>>rank,n_ranks,nthreads,nprows,npcols,use_large,matrix_size,num_blocks,block_size,tot_time,flops_per_core,flops_per_rank\n");
-    printf("[%d]>>>>ttor_2d_gemm %d %d %d %d %d %d %d %d %d %e %llu %llu\n",rank,rank,n_ranks,n_threads,nprows,npcols,use_large,matrix_size,num_blocks,block_size,total_time,flops_per_core,flops_per_rank);
-
-    MPI_Barrier(MPI_COMM_WORLD);
+    printf("[rank]>>>>rank,n_ranks,n_cores,nthreads,nprows,npcols,use_large,matrix_size,num_blocks,block_size,tot_time,flops_per_core,flops_per_rank\n");
+    printf("[%d]>>>>ttor_2d_gemm %d %d %d %d %d %d %d %d %d %d %e %llu %llu\n",rank,rank,n_ranks,n_ranks*n_threads,n_threads,nprows,npcols,use_large,matrix_size,num_blocks,block_size,total_time,flops_per_core,flops_per_rank);
+                
     if(test) {
         printf("Testing..\n");
         // Send all to 0

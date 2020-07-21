@@ -1,4 +1,5 @@
 MPICXX  = mpicxx
 CFLAGS  =
 INCLUDE = -I/usr/local/Cellar/eigen/3.3.7/include/eigen3/ -I/usr/local/opt/openblas/include
-LIBS    = -L/usr/local/opt/openblas/lib -lblas -llapack
+LIBS_PAR = -L/usr/local/opt/openblas/lib -lblas -llapack
+LIBS_SEQ = -L/usr/local/opt/openblas/lib -lblas -llapack
