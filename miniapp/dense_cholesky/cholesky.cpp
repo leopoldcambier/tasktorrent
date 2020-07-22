@@ -38,7 +38,7 @@ Parametrized priorities for cholesky:
 enum PrioKind { no = 0, row = 1, cp = 2, cp_row = 3};
 
 void cholesky(const int n_threads, const int verb, const int block_size, const int num_blocks, const int nprows, const int npcols, 
-              const PrioKind prio_kind, const bool log, const bool deps_log, const bool test, const int accumulate_parallel, const bool use_random_blocks)
+              const PrioKind prio_kind, const bool log, const bool deps_log, const bool test, const int accumulate_parallel, const int upper_block_size)
 {
     const int rank = comm_rank();
     const int n_ranks = comm_size();
@@ -50,9 +50,12 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
     std::atomic<long long int> accu_us_t(0);
 
     std::mt19937 gen(2020);
-    std::uniform_int_distribution<> distrib(block_size/2, 3*block_size/2); // average is block_size
+    assert(upper_block_size <= 2*block_size);
+    const int lower_block_size = 2*block_size - upper_block_size;
+    std::uniform_int_distribution<> distrib(lower_block_size,upper_block_size); // average is block_size
+    if(rank == 0) printf("lower_block_size %d, upper_block_size %d\n", upper_block_size, lower_block_size);
     std::vector<int> block_sizes(num_blocks, block_size);
-    if(use_random_blocks) {
+    {
         int n = 0;
         for(int i = 0; i < num_blocks-1; i++) {
             int bs = std::min(matrix_size - n, distrib(gen));
@@ -603,8 +606,8 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
     printf("Gemm time: %e\n", gemm_us_t.load() * 1e-6);
     printf("Accu time: %e\n", accu_us_t.load() * 1e-6);
 
-    printf("++++rank nranks n_threads matrix_size block_size num_blocks priority_kind accumulate use_random_blocks total_time\n");
-    printf("[%d]>>>>%d %d %d %d %d %d %d %d %d %e\n",rank,rank,n_ranks,n_threads,matrix_size,block_size,num_blocks,(int)prio_kind,(int)accumulate_parallel,use_random_blocks,total_time);
+    printf("++++rank nranks n_threads matrix_size block_size num_blocks priority_kind accumulate upper_block_size total_time\n");
+    printf("[%d]>>>>%d %d %d %d %d %d %d %d %d %e\n",rank,rank,n_ranks,n_threads,matrix_size,block_size,num_blocks,(int)prio_kind,(int)accumulate_parallel,upper_block_size,total_time);
 
     if(log) {
         std::ofstream logfile;
@@ -688,7 +691,7 @@ int main(int argc, char **argv)
     bool depslog = false;
     bool test = true;
     bool accumulate = false;
-    bool use_random_blocks = false;
+    int upper_block_size = block_size;
 
     if (argc >= 2)
     {
@@ -744,13 +747,16 @@ int main(int argc, char **argv)
     }
 
     if (argc >= 13) {
-        use_random_blocks = static_cast<bool>(atoi(argv[12]));
+        upper_block_size = (atoi(argv[12]));
+        assert(upper_block_size >= block_size && upper_block_size <= 2 * block_size);
+    } else {
+        upper_block_size = block_size;
     }
 
-    printf("Usage: ./cholesky block_size num_blocks n_threads verb nprows npcols kind log depslog test accumulate use_random_blocks\n");
-    printf("Arguments: block_size (size of blocks) %d\nnum_blocks (# of blocks) %d\nn_threads %d\nverb %d\nnprows %d\nnpcols %d\nkind %d\nlog %d\ndeplog %d\ntest %d\naccumulate %d\nuse_random_blocks %d\n", block_size, num_blocks, n_threads, verb, nprows, npcols, (int)kind, log, depslog, test, accumulate, use_random_blocks);
+    if(comm_rank() == 0) printf("Usage: ./cholesky block_size num_blocks n_threads verb nprows npcols kind log depslog test accumulate upper_block_size\n");
+    if(comm_rank() == 0) printf("Arguments: block_size (size of blocks) %d\nnum_blocks (# of blocks) %d\nn_threads %d\nverb %d\nnprows %d\nnpcols %d\nkind %d\nlog %d\ndeplog %d\ntest %d\naccumulate %d\nupper_block_size %d\n", block_size, num_blocks, n_threads, verb, nprows, npcols, (int)kind, log, depslog, test, accumulate, upper_block_size);
 
-    cholesky(n_threads, verb, block_size, num_blocks, nprows, npcols, kind, log, depslog, test, accumulate, use_random_blocks);
+    cholesky(n_threads, verb, block_size, num_blocks, nprows, npcols, kind, log, depslog, test, accumulate, upper_block_size);
 
     MPI_Finalize();
 }
