@@ -49,6 +49,17 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
     std::atomic<long long int> gemm_us_t(0);
     std::atomic<long long int> accu_us_t(0);
 
+    // Warmup MKL
+    {
+        Eigen::MatrixXd A = Eigen::MatrixXd::Identity(256,256);
+        Eigen::MatrixXd B = Eigen::MatrixXd::Identity(256,256);
+        Eigen::MatrixXd C = Eigen::MatrixXd::Identity(256,256);
+        for(int i = 0; i < 10; i++) {
+            cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, 256, 256, 256, 1.0, A.data(), 256, B.data(), 256, 1.0, C.data(), 256);
+        }
+    }
+
+    // Compute random sizes
     std::mt19937 gen(2020);
     assert(upper_block_size <= 2*block_size);
     const int lower_block_size = 2*block_size - upper_block_size;
