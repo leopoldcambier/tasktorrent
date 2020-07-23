@@ -77,9 +77,9 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     /** 
      * Workspace
      **/
-    std::vector<std::vector<Eigen::MatrixXd>> A_ijk(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(Nt, Nt)));
-    std::vector<std::vector<Eigen::MatrixXd>> C_ijk(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(Nt, Nt)));
-    std::vector<std::vector<Eigen::MatrixXd>> B_ijk(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(Nt, Nt)));
+    std::vector<std::vector<Eigen::MatrixXd>> A_ijk(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(0, 0)));
+    std::vector<std::vector<Eigen::MatrixXd>> C_ijk(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(0, 0)));
+    std::vector<std::vector<Eigen::MatrixXd>> B_ijk(n, std::vector<Eigen::MatrixXd>(n, Eigen::MatrixXd::Zero(0, 0)));
     
     // C_ijk_accu[sub_i][sub_j][from] stores the results for (sub_i, sub_j) to be accumulated, from rank from
     std::vector<std::vector<std::vector<Eigen::MatrixXd>>> C_ijk_accu(
@@ -87,8 +87,6 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
         n, std::vector<Eigen::MatrixXd>(
         n_ranks_1d, Eigen::MatrixXd(0, 0))));
     
-    MPI_Barrier(MPI_COMM_WORLD);
-
     /**
      * Initialize the runtime structures
      **/
@@ -118,12 +116,14 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     auto send_Aij_am = comm.make_large_active_msg([&](int& sub_i, int& sub_j) {
         bcst_Aij.fulfill_promise({sub_i, sub_j});
     }, [&](int& sub_i, int& sub_j) {
+        A_ijk[sub_i][sub_j].resize(Nt, Nt);
         return A_ijk[sub_i][sub_j].data();
     }, [&](int& sub_i, int& sub_j){});
 
     auto send_Bij_am = comm.make_large_active_msg([&](int& sub_i, int& sub_j) {
         bcst_Bij.fulfill_promise({sub_i, sub_j});
     }, [&](int& sub_i, int& sub_j) {
+        B_ijk[sub_i][sub_j].resize(Nt, Nt);
         return B_ijk[sub_i][sub_j].data();
     }, [&](int& sub_i, int& sub_j){});
 
@@ -184,6 +184,7 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
             gemm_Cijk.fulfill_promise({sub_i, k, sub_j});
         }
     }, [&](int& sub_i, int& sub_j) {
+        A_ijk[sub_i][sub_j].resize(Nt, Nt);
         return A_ijk[sub_i][sub_j].data();
     }, [&](int& sub_i, int& sub_j) {});
 
@@ -192,6 +193,7 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
             gemm_Cijk.fulfill_promise({k, sub_j, sub_i});
         }
     }, [&](int& sub_i, int& sub_j) {
+        B_ijk[sub_i][sub_j].resize(Nt, Nt);
         return B_ijk[sub_i][sub_j].data();
     }, [&](int& sub_i, int& sub_j) {});
 
@@ -266,6 +268,7 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
         int sub_k = sub_ijk[2];
         {
             scoped_timer t(&gemm_us_t);
+            if(C_ijk[sub_i][sub_j].size() == 0) C_ijk[sub_i][sub_j] = Eigen::MatrixXd::Zero(Nt, Nt);
             C_ijk[sub_i][sub_j].noalias() += A_ijk[sub_i][sub_k] * B_ijk[sub_k][sub_j];
         }
         scoped_timer t(&gemm_copy_us_t);
@@ -310,6 +313,7 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     }).set_name([&](int3 sub_ij_from) { return "accu_C_" + to_string(sub_ij_from) + "_" + to_string(rank_ijk); });
 
     printf("Starting 3D Gemm...\n");
+    MPI_Barrier(MPI_COMM_WORLD);
     ttor::timer t0 = ttor::wctime();
     if(rank_k == 0) {
         for(int i = 0; i < n; i++) {
@@ -320,6 +324,7 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
         }
     }
     tp.join();
+    MPI_Barrier(MPI_COMM_WORLD);
     ttor::timer t1 = ttor::wctime();
     double total_time = ttor::elapsed(t0, t1);
     double gemm_time = gemm_us_t.load() * 1e-6;
@@ -337,7 +342,7 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     // For easy CSV parsing
     long long int flops_per_rank = (long long int)(N) * (long long int)(N) * (long long int)(N) / ((long long int)n_ranks);
     long long int flops_per_core = flops_per_rank / ((long long int)n_threads);
-    printf("[rank]>>>>matrix_size,rank_block_size,block_size,rank,n_ranks,n_cores,nthreads,tot_time,gemm_time,gemm_time_per_thread,flops_per_core,flops_per_rank\n");
+    printf("[rank]>>>>matrix_size rank_block_size block_size rank n_ranks n_cores nthreads total_time gemm_time gemm_time_per_thread flops_per_core flops_per_rank\n");
     printf("[%d]>>>>ttor_3d_gemm %d %d %d %d %d %d %d %e %e %e %llu %llu\n",rank,N,Nr,Nt,rank,n_ranks,n_ranks*n_threads,n_threads,total_time,gemm_time,gemm_time_per_thread,flops_per_core,flops_per_rank);
 
     if(logfile.size() > 0) {
