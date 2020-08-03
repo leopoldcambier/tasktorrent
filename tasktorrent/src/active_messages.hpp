@@ -228,7 +228,6 @@ void ActiveMsg<Ps...>::run(char *payload_raw, size_t size)
     Serializer<size_t, size_t, Ps...> s;
     auto tup = s.read_buffer(payload_raw, size);
     assert(std::get<0>(tup) == get_id());
-    assert(std::get<1>(tup) >= 0);
     auto args = tail(tail(tup));
     apply_fun(fun_, args);
 }
@@ -240,7 +239,6 @@ void ActiveMsg<Ps...>::complete(char *payload_raw, size_t size)
     Serializer<size_t, size_t, Ps...> s;
     auto tup = s.read_buffer(payload_raw, size);
     assert(std::get<0>(tup) == get_id());
-    assert(std::get<1>(tup) >= 0);
     auto args = tail(tail(tup));
     apply_fun(complete_fun_, args);
 }
@@ -252,7 +250,6 @@ char* ActiveMsg<Ps...>::get_user_buffers(char *payload_raw, size_t size)
     Serializer<size_t, size_t, Ps...> s;
     auto tup = s.read_buffer(payload_raw, size);
     assert(std::get<0>(tup) == get_id());
-    assert(std::get<1>(tup) >= 0);
     auto args = tail(tail(tup));
     return apply_fun(ptr_fun_, args);
 }
