@@ -26,7 +26,7 @@ using namespace ttor;
 typedef array<int, 2> int2;
 typedef array<int, 3> int3;
 
-void cholesky3d(int n_threads, int verb, int n, int nb, int n_col, int n_row, int priority, int test, int LOG, int tm)
+void cholesky3d(int n_threads, int verb, int n, int nb, int n_col, int n_row, int priority, int test, int LOG, int tm, int debug)
 {
     const int rank = comm_rank();
     const int n_ranks = comm_size();
@@ -45,12 +45,14 @@ void cholesky3d(int n_threads, int verb, int n, int nb, int n_col, int n_row, in
         MPI_Finalize();
         exit(1);
     }
-
+    
     int3 rank_3d;
-    rank_3d[0] = rank / (q*q);
-    rank_3d[1] = (rank % (q*q)) / q;
-    rank_3d[2] = (rank % (q*q)) % q;
-
+    int2 rank_2d;
+    rank_3d[0] = rank / (q * q);
+    rank_3d[1] = (rank % (q * q)) / q;
+    rank_3d[2] = (rank % (q * q)) % q;
+    rank_2d[0] = rank % n_row;
+    rank_2d[1] = rank / n_row;
 
     // Number of tasks
     int n_tasks_per_rank = 2;
@@ -117,7 +119,7 @@ void cholesky3d(int n_threads, int verb, int n, int nb, int n_col, int n_row, in
     
 
     // Initialize the communicator structure
-    Communicator comm(verb);
+    Communicator comm(MPI_COMM_WORLD, verb);
 
     // Initialize the runtime structures
     Threadpool tp(n_threads, &comm, verb, "WkTuto_" + to_string(rank) + "_");
@@ -139,39 +141,36 @@ void cholesky3d(int n_threads, int verb, int n, int nb, int n_col, int n_row, in
     // Create active message
     auto am_trsm = comm.make_large_active_msg( 
             [&](int& j) {
-                int offset = (j / n_row + j / rank_3d[0]) * n_row + rank_3d[0];
+                int offset = (j / n_row + (j % n_row) / (rank_2d[0] + 1)) * n_row + rank_2d[0] + 1;
                 for(int i = offset; i < nb; i = i + n_row) {
                     trsm.fulfill_promise({j,i});
                 }
             },
             [&](int& j){
                 return blocs[j+j*nb]->data();
+            },
+            [&](int& j){
+                return;
             });
 
-        // Sends a panel bloc and trigger multiple gemms
-    /*
-    auto am_gemm = comm.make_active_msg(
-        [&](view<double> &Lij, int& i, int& k, view<int2>& ijs) {
-            *blocs[i+k*nb] = Map<MatrixXd>(Lij.data(), n, n);
-            for(auto& ij: ijs) {
-                gemm.fulfill_promise({k,ij[0],ij[1]});
-            }
-        });
-
-    */
+        // Sends a panel bloc and trigger multiple gemms 
     auto am_gemm = comm.make_large_active_msg(
         [&](int& i, int& k) {
-            int offset_c = k / n_col + k / rank_3d[1]; 
+            assert(k % q == rank_3d[2]);
+            int offset_c = (k / n_col + (k % n_col) / (rank_3d[1] + 1)) * n_col + rank_3d[1] + 1; 
             for(int j = offset_c; j < i; j = j + n_col ) {
-                gemm.fulfill_promise({i,j,k});
+                gemm.fulfill_promise({k,i,j});
             }
-	    int offset_r = i / n_row + i / rank_3d[0];
+	    int offset_r = (i / n_row + (i % n_row) / (rank_3d[0] + 1)) * n_row + rank_3d[0];
             for(int j = offset_r; j < nb; j = j + n_row) {
-                gemm.fulfill_promise({j,i,k});
+                gemm.fulfill_promise({k,j,i});
             }
         },
         [&](int& i, int& k) {
             return blocs[i+k*nb]->data();
+        },
+        [&](int& i, int& k) {
+            return;
         });
 
     // Define the task flow
@@ -181,13 +180,13 @@ void cholesky3d(int n_threads, int verb, int n, int nb, int n_col, int n_row, in
           timer t2 = wctime();
           potrf_us_t += 1e6 * elapsed(t1, t2);
           //potrf_us_t += 1;
-          //printf("Running POTRF %d on rank %d, %d, %d\n", k, rank_3d[0], rank_3d[1], rank_3d[2]);
+          if (debug) printf("Running POTRF %d on rank %d, %d, %d\n", j, rank_3d[0], rank_3d[1], rank_3d[2]);
       })
         .set_fulfill([&](int j) { 
             for (int r = 0; r < n_ranks; r++) // Looping through all outgoing dependency edges
             {
                 if (rank == r) {
-                   int offset = (j / n_row + j / rank_3d[0]) * n_row + rank_3d[0];
+                   int offset = (j / n_row + (j % n_row) / (rank_2d[0] + 1)) * n_row + rank_2d[0] + 1;
                    for(int i = offset; i < nb; i = i + n_row) {
                       trsm.fulfill_promise({j,i});
                    }
@@ -256,7 +255,7 @@ void cholesky3d(int n_threads, int verb, int n, int nb, int n_col, int n_row, in
         timer t2 = wctime();
         trsm_us_t += 1e6 * elapsed(t1, t2);
         //trsm_us_t += 1;
-        //printf("Running TRSM (%d, %d) on rank %d, %d, %d\n", i, k, rank_3d[0], rank_3d[1], rank_3d[2]);
+        if (debug) printf("Running TRSM (%d, %d) on rank %d, %d, %d\n", i, k, rank_3d[0], rank_3d[1], rank_3d[2]);
         //cout<<(*blocs[i+k*nb])<<"\n";
 
       })
@@ -266,45 +265,22 @@ void cholesky3d(int n_threads, int verb, int n, int nb, int n_col, int n_row, in
             for (int r = 0; r < n_ranks; r++)   // Looping through all outgoing dependency edges
             {
                 if (r == rank) {
-                  int offset_c = k / n_col + k / rank_3d[1];
+                  //if ((k % q) != rank_3d[2]) continue;
+                  int offset_c = (k / n_col + (k % n_col) / (rank_3d[1] + 1)) * n_col + rank_3d[1] + 1;
                   for(int j = offset_c; j < i; j = j + n_col ) {
-                    gemm.fulfill_promise({i,j,k});
+                    gemm.fulfill_promise({k,i,j});
                   }
-                  int offset_r = i / n_row + i / rank_3d[0];
+                  int offset_r = (i / n_row + (i % n_row) / (rank_3d[0] + 1)) * n_row + rank_3d[0];
                   for(int j = offset_r; j < nb; j = j + n_row) {
-                    gemm.fulfill_promise({j,i,k});
+                    gemm.fulfill_promise({k,j,i});
                   }
                 }
                 else {
                     //cout<<"Sending data from "<<rank<<" to "<<r<<"\n";
                     auto Lijv = view<double>(blocs[i+k*nb]->data(), n*n);
                     am_gemm->send_large(r, Lijv, i, k);
-
                 }
-                
-
-            }
-            
-           /*
-            for (int qi=0; qi<q; qi++) {
-                for (int qj=0; qj<q; qj++) {
-                    int r = rank_3d21(qi, qj, k);
-                    if (r == rank) {
-                    for (auto& ij : fulfill[r]) {
-                        gemm.fulfill_promise({k,ij[0],ij[1]});
-                        //printf("Trsm (%d, %d) fulfilling local Gemm (%d, %d, %d) on rank %d\n", k, i, k, ij[0], ij[1], comm_rank());
-                    }
-                    }
-                    else {
-                        //cout<<"Sending data from "<<rank<<" to "<<r<<"\n";
-                        auto Lijv = view<double>(blocs[i+k*nb]->data(), n*n);
-                        auto ijsv = view<int2>(fulfill[r].data(), fulfill[r].size());
-                        am_gemm->send(r, Lijv, i, k, ijsv);
-
-                    }
-                }
-            }
-            */
+            }            
         })
         .set_indegree([&](int2 ki) {
             int k=ki[0];
@@ -360,25 +336,16 @@ void cholesky3d(int n_threads, int verb, int n, int nb, int n_col, int n_row, in
             int i=ki[1];
             return "TRSM" + to_string(k) + "_" + to_string(i) + "_" +to_string(rank);
         });
-    /*
-    auto am_accu = comm.make_active_msg([&](view<double>& Lijk, int& i, int& j, int& from) {
-        std::unique_ptr<MatrixXd> Atmp;
-        Atmp = make_unique<MatrixXd>(n, n);
-        *Atmp =  Map<MatrixXd>(Lijk.data(), n, n);
-        {
-            lock_guard<mutex> lock(gemm_results[i+j*nb].mtx);
-            gemm_results[i+j*nb].to_accumulate[from] = move(Atmp);
-        }
-        accu.fulfill_promise({from, i, j});
-    });
-    */
-    
+   
     auto am_accu = comm.make_large_active_msg(
         [&](int& i, int& j, int& from) {
         accu.fulfill_promise({from, i, j});
         },
         [&](int& i, int& j, int& from){
             return gemm_results[i+j*nb].to_accumulate[from]->data();
+        },
+        [&](int& i, int& j, int& from){
+            return; 
         });
     
 
@@ -396,7 +363,7 @@ void cholesky3d(int n_threads, int verb, int n, int nb, int n_col, int n_row, in
                 cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, n, n, n, -1.0,blocs[i+k*nb]->data(), n, blocs[j+k*nb]->data(), n, 1.0, blocs[i+j*nb]->data(), n);
             }
             timer t2 = wctime();
-            //printf("Running GEMM (%d, %d, %d) on rank %d, %d, %d\n", i, j, k, rank_3d[0], rank_3d[1], rank_3d[2]);
+            if (debug) printf("Running GEMM (%d, %d, %d) on rank %d, %d, %d\n", i, j, k, rank_3d[0], rank_3d[1], rank_3d[2]);
             //gemm_us_t += 1e6 * elapsed(t1,t2);
             gemm_us_t += 1;
             
@@ -413,7 +380,7 @@ void cholesky3d(int n_threads, int verb, int n, int nb, int n_col, int n_row, in
             else {
                 int dest = rank2d21(i, j);
                 if (dest == rank) {
-                    //printf("Gemm (%d, %d, %d) fulfilling ACCUMU (%d, %d, %d) on rank %d, %d, %d\n", k, i, j, rank_3d[2], i, j, rank_3d[0], rank_3d[1], rank_3d[2]);
+                    if (debug) printf("Gemm (%d, %d, %d) fulfilling ACCUMU (%d, %d, %d) on rank %d, %d, %d\n", k, i, j, rank_3d[2], i, j, rank_3d[0], rank_3d[1], rank_3d[2]);
 
                     accu.fulfill_promise({rank_3d[2], i, j});
                 }
@@ -421,7 +388,7 @@ void cholesky3d(int n_threads, int verb, int n, int nb, int n_col, int n_row, in
                 else {
                     int kk = rank_3d[2];
                     auto Lij = view<double>(blocs[i+j*nb]->data(), n*n);
-                    //printf("Gemm (%d, %d, %d) Sending ACCUMU (%d, %d, %d) to rank %d, %d\n", k, i, j, rank_3d[2], i, j, dest % n_row, dest / n_row);
+                    if (debug) printf("Gemm (%d, %d, %d) Sending ACCUMU (%d, %d, %d) to rank %d, %d\n", k, i, j, rank_3d[2], i, j, dest % n_row, dest / n_row);
                     am_accu->send_large(dest, Lij, i, j, kk);
                 }
             }
@@ -494,7 +461,7 @@ void cholesky3d(int n_threads, int verb, int n, int nb, int n_col, int n_row, in
             int j=kij[2]; // Col
             assert(rank2d21(i,j) == rank);
             assert(j <= i);
-            //printf("Running ACCU (%d, %d, %d) on rank %d, %d\n", k, i, j, rank % n_row, rank / n_row);
+            if (debug) printf("Running ACCU (%d, %d, %d) on rank %d, %d\n", k, i, j, rank % n_row, rank / n_row);
             //assert(k < j);
             //std::unique_ptr<Eigen::MatrixXd> Atmp;
             {
@@ -595,21 +562,6 @@ void cholesky3d(int n_threads, int verb, int n, int nb, int n_col, int n_row, in
     if (rank==0) {
         cout<<"3D, Number of ranks "<<n_ranks<<", n "<<n<<", nb "<<nb<<", n_threads "<<n_threads<<", tm "<<tm<<", Priority "<<priority<<", Elapsed time: "<<elapsed(t0,t1)<<endl;
     }
-    /*
-    printf("Potrf time: %e\n", potrf_us_t.load() * 1e-6);
-    printf("Trsm time: %e\n", trsm_us_t.load() * 1e-6);
-    printf("Gemm time: %e\n", gemm_us_t.load() * 1e-6);
-    printf("Rank %d Total Computation Time: %e\n", rank, potrf_us_t.load() * 1e-6+trsm_us_t.load() * 1e-6+gemm_us_t.load() * 1e-6);
-    */
-    //printf("Rank %d number of GEMMs: %d\n", rank, gemm_us_t.load());
-    /*
-    printf("Potrf Time: %f\n", potrf_us_t.load());
-    printf("Trsm Time: %f\n", trsm_us_t.load());
-    printf("Gemms Time: %f\n", gemm_us_t.load());
-    printf("Rank %d Total Computation Time: %f\n", rank, trsm_us_t.load()+potrf_us_t.load()+gemm_us_t.load());
-    */
-
-
 
     if (test)   {
         MatrixXd A;
@@ -690,6 +642,7 @@ int main(int argc, char **argv)
     int test=0;
     int log=0;
     int tm=0;
+    int debug=0;
 
     if (argc >= 2)
     {
@@ -727,8 +680,11 @@ int main(int argc, char **argv)
     if (argc >= 11) {
         tm = atoi(argv[11]);
     }
+    if (argc >= 12) {
+        debug = atoi(argv[12]);
+    }
 
-    cholesky3d(n_threads, verb, n, nb, n_col, n_row, priority, test, log, tm);  
+    cholesky3d(n_threads, verb, n, nb, n_col, n_row, priority, test, log, tm, debug);  
 
     MPI_Finalize();
 }
