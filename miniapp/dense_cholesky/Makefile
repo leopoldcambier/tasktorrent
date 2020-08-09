@@ -13,14 +13,17 @@ SRCS := $(wildcard $(SRCDIR)/*.cpp)
 OBJ := $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(SRCS))
 
 default: all
-all: cholesky
+all: 2d_cholesky 3d_cholesky
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(DEPS)
 	$(MPICXX) $(CFLAGS) -o $@ -c $< $(INCLUDE)
 
-cholesky: cholesky.cpp $(OBJ)
+3d_cholesky: 3d_cholesky.cpp $(OBJ)
+	$(MPICXX) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LIBS)
+
+2d_cholesky: 2d_cholesky.cpp $(OBJ)
 	$(MPICXX) $(CFLAGS) -o $@ $^ $(INCLUDE) $(LIBS)
 
 clean:
-	rm -f cholesky
+	rm -f 3d_cholesky 2d_cholesky
 	rm -f $(OBJDIR)/*.o

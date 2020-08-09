@@ -30,12 +30,13 @@ typedef array<int, 3> int3;
  * 0. No priority, only enforces potrf>trsm>gemm
  * 1. Row-based priority, prioritize tasks with smaller row number in addition to priority 0.
  * 2. Critical path priority, prioritize tasks with longest distance to the exit task. For references, check out the paper
- *     Beaumont, Olivier, et al. "A Makespan Lower Bound for the Scheduling of the Tiled Cholesky Factorization based on ALAP Schedule." (2020).
- *     3. Critical path and row priority, prioritize tasks with smaller row number in addition to priority 2. We also enforces potrf>trsm>gemm
- *     */
+     Beaumont, Olivier, et al. "A Makespan Lower Bound for the Scheduling of the Tiled Cholesky Factorization based on ALAP Schedule." (2020).
+ * 3. Critical path and row priority, prioritize tasks with smaller row number in addition to priority 2. We also enforces potrf>trsm>gemm
+ */
 
+enum PrioKind { no = 0, row = 1, cp = 2, cp_row = 3};
 
-void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npcols, int nprows, int prio, int test, int log, int debug)
+void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npcols, int nprows, PrioKind prio, int test, int log, int debug)
 {
     const int rank = comm_rank();
     const int n_ranks = comm_size();
@@ -70,11 +71,55 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
     struct acc_data {
         vector<std::unique_ptr<MatrixXd>> to_accumulate; // to_accumulate[k] holds matrix result of gemm(k,i,j)
     };
+
+    auto potf_block_2_prio = [&](int j) {
+        if (prio == PrioKind::cp_row) {
+            return (double)(9 * (num_blocks - j) - 1) + 18 * num_blocks * num_blocks;
+        }
+        else if(prio == PrioKind::cp) {
+            return (double)(9 * (num_blocks - j) - 1);
+        }
+        else if(prio == PrioKind::row) {
+            return 3.0 * (double)(num_blocks - j);
+        }
+        else {
+            return 3.0;
+        }
+    };
+    auto trsm_block_2_prio = [&](int2 ij) {
+        if (prio == PrioKind::cp_row) {
+            return (double)((num_blocks - ij[0]) + num_blocks * (9.0 * num_blocks - 9.0 * ij[1] - 2.0) + 9 * num_blocks * num_blocks);
+        }
+        else if(prio == PrioKind::cp) {
+            return (double)(9 * (num_blocks - ij[1]) - 2);
+        }
+        else if(prio == PrioKind::row) {
+            return 2.0 * (double)(num_blocks - ij[0]);
+        }
+        else {
+            return 2.0;
+        }
+    };
+    auto gemm_block_2_prio = [&](int3 kij) {
+        if (prio == PrioKind::cp_row) {
+            return (double)(num_blocks - kij[1]) + num_blocks * (9.0 * num_blocks - 3.0 * kij[2] - 6.0 * (kij[0] / q) - 2.0);
+        }
+        else if(prio == PrioKind::cp) {
+            return (double)(9 * num_blocks - 9 * kij[2] - 2);
+        }
+        else if(prio == PrioKind::row) {
+            return (double)(num_blocks - kij[1]);
+        }
+        else {
+            return 1.0;
+        }
+    };
+
     std::vector<acc_data> gemm_results(num_blocks*num_blocks);
     auto val = [&](int i, int j) { return 1/(double)((i-j)*(i-j)+1); };
     auto rank3d21 = [&](int i, int j, int k) { return ((j % q) * q + k % q) + (i % q) * q * q;};
     auto rank2d21 = [&](int i, int j) { return (j % npcols) * nprows + (i % nprows);};
-    auto rank1d21 = [&](int k) { return k % n_ranks; };
+    auto rank1d21 = [&](int j) { return j % n_ranks; };
     vector<unique_ptr<MatrixXd>> blocs(num_blocks*num_blocks);
 
     auto bloc_2_rank = [&](int i, int j) {
@@ -148,7 +193,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
                 int offset = ((j + 1) / nprows + (((j + 1) % nprows) > rank_2d[0])) * nprows + rank_2d[0];
                 for(int i = offset; i < num_blocks; i = i + nprows) {
                     if (debug) printf("Fulfilling trsm (%d, %d) on rank (%d, %d)\n", i, j, rank_2d[0], rank_2d[1]);
-                    trsm.fulfill_promise({j,i});
+                    trsm.fulfill_promise({i,j});
                 }
             },
             [&](int& j){
@@ -201,7 +246,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
                 if (rank == r) {
                    int offset = ((j + 1) / nprows + ((j + 1) % nprows) / (rank_2d[0] + 1)) * nprows + rank_2d[0];
                    for(int i = offset; i < num_blocks; i = i + nprows) {
-                       trsm.fulfill_promise({j,i});
+                       trsm.fulfill_promise({i,j});
                    }
                 }
                 else {
@@ -230,121 +275,81 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
             return false;
 
         })        
-        .set_priority([&](int j) {
-            if (prio==-1) {
-                return 1.0;
-            }
-            if (prio==0) {
-                return 3.0;
-            }
-            if (prio==1) {
-                return 9.0*(double)(num_blocks-j)-1.0;
-            }
-            if (prio==2) {
-                return 9.0*(double)(num_blocks-j)-1.0+18*num_blocks;
-            }
-            if (prio==3) {
-                return 9.0*(double)(num_blocks-j)-1.0+18*num_blocks*num_blocks;
-            }
-            else {
-                return 3.0*(double)(num_blocks-j);
-            }
-        })
+        .set_priority(potf_block_2_prio)
         .set_name([&](int j) { // This is just for debugging and profiling
             return "POTRF" + to_string(j) + "_" + to_string(rank);
         });
 
 
 
-    trsm.set_task([&](int2 ki) {
-        int k=ki[0];
-        int i=ki[1];
-        assert(rank2d21(i,k) == rank);
+    trsm.set_task([&](int2 ij) {
+        int i=ij[0];
+        int j=ij[1];
+        assert(rank2d21(i,j) == rank);
         timer t1 = wctime();
-        cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, block_size, block_size, 1.0, blocs[k+k*num_blocks]->data(),block_size, blocs[i+k*num_blocks]->data(), block_size);
+        cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, block_size, block_size, 1.0, blocs[j + j * num_blocks]->data(),block_size, blocs[i + j * num_blocks]->data(), block_size);
         timer t2 = wctime();
         trsm_us_t += 1e6 * elapsed(t1, t2);
-        if (debug) printf("Running trsm (%d, %d) on rank %d, %d\n", i, k, rank_2d[0], rank_2d[1]);
+        if (debug) printf("Running trsm (%d, %d) on rank %d, %d\n", i, j, rank_2d[0], rank_2d[1]);
       })
-        .set_fulfill([&](int2 ki) {
-            int k=ki[0];
-            int i=ki[1]; 
+        .set_fulfill([&](int2 ij) {
+            int i=ij[0];
+            int j=ij[1]; 
             for (int ri = 0; ri < q; ri++)   // Looping through all outgoing dependency edges
             {
                 for (int rj = 0; rj < q; rj++) {
-                int r = rank3d21(ri, rj, k);
+                int r = rank3d21(ri, rj, j);
                 if (r == rank) {
-                      int offset_c = ((k + 1) / q + (((k + 1) % q) > rank_3d[1])) * q + rank_3d[1];
+                      int offset_c = ((j + 1) / q + (((j + 1) % q) > rank_3d[1])) * q + rank_3d[1];
                       if (i % q == rank_3d[0]) {
-                      	for(int j = offset_c; j < i; j = j + q) {
-                        	gemm.fulfill_promise({k,i,j});
+                      	for(int k = offset_c; k < i; k = k + q) {
+                        	gemm.fulfill_promise({j,i,k});
                       	}
                       }
                       int offset_r = (i / q + ((i % q) > rank_3d[0])) * q + rank_3d[0];
                       if (i % q == rank_3d[1]) {
-                      	for(int j = offset_r; j < num_blocks; j = j + q) {
-                        	gemm.fulfill_promise({k,j,i});
+                      	for(int k = offset_r; k < num_blocks; k = k + q) {
+                        	gemm.fulfill_promise({j,k,i});
                       	} 
                       }
                   }
                 else {
                     //cout<<"Sending data from "<<rank<<" to "<<r<<"\n";
-                      auto Lijv = view<double>(blocs[i+k*num_blocks]->data(), block_size*block_size);
-                      am_gemm->send_large(r, Lijv, i, k);
+                      auto Lijv = view<double>(blocs[i + j * num_blocks]->data(), block_size*block_size);
+                      am_gemm->send_large(r, Lijv, i, j);
                 } 
                }
             }            
         })
-        .set_indegree([&](int2 ki) {
-            int k=ki[0];
-            int i=ki[1];
-            if (k==0) {
+        .set_indegree([&](int2 ij) {
+            int i=ij[0];
+            int j=ij[1];
+            if (j == 0) {
                 return 1;
             }
-            else if (k < q) {
-                return k+1;
+            else if (j < q) {
+                return j + 1;
             }
             else {
-                return q+1;
+                return q + 1;
             }
         })
-        .set_mapping([&](int2 ki) {
-            int k=ki[0];
-            int i=ki[1];
-            return block_2_thread(i,k);
+        .set_mapping([&](int2 ij) {
+            int i=ij[0];
+            int j=ij[1];
+            return block_2_thread(i,j);
         })
-        .set_binding([&](int2 ki) {
-            int k=ki[0];
-            int i=ki[1];
+        .set_binding([&](int2 ij) {
+            int i=ij[0];
+            int j=ij[1];
             return false;
 
         })
-        .set_priority([&](int2 ki) {
-            int k=ki[0];
-            int i=ki[1];
-            if (prio==-1) {
-                return 1.0;
-            }
-            if (prio==0) {
-                return 2.0;
-            }
-            if (prio==1) {
-                return 9.0*(double)(num_blocks-k)-2.0;
-            }
-            if (prio==2) {
-                return 9.0*(double)(num_blocks-k)-2.0+9*num_blocks;
-            }
-            if (prio==3) {
-                return (double)(num_blocks-i)+num_blocks*(9.0*(double)(num_blocks-k)-2.0)+9*num_blocks*num_blocks;
-            }
-            else {
-                return 2.0*(double)(num_blocks-i);
-            }
-        })
-        .set_name([&](int2 ki) { // This is just for debugging and profiling
-            int k=ki[0];
-            int i=ki[1];
-            return "TRSM" + to_string(k) + "_" + to_string(i) + "_" +to_string(rank);
+        .set_priority(trsm_block_2_prio)
+        .set_name([&](int2 ij) { // This is just for debugging and profiling
+            int i=ij[0];
+            int j=ij[1];
+            return "TRSM" + to_string(j) + "_" + to_string(i) + "_" +to_string(rank);
         });
    
     auto am_accu = comm.make_large_active_msg(
@@ -428,30 +433,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
             return false;
 
         })
-        .set_priority([&](int3 kij) {
-            int k=kij[0];
-            int i=kij[1];
-            int j=kij[2];
-            if (prio==-1) {
-                return 1.0;
-            }
-            if (prio==0) {
-                return 1.0;
-            }
-            if (prio==1) {
-                return 9.0*num_blocks-3.0*j-6.0*k-2.0;
-            }
-            if (prio==2) {
-                return 9.0*num_blocks-3.0*j-6.0*k-2.0;
-            }
-            if (prio==3) {
-                return (double)(num_blocks-i)+num_blocks*(9.0*num_blocks-3.0*j-6.0*k-2.0);
-            }
-            else {
-                return 1.0*(double)(num_blocks-i);
-            }
-
-        })
+        .set_priority(gemm_block_2_prio)
         .set_name([&](int3 kij) { // This is just for debugging and profiling
             int k=kij[0];
             int i=kij[1];
@@ -484,7 +466,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
             if(i == j) {
                 potrf.fulfill_promise(i);
             } else {
-                trsm.fulfill_promise({j,i});
+                trsm.fulfill_promise({i,j});
             }
         })
         .set_indegree([&](int3 kij) {
@@ -500,30 +482,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
             return block_2_thread(i,j);
             //return ((k*block_size*block_size+i+j*block_size)  % n_threads);// IMPORTANT. Every (i,j) should map to a given fixed thread
         })
-        .set_priority([&](int3 kij) {
-            int k=kij[0];
-            int i=kij[1];
-            int j=kij[2];
-            if (prio==-1) {
-                return 1.0;
-            }
-            if (prio==0) {
-                return 1.0;
-            }
-            if (prio==1) {
-                return 9.0*num_blocks-3.0*j-6.0*k-2.0;
-            }
-            if (prio==2) {
-                return 9.0*num_blocks-3.0*j-6.0*k-2.0;
-            }
-            if (prio==3) {
-                return (double)(num_blocks-i)+num_blocks*(9.0*num_blocks-3.0*j-6.0*k-2.0);
-            }
-            else {
-                return 1.0*(double)(num_blocks-i);
-            }
-
-        })
+        .set_priority(gemm_block_2_prio)
         .set_binding([&](int3 kij) {
             //assert(rank3d21(kij[1],kij[2],kij[2]) == rank);
             return true; // IMPORTANT
@@ -626,7 +585,7 @@ int main(int argc, char **argv)
     int num_blocks = 10;
     int npcols = 1;
     int nprows = ttor::comm_size();
-    int prio = 0;
+    PrioKind prio = PrioKind::no;
     int test = 0;
     int log = 0;
     int debug = 0;
@@ -658,8 +617,8 @@ int main(int argc, char **argv)
     }
 
     if (argc >= 8) {
-        prio=atoi(argv[7]);
-        assert(prio >= 0 && prio <4);
+        prio=(PrioKind)atoi(argv[7]);
+        assert(prio >= -1 && prio <4);
     }
 
     if (argc >= 9) {
