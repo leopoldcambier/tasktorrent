@@ -10,12 +10,8 @@ then
   then
     exit 1
   fi
-  cd ${TTOR_ROOT}/miniapp/dense_cholesky && cp Makefile.conf.travis Makefile.conf && make clean && make 2d_cholesky && mpirun -n 2 ./2d_cholesky
+  cd ${TTOR_ROOT}/miniapp/dense_cholesky && cp Makefile.conf.travis Makefile.conf && make clean && make 3d_cholesky && mpirun -n 2 ./3d_cholesky
   if [ $? != "0" ]
-  then
-    exit 1
-  fi
-  cd ${TTOR_ROOT}/miniapp/dense_cholesky && cp Makefile.conf.travis Makefile.conf && make clean && make 3d_cholesky && mpirun -n 2 ./3d_cholesky                                    if [ $? != "0" ]
   then
     exit 1
   fi
