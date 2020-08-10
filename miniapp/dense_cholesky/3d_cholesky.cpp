@@ -483,11 +483,8 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 		}
 		if (rank == 0) {
 			auto L1=L.triangularView<Lower>();
-			LLT<MatrixXd> lltOfA(A);
-			MatrixXd TrueL= lltOfA.matrixL();
 			VectorXd x = VectorXd::Random(block_size * num_blocks);
 			VectorXd b = A*x;
-			VectorXd bref = b;
 			L1.solveInPlace(b);
 			L1.transpose().solveInPlace(b);
 			double error = (b - x).norm() / x.norm();
