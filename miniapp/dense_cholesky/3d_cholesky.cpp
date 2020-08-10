@@ -219,13 +219,13 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 		});
 
 	potrf.set_task([&](int j) {
-		assert(rank1d21(j) == rank);
-		timer t1 = wctime();
-		LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', block_size, blocs[j+j*num_blocks]->data(), block_size);
-		timer t2 = wctime();
-		potrf_us_t += 1e6 * elapsed(t1, t2);
-		if (debug) printf("Running POTRF %d on rank %d\n", j, rank);
-	  })
+			assert(rank1d21(j) == rank);
+			timer t1 = wctime();
+			LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', block_size, blocs[j+j*num_blocks]->data(), block_size);
+			timer t2 = wctime();
+			potrf_us_t += 1e6 * elapsed(t1, t2);
+			if (debug) printf("Running POTRF %d on rank %d\n", j, rank);
+		})
 		.set_fulfill([&](int j) { 
 			for (int p = 0; p < nprows; p++) 
 			{   
@@ -266,15 +266,15 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 		});
 
 	trsm.set_task([&](int2 ij) {
-		int i=ij[0];
-		int j=ij[1];
-		assert(rank2d21(i,j) == rank);
-		timer t1 = wctime();
-		cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, block_size, block_size, 1.0, blocs[j + j * num_blocks]->data(),block_size, blocs[i + j * num_blocks]->data(), block_size);
-		timer t2 = wctime();
-		trsm_us_t += 1e6 * elapsed(t1, t2);
-		if (debug) printf("Running trsm (%d, %d) on rank %d, %d\n", i, j, rank_2d[0], rank_2d[1]);
-	  })
+			int i=ij[0];
+			int j=ij[1];
+			assert(rank2d21(i,j) == rank);
+			timer t1 = wctime();
+			cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, block_size, block_size, 1.0, blocs[j + j * num_blocks]->data(),block_size, blocs[i + j * num_blocks]->data(), block_size);
+			timer t2 = wctime();
+			trsm_us_t += 1e6 * elapsed(t1, t2);
+			if (debug) printf("Running trsm (%d, %d) on rank %d, %d\n", i, j, rank_2d[0], rank_2d[1]);
+		})
 		.set_fulfill([&](int2 ij) {
 			int i=ij[0];
 			int j=ij[1]; 
@@ -351,7 +351,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 			timer t2 = wctime();
 			if (debug) printf("Running gemm (%d, %d, %d) on rank %d, %d, %d\n", k, i, j, rank_3d[2], rank_3d[0], rank_3d[1]);
 			gemm_us_t += 1;
-	  })
+		})
 		.set_fulfill([&](int3 kij) { 
 			int k=kij[0];
 			int i=kij[1];
@@ -466,7 +466,6 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 						blocs[ii+jj*num_blocks]=make_unique<MatrixXd>(block_size,block_size);
 						MPI_Recv(blocs[ii+jj*num_blocks]->data(), block_size*block_size, MPI_DOUBLE, rank2d21(ii, jj), 0, MPI_COMM_WORLD, &status);
 					}
-
 					else if (rank==rank2d21(ii, jj) && rank != 0) {
 						MPI_Send(blocs[ii+jj*num_blocks]->data(), block_size*block_size, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
 					}
