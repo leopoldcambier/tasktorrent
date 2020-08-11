@@ -288,7 +288,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 					int r = rank3d21(ri, rj, j);
 					if (r == rank) {
 						//int offset_c = ((j + 1) / q + (((j + 1) % q) > rank_3d[1])) * q + rank_3d[1];
-						int offset_c = (q + rank_3d[1] - k % q) % q + k;
+						int offset_c = (q + rank_3d[1] - j % q) % q + j;
 						if (i % q == rank_3d[0]) {
 							for(int k = offset_c; k < i; k = k + q) {
 								gemm.fulfill_promise({j,i,k});
