@@ -116,7 +116,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 	};
 
 	std::vector<acc_data> gemm_results(num_blocks*num_blocks);
-	auto val = [&](int i, int j) { return 1/(float)((i-j)*(i-j)+1); };
+	auto val = [&](int i, int j) { return 1/(double)((i - j)*(i - j) + 1); };
 	auto rank3d21 = [&](int i, int j, int k) { return ((j % q) * q + k % q) + (i % q) * q * q;};
 	auto rank2d21 = [&](int i, int j) { return (j % npcols) * nprows + (i % nprows);};
 	auto rank1d21 = [&](int j) { return j % n_ranks; };
@@ -224,6 +224,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 			LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', block_size, blocks[j+j*num_blocks]->data(), block_size);
 			timer t2 = wctime();
 			potrf_us_t += 1e6 * elapsed(t1, t2);
+			if (j == num_blocks - 1) printf("POTRF %d finished \n", j);
 			if (debug) printf("Running POTRF %d on rank %d\n", j, rank);
 		})
 		.set_fulfill([&](int j) { 
@@ -540,7 +541,7 @@ int main(int argc, char **argv)
 	}
 	if (argc >= 8) {
 		prio=(PrioKind)atoi(argv[7]);
-		assert(prio >= -1 && prio <4);
+		assert(prio >= 0 && prio <4);
 	}
 	if (argc >= 9) {
 		test=atoi(argv[8]);
