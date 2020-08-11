@@ -484,8 +484,6 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 					}
 				}
 			}
-		}
-		if (rank == 0) {
 			auto L1=L.triangularView<Lower>();
 			VectorXd x = VectorXd::Random(block_size * num_blocks);
 			VectorXd b = A*x;
@@ -544,7 +542,7 @@ int main(int argc, char **argv)
 	}
 	if (argc >= 8) {
 		prio=(PrioKind)atoi(argv[7]);
-		assert(prio >= -1 && prio <4);
+		assert(prio >= 0 && prio < 4);
 	}
 	if (argc >= 9) {
 		test=atoi(argv[8]);
