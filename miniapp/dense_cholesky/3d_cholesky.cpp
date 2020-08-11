@@ -152,6 +152,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 				gemm_results[ii+jj*num_blocks].to_accumulate= vector<std::unique_ptr<MatrixXd>>(q);
 				for (int ll=0; ll<q; ll++) {
 					gemm_results[ii+jj*num_blocks].to_accumulate[ll]=make_unique<MatrixXd>(block_size, block_size);
+					*(gemm_results[ii+jj*num_blocks].to_accumulate[ll])=MatrixXd::Zero(block_size, block_size);
 				}
 			} 
 			else if (((ii % q) == rank_3d[0]) && ((jj % q) == rank_3d[1])) {
@@ -330,7 +331,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
    
 	auto am_accu = comm.make_large_active_msg(
 		[&](int& i, int& j, int& from) {
-		accu.fulfill_promise({from, i, j});
+			accu.fulfill_promise({from, i, j});
 		},
 		[&](int& i, int& j, int& from){
 			return gemm_results[i+j*num_blocks].to_accumulate[from]->data();
