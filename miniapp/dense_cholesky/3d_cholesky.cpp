@@ -183,6 +183,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 				int offset = ((j + 1) / nprows + (((j + 1) % nprows) > rank_2d[0])) * nprows + rank_2d[0];
 				for(int i = offset; i < num_blocks; i = i + nprows) {
 					if (debug) printf("Fulfilling trsm (%d, %d) on rank (%d, %d)\n", i, j, rank_2d[0], rank_2d[1]);
+					assert(rank2d21(i, j) == rank);
 					trsm.fulfill_promise({i,j});
 				}
 			},
@@ -200,13 +201,15 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 			if (i % q == rank_3d[0]) {
 				for(int j = offset_c; j < i; j = j + q) {
 					if (debug) printf("TRSM (%d, %d) Fulfilling gemm (%d, %d, %d) on rank (%d, %d, %d)\n", i, k, k, i, j, rank_3d[2], rank_3d[0], rank_3d[1]);
+					assert(rank3d21(i,j,k) == rank);
 					gemm.fulfill_promise({k,i,j});
 				}
 			}
 			int offset_r = (i / q + ((i % q) > rank_3d[0])) * q + rank_3d[0];
 			if (i % q == rank_3d[1]) {
 				for(int j = offset_r; j < num_blocks; j = j + q) {
-					if (debug) printf("TRSM (%d, %d) Fulfilling gemm (%d, %d, %d) on rank (%d, %d, %d)\n", i,k, k, j, i, rank_3d[2], rank_3d[0], rank_3d[1]);      
+					if (debug) printf("TRSM (%d, %d) Fulfilling gemm (%d, %d, %d) on rank (%d, %d, %d)\n", i,k, k, j, i, rank_3d[2], rank_3d[0], rank_3d[1]);  
+					assert(rank3d21(j,i,k) == rank);    
 					gemm.fulfill_promise({k,j,i});
 				}
 			}
