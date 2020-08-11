@@ -465,11 +465,12 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 		for (int ii=0; ii<num_blocks; ii++) {
 			for (int jj=0; jj<num_blocks; jj++) {
 				if (jj<=ii)  {
-					if (rank==0 && rank!=rank2d21(ii, jj)) {
+					int dest = (ii == jj) ? rank1d21(ii) : rank2d21(ii,jj);
+					if (rank==0 && rank!=dest) {
 						blocks[ii+jj*num_blocks]=make_unique<MatrixXd>(block_size,block_size);
-						MPI_Recv(blocks[ii+jj*num_blocks]->data(), block_size*block_size, MPI_DOUBLE, rank2d21(ii, jj), 0, MPI_COMM_WORLD, &status);
+						MPI_Recv(blocks[ii+jj*num_blocks]->data(), block_size*block_size, MPI_DOUBLE, dest, 0, MPI_COMM_WORLD, &status);
 					}
-					else if (rank==rank2d21(ii, jj) && rank != 0) {
+					else if (rank==dest && rank != 0) {
 						MPI_Send(blocks[ii+jj*num_blocks]->data(), block_size*block_size, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
 					}
 				}
