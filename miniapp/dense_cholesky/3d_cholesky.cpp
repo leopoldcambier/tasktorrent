@@ -116,7 +116,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 	};
 
 	std::vector<acc_data> gemm_results(num_blocks*num_blocks);
-	auto val = [&](int i, int j) { return 1/(double)((i-j)*(i-j)+1); };
+	auto val = [&](int i, int j) { return 1/(double)((i - j)*(i - j) + 1); };
 	auto rank3d21 = [&](int i, int j, int k) { return ((j % q) * q + k % q) + (i % q) * q * q;};
 	auto rank2d21 = [&](int i, int j) { return (j % npcols) * nprows + (i % nprows);};
 	auto rank1d21 = [&](int j) { return j % n_ranks; };
