@@ -116,7 +116,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 	};
 
 	std::vector<acc_data> gemm_results(num_blocks*num_blocks);
-	auto val = [&](int i, int j) { return 1/(double)((i - j)*(i - j) + 1); };
+	auto val = [&](int i, int j) { return 1/(double)((i-j)*(i-j)+1); };
 	auto rank3d21 = [&](int i, int j, int k) { return ((j % q) * q + k % q) + (i % q) * q * q;};
 	auto rank2d21 = [&](int i, int j) { return (j % npcols) * nprows + (i % nprows);};
 	auto rank1d21 = [&](int j) { return j % n_ranks; };
@@ -180,8 +180,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 	// Create active message
 	auto am_trsm = comm.make_large_active_msg( 
 			[&](int& j) {
-				//int offset = ((j + 1) / nprows + (((j + 1) % nprows) > rank_2d[0])) * nprows + rank_2d[0];
-				int offset = (nprows + rank_2d[0] - j % nprows) % nprows + j;
+				int offset = ((j + 1) / nprows + (((j + 1) % nprows) > rank_2d[0])) * nprows + rank_2d[0];
 				for(int i = offset; i < num_blocks; i = i + nprows) {
 					if (debug) printf("Fulfilling trsm (%d, %d) on rank (%d, %d)\n", i, j, rank_2d[0], rank_2d[1]);
 					trsm.fulfill_promise({i,j});
@@ -197,16 +196,14 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 	auto am_gemm = comm.make_large_active_msg(
 		[&](int& i, int& k) {
 			assert(k % q == rank_3d[2]);
-			//int offset_c = ((k + 1) / q + (((k + 1) % q) > rank_3d[1])) * q + rank_3d[1]; 
-			int offset_c = (q + rank_3d[1] - k % q) % q + k;
+			int offset_c = ((k + 1) / q + (((k + 1) % q) > rank_3d[1])) * q + rank_3d[1]; 
 			if (i % q == rank_3d[0]) {
 				for(int j = offset_c; j < i; j = j + q) {
 					if (debug) printf("TRSM (%d, %d) Fulfilling gemm (%d, %d, %d) on rank (%d, %d, %d)\n", i, k, k, i, j, rank_3d[2], rank_3d[0], rank_3d[1]);
 					gemm.fulfill_promise({k,i,j});
 				}
 			}
-			//int offset_r = (i / q + ((i % q) > rank_3d[0])) * q + rank_3d[0];
-			int offset_r = (q + rank_3d[0] - i % q) % q + i;
+			int offset_r = (i / q + ((i % q) > rank_3d[0])) * q + rank_3d[0];
 			if (i % q == rank_3d[1]) {
 				for(int j = offset_r; j < num_blocks; j = j + q) {
 					if (debug) printf("TRSM (%d, %d) Fulfilling gemm (%d, %d, %d) on rank (%d, %d, %d)\n", i,k, k, j, i, rank_3d[2], rank_3d[0], rank_3d[1]);      
@@ -227,7 +224,6 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 			LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', block_size, blocks[j+j*num_blocks]->data(), block_size);
 			timer t2 = wctime();
 			potrf_us_t += 1e6 * elapsed(t1, t2);
-			if (j == num_blocks - 1) printf("POTRF %d finished \n", j);
 			if (debug) printf("Running POTRF %d on rank %d\n", j, rank);
 		})
 		.set_fulfill([&](int j) { 
@@ -235,8 +231,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 			{   
 				int r = rank2d21(p,j);
 				if (rank == r) {
-					//int offset = ((j + 1) / nprows + ((j + 1) % nprows) / (rank_2d[0] + 1)) * nprows + rank_2d[0];
-					int offset = (nprows + rank_2d[0] - j % nprows) % nprows + j;
+					int offset = ((j + 1) / nprows + ((j + 1) % nprows) / (rank_2d[0] + 1)) * nprows + rank_2d[0];
 					for(int i = offset; i < num_blocks; i = i + nprows) {
 						trsm.fulfill_promise({i,j});
 					}
@@ -287,15 +282,13 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 				for (int rj = 0; rj < q; rj++) {
 					int r = rank3d21(ri, rj, j);
 					if (r == rank) {
-						//int offset_c = ((j + 1) / q + (((j + 1) % q) > rank_3d[1])) * q + rank_3d[1];
-						int offset_c = (q + rank_3d[1] - j % q) % q + j;
+						int offset_c = ((j + 1) / q + (((j + 1) % q) > rank_3d[1])) * q + rank_3d[1];
 						if (i % q == rank_3d[0]) {
 							for(int k = offset_c; k < i; k = k + q) {
 								gemm.fulfill_promise({j,i,k});
 							}
 						}
-						//int offset_r = (i / q + ((i % q) > rank_3d[0])) * q + rank_3d[0];
-						int offset_r = (q + rank_3d[0] - i % q) % q + i;
+						int offset_r = (i / q + ((i % q) > rank_3d[0])) * q + rank_3d[0];
 						if (i % q == rank_3d[1]) {
 							for(int k = offset_r; k < num_blocks; k = k + q) {
 								gemm.fulfill_promise({j,k,i});
@@ -547,7 +540,7 @@ int main(int argc, char **argv)
 	}
 	if (argc >= 8) {
 		prio=(PrioKind)atoi(argv[7]);
-		assert(prio >= 0 && prio <4);
+		assert(prio >= -1 && prio <4);
 	}
 	if (argc >= 9) {
 		test=atoi(argv[8]);
