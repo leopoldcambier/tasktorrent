@@ -30,11 +30,18 @@ typedef array<int, 3> int3;
  * 0. No priority, only enforces potrf>trsm>gemm
  * 1. Row-based priority, prioritize tasks with smaller row number in addition to priority 0.
  * 2. Critical path priority, prioritize tasks with longest distance to the exit task. For references, check out the paper
-	 Beaumont, Olivier, et al. "A Makespan Lower Bound for the Scheduling of the Tiled Cholesky Factorization based on ALAP Schedule." (2020).
+	Beaumont, Olivier, et al. "A Makespan Lower Bound for the Scheduling of the Tiled Cholesky Factorization based on ALAP Schedule." (2020).
  * 3. Critical path and row priority, prioritize tasks with smaller row number in addition to priority 2. We also enforces potrf>trsm>gemm
  */
 
 enum PrioKind { no = 0, row = 1, cp = 2, cp_row = 3};
+
+
+/*
+* 3D Cholesky based on the algorithm from the paper
+	Kalluri Eswar, et al. "On Mapping Data and Computation for Parallel Sparse Cholesky Factorization." (1995)
+* However, this implementation only uses 3D mapping for gemm tasks. 1D mapping is used for potrf tasks and 2D mapping is used for trsm tasks. 
+*/
 
 void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npcols, int nprows, PrioKind prio, int test, int log, int debug)
 {
