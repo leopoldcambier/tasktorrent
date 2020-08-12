@@ -525,30 +525,6 @@ int main(int argc, char **argv)
     PrioKind prio = PrioKind::no;
     int log = 0;
     int debug = 0;
-    for (int ar = 0; ar < argc; ar++) {
-        switch(argv[ar]) {
-            case "-n": block_size = atoi(argv[ar + 1]);
-            case "-nb": num_blocks = atoi(argv[ar + 1]);
-            case "-c": n_threads = atoi(argv[ar + 1]);
-            case "-v": verb = 1;
-            case "-nc": npcols = atoi(argv[ar + 1]);
-            case "-nr": nprows = atoi(argv[ar + 1]);
-            case "-k": prio = (PrioKind)atoi(argv[ar + 1]);
-            case "-l": log = 1;
-            case "-d": debug = 1;
-        }
-    }
-    assert(block_size > 0);
-    assert(num_blocks > 0);
-    assert(n_threads > 0);
-    assert(verb >= 0);
-    assert(npcols > 0);
-    assert(nprows > 0);
-    assert(prio >= 0 && prio < 4);
-    assert(log == 0 || log == 1);
-    assert(debug == 0 || debug == 1);
-
-/*
     if (argc >= 2)
     {
         block_size = atoi(argv[1]);
@@ -575,16 +551,15 @@ int main(int argc, char **argv)
         prio=(PrioKind)atoi(argv[7]);
         assert(prio >= 0 && prio < 4);
     }
-    if (argc >= 10) {
+    if (argc >= 9) {
         log = atoi(argv[9]);
         assert(log == 0 || log == 1);
     }
-    if (argc >= 11) {
+    if (argc >= 10) {
         debug = atoi(argv[10]);
         assert(debug == 0 || debug == 1);
     }
-*/
-    if(comm_rank() == 0) printf("Usage: ./3d_cholesky block_size num_blocks n_threads verb nprows npcols priority test log debug\n");
-    cholesky3d(n_threads, verb, block_size, num_blocks, npcols, nprows, prio, test, log, debug);  
+    if(comm_rank() == 0) printf("Usage: ./3d_cholesky block_size num_blocks n_threads verb nprows npcols priority log debug\n");
+    cholesky3d(n_threads, verb, block_size, num_blocks, npcols, nprows, prio, log, debug);  
     MPI_Finalize();
 }
