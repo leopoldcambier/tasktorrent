@@ -129,7 +129,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
     };
 
     // Initializes the matrix
-    auto val = [&](int i, int j) { return 1/(float)((i-j)*(i-j)+1); };
+    auto val = [&](int i, int j) { return 1/(double)((i-j)*(i-j)+1); };
     vector<unique_ptr<MatrixXd>> blocks(num_blocks*num_blocks);
     for (int ii=0; ii<num_blocks; ii++) {
         for (int jj=0; jj<num_blocks; jj++) {

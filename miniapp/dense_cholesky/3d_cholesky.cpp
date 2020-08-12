@@ -116,7 +116,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 	};
 
 	std::vector<acc_data> gemm_results(num_blocks*num_blocks);
-	auto val = [&](int i, int j) { return 1/(double)((i - j)*(i - j) + 1); };
+	auto val = [&](int i, int j) { return 1.0/(double)((i + j)*(i + j) + 1) + ((i == j) ? 1.0 * block_size * num_blocks : 0.0); };
 	auto rank3d21 = [&](int i, int j, int k) { return ((j % q) * q + k % q) + (i % q) * q * q;};
 	auto rank2d21 = [&](int i, int j) { return (j % npcols) * nprows + (i % nprows);};
 	auto rank1d21 = [&](int j) { return j % n_ranks; };
@@ -225,9 +225,10 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 	potrf.set_task([&](int j) {
 			assert(rank1d21(j) == rank);
 			timer t1 = wctime();
-			LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', block_size, blocks[j+j*num_blocks]->data(), block_size);
+			int info = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', block_size, blocks[j+j*num_blocks]->data(), block_size);
 			timer t2 = wctime();
 			potrf_us_t += 1e6 * elapsed(t1, t2);
+			assert(info == 0);
 			if (debug) printf("Running POTRF %d on rank %d\n", j, rank);
 		})
 		.set_fulfill([&](int j) { 
