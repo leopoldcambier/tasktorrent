@@ -51,7 +51,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 	std::atomic<long long int> trsm_us_t(0);
 	std::atomic<long long int> gemm_us_t(0);
 	std::atomic<long long int> accu_us_t(0);
-
+	assert(npcols * nprows == n_ranks);
 	int q = static_cast<int>(cbrt(n_ranks));
 	if (q * q * q != n_ranks)
 	{
