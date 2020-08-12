@@ -354,7 +354,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
 			}
 			timer t2 = wctime();
 			if (debug) printf("Running gemm (%d, %d, %d) on rank %d, %d, %d\n", k, i, j, rank_3d[2], rank_3d[0], rank_3d[1]);
-			gemm_us_t += 1;
+			gemm_us_t += 1e6 * elapsed(t1, t2);
 		})
 		.set_fulfill([&](int3 kij) { 
 			int k=kij[0];
