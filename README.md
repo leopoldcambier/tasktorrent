@@ -351,6 +351,15 @@ mpirun -n 2 ./tuto
 * In general, it is safer to create a task with some given index `k` only once during the calculation. It is possible to have a task show up in the DAG multiple times. However, for correctness, the dependencies of an occurrence of `k` must be all satisfied before the "next" task with index `k` gets created again (through a call to `fulfill_promise(k)`). This is potentially error prone, maybe a source of confusion, and should be avoided. We therefore recommend that a task with index `k` be created only once throughout the calculation.
 * The code will always check MPI return codes and abort if any MPI function return anything else than `MPI_SUCCESS`.
 
+### Documentation
+
+Documentation can be built using Sphinx and Doxygen.
+In short, with Doxygen and Sphinx installed, move to the `docs/` directory and run something like
+```
+doxygen && sphinx-build . sphinx_html -Dbreathe_projects.TaskTorrent=doxygen_output/xml
+```
+It is also accessible online at `https://tasktorrent.readthedocs.io`
+
 ### References
 <b id="f1"><sup>1</sup></b> [Automatic Coarse-Grained Parallelization Techniques](https://link.springer.com/chapter/10.1007/978-94-011-5514-4_15), M. Cosnard, E. Jeannot [↩](#a1)</br>
 <b id="f2"><sup>2</sup></b> [Automatic task graph generation techniques](https://ieeexplore.ieee.org/abstract/document/375471), M. Cosnard, M. Loi [↩](#a2)
