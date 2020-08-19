@@ -4,7 +4,7 @@ before_install:
   - sudo apt-get install openmpi-bin libopenmpi-dev
   - sudo apt-get install libscotch-dev
   - sudo apt-get install libopenblas-dev liblapacke-dev
-  - wget http://bitbucket.org/eigen/eigen/get/3.3.7.tar.bz2 -O eigen-3.3.7.tar.bz2 && mkdir eigen && tar -xvf eigen-3.3.7.tar.bz2 -C eigen --strip-components 1
+  - wget https://gitlab.com/libeigen/eigen/-/archive/3.3.7/eigen-3.3.7.tar.bz2 -O eigen-3.3.7.tar.bz2 && mkdir eigen && tar -xvf eigen-3.3.7.tar.bz2 -C eigen --strip-components 1
 language: cpp
 compiler:
   - g++
