@@ -12,10 +12,12 @@ from bokeh.models.widgets import Dropdown
 from bokeh.plotting import curdoc
 from bokeh.layouts import column
 
-def load(file):
+def load(file, plot_deps=False):
     with open(file,'r') as f:
         data = []
         print("Loading {}".format(file))
+        loaded = 0
+        skipped = 0
         for l in f.readlines():
             s = l.split(",")
             info = s[0]
@@ -24,8 +26,13 @@ def load(file):
             ss = info.split(">")
             who = ss[0]
             what = ss[1]
+            if(what == "deps" and (not plot_deps)):
+                skipped = skipped+1
+                continue
             details = ss[2:]
             data.append({'who':who, 'what':what, 'details':details, 'start':start, 'end':end})
+            loaded = loaded+1
+        print("Rows loaded: {}, skipped: {}".format(loaded, skipped))
     return data
 
 def combine(datas):
@@ -48,7 +55,7 @@ def find_sorted(a, x):
     assert(i != len(a) and a[i] == x)
     return i   
 
-def make_plot(whos, data, min_start = 0, max_end = 1e100, plot_ss=False, plot_comm=False):
+def make_plot(whos, data, min_start = 0, max_end = 1e100, plot_ss=False, plot_comm=False, plot_deps=False):
     origin = float(1e100)
     for d in data:
         origin = min(origin, d['start'])
@@ -201,13 +208,14 @@ if __name__ == "__main__":
     parser.add_argument('--files', type=str, nargs='+', help='The files to combine & profile (at least one required)')
     parser.add_argument('--start', action='store', dest='start', default=0.0, type=float, help='Only plot after start')
     parser.add_argument('--end', action='store', dest='end', default=float('inf'), type=float, help='Only plot before end')
+    parser.add_argument('--plot_deps', action='store_true', help='Plot the dependencies as tasks')
     parser.add_argument('--plot_ss', action='store_true', help='Plot the stealing success lines')
     parser.add_argument('--plot_comm', action='store_true', help='Plot the comm lines')
     parser.add_argument('--output', action='store', dest='output', type=str, help='Save profile to file', default='profile.html')
 
     args = parser.parse_args()
 
-    datas = [load(f) for f in args.files]
+    datas = [load(f, plot_deps=args.plot_deps) for f in args.files]
     whos, data = combine(datas)
     text_filter, p = make_plot(whos, data, min_start=args.start, max_end=args.end, plot_ss=args.plot_ss, plot_comm=args.plot_comm)
     output_file(args.output)
