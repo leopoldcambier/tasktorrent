@@ -14,5 +14,5 @@ Distributed memory
 .. doxygenclass:: ttor::Communicator
    :members:
 
-.. doxygenclass:: ttor::Threadpool_mpi
+.. doxygenclass:: ttor::Threadpool_dist
    :members:
