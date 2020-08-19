@@ -291,6 +291,27 @@ auto am = comm.make_active_msg(
     });
 ```
 
+### Sending large buffers
+
+When sending active messages (created as `auto am = comm.make_active_msg(fun)` and sent as `am->send(dest, ps...)`), any input buffer is temporarily copied by TaskTorrent.
+If buffers are large, this may slow down the executing significantly. TaskTorrent provides an alternative using "large active messages"
+```cpp
+auto am = comm.make_large_active_msg(fulfill, buffer, release)
+```
+where `fulfill` is a `void(Ps&...)` function, `buffer` is a `(T*)(Ps&...)` function and release is a `void(Ps&...)` function.
+The active message can then be sent by
+```cpp
+am->send_large(dest, view, ps...)
+```
+where `view` is a `view<T>` pointing to a buffer to be sent.
+
+The three functions are the following:
+- `fulfill` is run on the receiver when the buffer has arrived and is ready to be used. Typically this would fulfill some tasks;
+- `buffer` is run on the receiver and should return a pointer to an allocated buffer sufficiently large to hold the sent buffer;
+- `release` is run on the _sender_ after the buffer has been sent and can be safely reused. This could be used to free the buffer for instance.
+
+The tutorial `tutorial/tuto_large_am.cpp` provides an example of use of large active messages.
+
 ### MPI note
 
 The communication layer uses MPI. Since the code is multithreaded, the code requires `MPI_THREAD_FUNELLED`. This means that, in the runtime library, only the main thread makes MPI calls (i.e., all MPI calls are funneled to the main thread). So you need to initialize like this
@@ -329,10 +350,6 @@ mpirun -n 2 ./tuto
 
 * In general, it is safer to create a task with some given index `k` only once during the calculation. It is possible to have a task show up in the DAG multiple times. However, for correctness, the dependencies of an occurrence of `k` must be all satisfied before the "next" task with index `k` gets created again (through a call to `fulfill_promise(k)`). This is potentially error prone, maybe a source of confusion, and should be avoided. We therefore recommend that a task with index `k` be created only once throughout the calculation.
 * The code will always check MPI return codes and abort if any MPI function return anything else than `MPI_SUCCESS`.
-* The type `view<T>` does not assume nor guarantees that the associated pointer (retrieved using `view<T>::data()`) is aligned (see [https://en.cppreference.com/w/cpp/language/object]) when the view is send or received through the network. As such the buffer (`view<T>::size() * sizeof(T)` bytes, starting at the address `view<T>::data()`) should first be copied byte-by-byte (using `memcpy` for instance) into the user data structure before addressing individual elements.
-* Messages are limited to `std::numeric_limits<int>::max()` (i.e, `2^31-1` in general) bytes, as this is the maximum `count` of an MPI call. This is checked at runtime and the program will abort if that maximum size is exceeded.
-
-Future versions of TaskTorrent should lift the last two limitations
 
 ### References
 <b id="f1"><sup>1</sup></b> [Automatic Coarse-Grained Parallelization Techniques](https://link.springer.com/chapter/10.1007/978-94-011-5514-4_15), M. Cosnard, E. Jeannot [↩](#a1)</br>

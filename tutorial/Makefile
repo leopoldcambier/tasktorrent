@@ -11,13 +11,16 @@ SRCS := $(wildcard $(SRCDIR)/*.cpp)
 OBJ := $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(SRCS))
 
 default: all
-all: tuto
+all: tuto tuto_large_am
 
 # Objects
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(DEPS)
 	$(CC) -o $@ -c $< $(CFLAGS) $(INCLUDE)
 
 tuto: tuto.cpp $(OBJ)
+	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE)
+
+tuto_large_am: tuto_large_am.cpp $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE)
 
 run: tuto
