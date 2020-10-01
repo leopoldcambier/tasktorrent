@@ -1,7 +1,7 @@
 include Makefile.conf
 
 CFLAGS   += -pthread -O3 -g -std=c++14 -DEIGEN_NO_DEBUG
-INCLUDE  += -I../../
+INCLUDE  += -I../../ -I../../external/
 LIBS     += 
 SRCDIR   = ../../tasktorrent/src
 OBJDIR   = ../../build

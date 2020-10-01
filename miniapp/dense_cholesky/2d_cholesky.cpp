@@ -18,6 +18,7 @@
 #include <set>
 
 #include <mpi.h>
+#include <cxxopts.hpp>
 
 using namespace std;
 using namespace Eigen;
@@ -202,17 +203,17 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
         }
     };
     // Names
-    auto potrf_name = [](int j, int r) {
-        return "POTRF_" + to_string(j) + "_r" + to_string(r);
+    auto potrf_name = [](int j) {
+        return "POTRF_" + to_string(j);
     };
-    auto trsm_name = [](int2 ij, int r) {
-        return "TRSM_" + to_string(ij[0]) + "_" + to_string(ij[1]) + "_r" + to_string(r);
+    auto trsm_name = [](int2 ij) {
+        return "TRSM_" + to_string(ij[0]) + "_" + to_string(ij[1]);
     };
-    auto gemm_name = [](int3 kij, int r) {
-        return "GEMM_" + to_string(kij[0]) + "_" + to_string(kij[1]) + "_" + to_string(kij[2]) + "_r" + to_string(r);
+    auto gemm_name = [](int3 kij) {
+        return "GEMM_" + to_string(kij[0]) + "_" + to_string(kij[1]) + "_" + to_string(kij[2]);
     };
-    auto accu_name = [](int3 kij, int r) {
-        return "ACCU_" + to_string(kij[0]) + "_" + to_string(kij[1]) + "_" + to_string(kij[2]) + "_r" + to_string(r);
+    auto accu_name = [](int3 kij) {
+        return "ACCU_" + to_string(kij[0]) + "_" + to_string(kij[1]) + "_" + to_string(kij[2]);
     };
 
     const int num_blocksmax = 15;
@@ -321,6 +322,11 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
         })
         .set_fulfill([&](int j) { // Triggers all trsms on rows i > j, A[i,j]
             assert(block_2_rank(j,j) == rank);
+            if(deps_log) {
+                for(int i = j+1; i < num_blocks; i++) {
+                    dlog.add_event(make_unique<DepsEvent>(potrf.name(j), trsm.name({i,j})));
+                }
+            }
             // Trigger myself
             for (int i = j + nprows; i < num_blocks; i += nprows) {
                 assert(block_2_rank(i,j) == rank);
@@ -351,8 +357,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
             return block_2_thread(j, j);
         })
         .set_name([&](int j) { // This is just for debugging and profiling
-            assert(block_2_rank(j,j) == rank);
-            return potrf_name(j, rank);
+            return potrf_name(j);
         });
 
     // Sends a panel (trsm'ed block A(i,j)) and trigger gemms requiring A(i,j)
@@ -406,6 +411,11 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
             int j=ij[1];
             assert(block_2_rank(i,j) == rank);
             assert(i > j);
+            if(deps_log) {
+                for(int k = j+1; k < num_blocks; k++) {
+                    dlog.add_event(make_unique<DepsEvent>(trsm.name(ij), gemm.name({j,std::max(i,k),std::min(i,k)})));
+                }
+            }
             // Local
             // Careful to not count the pivot (syrk) twice
             for (int k = j + npcols; k < i; k += npcols) {
@@ -450,8 +460,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
             return block_2_thread(ij[0], ij[1]);
         })
         .set_name([&](int2 ij) { // This is just for debugging and profiling
-            assert(block_2_rank(ij[0],ij[1]) == rank);
-            return trsm_name(ij, rank);
+            return trsm_name(ij);
         });
 
     /**
@@ -503,10 +512,10 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
                 accu.fulfill_promise(kij);
             } else {
                 if (k < j-1) {
-                    gemm.fulfill_promise({k+1, i, j});
                     if(deps_log) {
                         dlog.add_event(make_unique<DepsEvent>(gemm.name(kij), gemm.name({k+1, i, j})));
                     }
+                    gemm.fulfill_promise({k+1, i, j});
                 } else {
                     if (i == j) {
                         if(deps_log) {
@@ -538,8 +547,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
         .set_binding([&](int3 kij) {
             return false; // If we accumulate in parallel, there is no order for the gemm so it doesnt matter ; If we don't then we do the gemm in sequence anyway
         }).set_name([&](int3 kij) { // This is just for debugging and profiling
-            assert(block_2_rank(kij[1],kij[2]) == rank);
-            return gemm_name(kij, rank);
+            return gemm_name(kij);
         });
 
     /**
@@ -576,10 +584,10 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
                 }
                 potrf.fulfill_promise(i);
             } else {
-                trsm.fulfill_promise({i,j});
                 if(deps_log) {
                     dlog.add_event(make_unique<DepsEvent>(accu.name(kij), trsm.name({i,j})));
                 }
+                trsm.fulfill_promise({i,j});
             }
         })
         .set_indegree([&](int3 kij) {
@@ -596,8 +604,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
             return true; // IMPORTANT
         })
         .set_name([&](int3 kij) { // This is just for debugging and profiling
-            assert(block_2_rank(kij[1],kij[2]) == rank);
-            return accu_name(kij, rank);
+            return accu_name(kij);
         });
 
     printf("Starting Cholesky factorization...\n");
@@ -682,7 +689,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
     }
 }
 
-int main(int argc, char **argv)
+int main(int argc, const char **argv)
 {
     int req = MPI_THREAD_FUNNELED;
     int prov = -1;
@@ -691,80 +698,47 @@ int main(int argc, char **argv)
 
     assert(prov == req);
 
-    int n_threads = 2;
-    int verb = 0; // Can be changed to vary the verbosity of the messages
-    int block_size = 5;
-    int num_blocks = 10;
-    int nprows = 1;
-    int npcols = ttor::comm_size();
-    PrioKind kind = PrioKind::no;
-    bool log = false;
-    bool depslog = false;
-    bool test = true;
-    bool accumulate = false;
-    int upper_block_size = block_size;
+    std::stringstream sstr;
+    sstr << comm_size();
+    const std::string comm_size_str = sstr.str();
 
-    if (argc >= 2)
-    {
-        block_size = atoi(argv[1]);
-        assert(block_size > 0);
-    }
+    cxxopts::Options options("2d_cholesky", "2D dense cholesky using TaskTorrent");
+    options.add_options()
+        ("n_threads", "Number of threads", cxxopts::value<int>()->default_value("2"))
+        ("verb", "Verbosity level", cxxopts::value<int>()->default_value("0"))
+        ("block_size", "Block size", cxxopts::value<int>()->default_value("5"))
+        ("num_blocks", "Number of blocks", cxxopts::value<int>()->default_value("10"))
+        ("nprows", "Number of processors accross rows", cxxopts::value<int>()->default_value("1"))
+        ("npcols", "Number of processors accross columns", cxxopts::value<int>()->default_value(comm_size_str.c_str()))
+        ("kind", "Priority kind", cxxopts::value<int>()->default_value("0"))
+        ("log", "Enable logging")
+        ("depslog", "Enable dependency logging")
+        ("notest", "Disable testing")
+        ("accumulate", "Accumulate block GEMMs in parallel")
+        ("upper_block_size", "Upper block size", cxxopts::value<int>()->default_value("-1"));
+    auto result = options.parse(argc, argv);
 
-    if (argc >= 3)
-    {
-        num_blocks = atoi(argv[2]);
-        assert(num_blocks > 0);
-    }
-    
-    if (argc >= 4) {
-        n_threads = atoi(argv[3]);
-        assert(n_threads > 0);
-    }
-    
-    if (argc >= 5) {
-        verb = atoi(argv[4]);
-        assert(verb >= 0);
-    }
+    const int n_threads = result["n_threads"].as<int>();
+    const int verb = result["verb"].as<int>();
+    const int block_size = result["block_size"].as<int>();
+    const int num_blocks = result["num_blocks"].as<int>();
+    const int nprows = result["nprows"].as<int>();
+    const int npcols = result["npcols"].as<int>();
+    const PrioKind kind = (PrioKind) result["kind"].as<int>();
+    const bool log = result["log"].as<bool>();
+    const bool depslog = result["depslog"].as<bool>();
+    const bool test = ! result["notest"].as<bool>();
+    const bool accumulate = result["accumulate"].as<bool>();
+    const int upper_block_size = (result["upper_block_size"].as<int>() == -1 ? block_size : result["upper_block_size"].as<int>());
 
-    if (argc >= 6) {
-        nprows = atoi(argv[5]);
-        assert(nprows >= 0);
-    }
+    assert(block_size > 0);
+    assert(num_blocks > 0);
+    assert(n_threads > 0);
+    assert(verb >= 0);
+    assert(nprows >= 0);
+    assert(npcols >= 0);
+    assert(upper_block_size >= block_size && upper_block_size <= 2 * block_size);
 
-    if (argc >= 7) {
-        npcols = atoi(argv[6]);
-        assert(npcols >= 0);
-    }
-
-    if (argc >= 8) {
-        assert(atoi(argv[7]) >= 0 && atoi(argv[7]) < 4);
-        kind = (PrioKind)atoi(argv[7]);
-    }
-
-    if (argc >= 9) {
-        log = static_cast<bool>(atoi(argv[8]));
-    }
-
-    if (argc >= 10) {
-        depslog = static_cast<bool>(atoi(argv[9]));
-    }
-
-    if (argc >= 11) {
-        test = static_cast<bool>(atoi(argv[10]));
-    }
-
-    if (argc >= 12) {
-        accumulate = static_cast<bool>(atoi(argv[11]));
-    }
-
-    if (argc >= 13) {
-        upper_block_size = (atoi(argv[12]));
-        assert(upper_block_size >= block_size && upper_block_size <= 2 * block_size);
-    } else {
-        upper_block_size = block_size;
-    }
-
-    if(comm_rank() == 0) printf("Usage: ./cholesky block_size num_blocks n_threads verb nprows npcols kind log depslog test accumulate upper_block_size\n");
     if(comm_rank() == 0) printf("Arguments: block_size (size of blocks) %d\nnum_blocks (# of blocks) %d\nn_threads %d\nverb %d\nnprows %d\nnpcols %d\nkind %d\nlog %d\ndeplog %d\ntest %d\naccumulate %d\nupper_block_size %d\n", block_size, num_blocks, n_threads, verb, nprows, npcols, (int)kind, log, depslog, test, accumulate, upper_block_size);
 
     cholesky(n_threads, verb, block_size, num_blocks, nprows, npcols, kind, log, depslog, test, accumulate, upper_block_size);
