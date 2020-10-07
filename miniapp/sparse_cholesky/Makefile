@@ -1,9 +1,8 @@
 include Makefile.conf
 
 CC       = mpicxx
-# CFLAGS   = -fsanitize=address -fsanitize=undefined -pthread -O1 -g -std=c++14
-CFLAGS   = -pthread -O3 -g -std=c++14 -DEIGEN_NO_DEBUG
-INCLUDE  += -I../../
+CFLAGS   += -pthread -O3 -g -std=c++14 -DEIGEN_NO_DEBUG
+INCLUDE  += -I../../ -I../../external
 LIBS     += 
 SRCDIR   = ../../tasktorrent/src
 OBJDIR   = ../../build

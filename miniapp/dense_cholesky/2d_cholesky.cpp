@@ -65,7 +65,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
     assert(upper_block_size <= 2*block_size);
     const int lower_block_size = 2*block_size - upper_block_size;
     std::uniform_int_distribution<> distrib(lower_block_size,upper_block_size); // average is block_size
-    if(rank == 0) printf("lower_block_size %d, upper_block_size %d\n", upper_block_size, lower_block_size);
+    if(rank == 0) printf("lower_block_size %d, upper_block_size %d\n", lower_block_size, upper_block_size);
     std::vector<int> block_sizes(num_blocks, block_size);
     {
         int n = 0;
@@ -704,6 +704,7 @@ int main(int argc, const char **argv)
 
     cxxopts::Options options("2d_cholesky", "2D dense cholesky using TaskTorrent");
     options.add_options()
+        ("help", "Print help")
         ("n_threads", "Number of threads", cxxopts::value<int>()->default_value("2"))
         ("verb", "Verbosity level", cxxopts::value<int>()->default_value("0"))
         ("block_size", "Block size", cxxopts::value<int>()->default_value("5"))
@@ -739,6 +740,10 @@ int main(int argc, const char **argv)
     assert(npcols >= 0);
     assert(upper_block_size >= block_size && upper_block_size <= 2 * block_size);
 
+    if (result.count("help")) {
+        std::cout << options.help({"", "Group"}) << endl;
+        exit(0);
+    }
     if(comm_rank() == 0) printf("Arguments: block_size (size of blocks) %d\nnum_blocks (# of blocks) %d\nn_threads %d\nverb %d\nnprows %d\nnpcols %d\nkind %d\nlog %d\ndeplog %d\ntest %d\naccumulate %d\nupper_block_size %d\n", block_size, num_blocks, n_threads, verb, nprows, npcols, (int)kind, log, depslog, test, accumulate, upper_block_size);
 
     cholesky(n_threads, verb, block_size, num_blocks, nprows, npcols, kind, log, depslog, test, accumulate, upper_block_size);

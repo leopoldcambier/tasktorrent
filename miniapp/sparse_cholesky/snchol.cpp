@@ -35,6 +35,7 @@
 
 #include "tasktorrent/tasktorrent.hpp"
 #include "mmio.hpp"
+#include "cxxopts.hpp"
 
 using namespace std;
 using namespace Eigen;
@@ -44,14 +45,7 @@ typedef Eigen::SparseMatrix<double> SpMat;
 typedef array<int, 2> int2;
 typedef array<int, 3> int3;
 
-int VERB = 0;
-int LOG = 0;
-string FILENAME = "neglapl_2_128.mm";
-int N_LEVELS = 10;
-int N_THREADS = 4;
-int BLOCK_SIZE = 10;
-string FOLDER = "./";
-int REPEAT = 1;
+const string FOLDER = "./";
 
 struct range
 {
@@ -235,6 +229,9 @@ struct Node
 
 struct DistMat
 {
+    const int nlevels;
+    const int block_size;
+
     // All the nodes
     // nodes[i] = ith pivot (diagonal bloc)
     vector<unique_ptr<Node>> nodes;
@@ -504,7 +501,7 @@ struct DistMat
         }
     }
 
-    DistMat(std::string filename, int nlevels, int block_size) : nblk(-1), gemm_us(0), trsm_us(0), potf_us(0), scat_us(0), allo_us(0)
+    DistMat(std::string filename, int nlevels, int block_size) : nlevels(nlevels), block_size(block_size), nblk(-1), gemm_us(0), trsm_us(0), potf_us(0), scat_us(0), allo_us(0)
     {
         std::cout << "Reading matrix file " << filename << std::endl;
         // Read matrix
@@ -667,7 +664,7 @@ struct DistMat
         }
     }
 
-    void factorize(int n_threads)
+    void factorize(const int n_threads, const int verb, const bool want_log)
     {
         for (int k = 0; k < nblk; k++) {
             const auto &n = nodes.at(k);
@@ -685,12 +682,12 @@ struct DistMat
         timer t0 = wctime();
         printf("Rank %d starting w/ %d threads\n", comm_rank(), n_threads);
         Logger log(1000000);
-        Communicator comm(MPI_COMM_WORLD, VERB);
-        Threadpool tp(n_threads, &comm, VERB, "[" + to_string(comm_rank()) + "]_");
-        Taskflow<int> pf(&tp, VERB);
-        Taskflow<int2> tf(&tp, VERB);
-        Taskflow<int3> gf(&tp, VERB);
-        Taskflow<int3> rf(&tp, VERB);
+        Communicator comm(MPI_COMM_WORLD, verb);
+        Threadpool tp(n_threads, &comm, verb, "[" + to_string(comm_rank()) + "]_");
+        Taskflow<int> pf(&tp, verb);
+        Taskflow<int2> tf(&tp, verb);
+        Taskflow<int3> gf(&tp, verb);
+        Taskflow<int3> rf(&tp, verb);
         const int my_rank = comm_rank();
 
         auto am_send_panel = comm.make_active_msg(
@@ -704,7 +701,7 @@ struct DistMat
                 }
             });
 
-        if (LOG > 0)
+        if (want_log)
         {
             tp.set_logger(&log);
             comm.set_logger(&log);
@@ -897,7 +894,8 @@ struct DistMat
         printf("Gemm %3.2e s., %3.2e s./thread\n", double(gemm_us / 1e6), double(gemm_us / 1e6) / n_threads);
         printf("Allo %3.2e s., %3.2e s./thread\n", double(allo_us / 1e6), double(allo_us / 1e6) / n_threads);
         printf("Scat %3.2e s., %3.2e s./thread\n", double(scat_us / 1e6), double(scat_us / 1e6) / n_threads);
-        printf(">>>>%d,%d,%d,%3.2e\n", my_rank, comm_size(), n_threads, elapsed(t0, t1));
+        printf(">>>>snchol my_rank %d n_ranks %d n_threads %d n_cores_total %d matrix_size %d block_size %d nlevels %d fact_time %3.2e\n",
+                           my_rank, comm_size(), n_threads, n_threads * comm_size(), A.rows(), block_size, nlevels, elapsed(t0, t1));
 
         auto am_send_pivot = comm.make_active_msg(
             [&](int &k, int &ksize, view<double> &Akk) {
@@ -956,7 +954,7 @@ struct DistMat
             comm.progress();
         }
 
-        if (LOG > 0)
+        if (want_log)
         {
             ofstream logfile;
             string filename = FOLDER + "/snchol_" + to_string(comm_size()) + "_" + to_string(n_threads) + "_" + to_string(App.rows()) + ".log." + to_string(my_rank);
@@ -1033,12 +1031,12 @@ struct DistMat
     }
 };
 
-void run_cholesky()
+void run_cholesky(const std::string filename, const int nlevels, const int n_threads, const int block_size, const int verb, const bool log)
 {
     printf("[%d] Hello from %s\n", comm_rank(), processor_name().c_str());
-    DistMat dm(FILENAME, N_LEVELS, BLOCK_SIZE);
+    DistMat dm(filename, nlevels, block_size);
     SpMat A = dm.A;
-    dm.factorize(N_THREADS);
+    dm.factorize(n_threads, verb, log);
     if (comm_rank() == 0)
     {
         VectorXd b = random(A.rows(), 2019);
@@ -1054,50 +1052,41 @@ void run_cholesky()
     }
 }
 
-int main(int argc, char **argv)
+int main(int argc, const char **argv)
 {
     int req = MPI_THREAD_FUNNELED;
     int prov = -1;
     int err = MPI_Init_thread(NULL, NULL, req, &prov);
     assert(err == 0 && prov == req);
-    printf("Usage ./snchol filename nlevels nthreads verb blocksize log folder repeat\n");
-    printf("filename = %s, nlevels = %d, nthreads = %d, verb = %d, blocksize = %d, log = %d, folder = %s, repeat = %d\n", 
-        FILENAME.c_str(), N_LEVELS, N_THREADS, VERB, BLOCK_SIZE, LOG, FOLDER.c_str(), REPEAT);
-    if (argc >= 2)
-    {
-        FILENAME = argv[1];
+
+    std::stringstream sstr;
+    sstr << comm_size();
+    const std::string comm_size_str = sstr.str();
+
+    cxxopts::Options options("2d_cholesky", "2D dense cholesky using TaskTorrent");
+    options.add_options()
+        ("help", "Show help and exit")
+        ("n_threads", "Number of threads", cxxopts::value<int>()->default_value("4"))
+        ("verb", "Verbosity level", cxxopts::value<int>()->default_value("0"))
+        ("block_size", "Block size", cxxopts::value<int>()->default_value("10"))
+        ("matrix", "Filename to matrix in MM format", cxxopts::value<std::string>()->default_value("neglapl_2_32.mm"))
+        ("nlevels", "Number of ND levels", cxxopts::value<int>()->default_value("10"))
+        ("log", "Enable logging");
+    auto result = options.parse(argc, argv);
+
+    if (result.count("help")) {
+        std::cout << options.help({"", "Group"}) << endl;
+        exit(0);
     }
-    if (argc >= 3)
-    {
-        N_LEVELS = atoi(argv[2]);
-    }
-    if (argc >= 4)
-    {
-        N_THREADS = atoi(argv[3]);
-    }
-    if (argc >= 5)
-    {
-        VERB = atoi(argv[4]);
-    }
-    if (argc >= 6)
-    {
-        BLOCK_SIZE = atoi(argv[5]);
-    }
-    if (argc >= 7)
-    {
-        LOG = atoi(argv[6]);
-    }
-    if (argc >= 8)
-    {
-        FOLDER = argv[7];
-    }
-    if (argc >= 9)
-    {
-        REPEAT = atoi(argv[8]);
-    }
-    for(int r = 0; r < REPEAT; r++) {
-        run_cholesky();
-    }
+
+    const int n_threads = result["n_threads"].as<int>();
+    const int verb = result["verb"].as<int>();
+    const int block_size = result["block_size"].as<int>();
+    const bool log = result["log"].as<bool>();
+    const std::string filename = result["matrix"].as<std::string>();
+    const int nlevels = result["nlevels"].as<int>();
+    
+    run_cholesky(filename, nlevels, n_threads, block_size, verb, log);
     MPI_Finalize();
     return 0;
 }

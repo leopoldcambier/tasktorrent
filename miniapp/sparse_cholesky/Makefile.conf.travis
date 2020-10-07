@@ -1,2 +1,4 @@
+MPICXX  = mpicxx
+CFLAGS  =
 INCLUDE = -I${HOME}/build/leopoldcambier/tasktorrent/eigen -I/usr/include/scotch/ -I/usr/include/ -I/usr/include/x86_64-linux-gnu/
 LIBS    = -L/usr/lib/x86_64-linux-gnu/ -lscotch -lscotcherr -lblas -llapacke
