@@ -162,7 +162,8 @@ def make_trace_figure(trace, tids):
 def make_DAG_figure(nodes, edges, show_edges=False):
 
     # Add positions
-    add_DAG_pos(nodes, edges)
+    if 'x' not in nodes and 'y' not in nodes:
+        add_DAG_pos(nodes, edges)
     posx = nodes['x']
     posy = nodes['y']
     tt   = nodes['time']

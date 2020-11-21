@@ -1,7 +1,5 @@
 #include "tasktorrent/tasktorrent.hpp"
 
-#include <mpi.h>
-
 using namespace std;
 using namespace ttor;
 
@@ -13,30 +11,30 @@ using namespace ttor;
 void tuto(int verb)
 {
     const int n_threads = 1;
-    const int rank = comm_rank();
-    const int n_ranks = comm_size();
+    const int rank = comms_world_rank();
+    const int n_ranks = comms_world_size();
 
     if (n_ranks < 2)
     {
-        printf("You need to run this code with at least 2 MPI processors\n");
+        printf("You need to run this code with at least 2 processors\n");
         exit(0);
     }
 
-    printf("Rank %d hello from %s\n", rank, processor_name().c_str());
+    printf("Rank %d hello\n", rank);
 
     // Prepare data to send and to receive
     // Data to send is filled with data
     // Data to receive is left unallocated
     const int ntasks = n_ranks;
     const int N = 1000;
-    vector<int> tosend(N, rank);
+    const vector<int> tosend(N, rank);
     vector<int> torecv;
 
     // Initialize the communicator structure
-    Communicator comm(MPI_COMM_WORLD, verb);
+    auto comm = make_communicator_world(verb);
 
     // Initialize the runtime structures
-    Threadpool tp(n_threads, &comm, verb, "WkTuto_" + to_string(rank) + "_");
+    Threadpool tp(n_threads, comm.get(), verb, "WkTuto_" + to_string(rank) + "_");
     Taskflow<int> tf(&tp, verb);
 
     // We map 1 task per rank
@@ -46,24 +44,24 @@ void tuto(int verb)
     // Create large active message
     // `from` indicates from who is the message coming
     // `k` is the task (== rank in this example)
-    auto am = comm.make_large_active_msg(
+    auto am = comm->make_large_active_msg(
         // This function is ran on the receiver when the buffer has arrived
         // This is typically used to trigger tasks using that data
-        [&](int& from, int& k) {
+        [&](const int& from, const int& k) {
             printf("Data from %d for task %d received on rank %d\n", from, k, rank);
             tf.fulfill_promise(k);
         },
         // This function is ran on the receiver to get the pointer to the buffer
         // in which to store the data
         // It should return a pointer to an allocated buffer large enough to hold the data
-        [&](int& from, int& k) {
+        [&](const int& from, const int& k) {
             printf("Data from %d for task %d starting to be received on rank %d\n", from, k, rank);
             torecv.resize(N);
             return torecv.data();
         },
         // This function is ran on the sender when the buffer can safely be reused
         // This would for instance free the buffer, if needed
-        [&](int& from, int& k) {
+        [&](const int& from, const int& k) {
             printf("Data from %d for task %d sent from %d\n", from, k, rank);
         });
 
@@ -77,14 +75,10 @@ void tuto(int verb)
         .set_fulfill([&](int k) {
             // Send data to the next rank
             if(k < ntasks-1) {
-                int dest = rank+1;
-                auto v = view<int>(tosend.data(), tosend.size());
-                int from = rank;
-                int dep  = rank+1;
                 // The first argument of send_large is the destination
                 // Followed by a view to a buffer
                 // Followed by the usual arguments
-                am->send_large(dest, v, from, dep);
+                am->send_large(rank+1, make_view(tosend.data(), tosend.size()), rank, rank+1);
             }
         })
         .set_indegree([&](int k) {
@@ -110,12 +104,7 @@ void tuto(int verb)
 
 int main(int argc, char **argv)
 {
-    int req = MPI_THREAD_FUNNELED;
-    int prov = -1;
-
-    MPI_Init_thread(NULL, NULL, req, &prov);
-
-    assert(prov == req);
+    comms_init();
 
     int verb = 0; // Can be changed to vary the verbosity of the messages
 
@@ -126,5 +115,5 @@ int main(int argc, char **argv)
 
     tuto(verb);
 
-    MPI_Finalize();
+    comms_finalize();
 }

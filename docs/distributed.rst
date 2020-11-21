@@ -1,17 +1,26 @@
 Distributed memory 
 ==================
 
-.. doxygenfunction:: ttor::comm_rank
-.. doxygenfunction:: ttor::comm_size
-.. doxygenfunction:: ttor::processor_name
+.. doxygenfunction:: ttor::Comms_Init
 
-.. doxygenclass:: ttor::ActiveMsgBase
+.. doxygenfunction:: ttor::Comms_Finalize
+
+.. doxygenfunction:: ttor::Comms_World_Barrier
+
+.. doxygenfunction:: ttor::Comms_World_Rank
+
+.. doxygenfunction:: ttor::Comms_World_Size
+
+.. doxygenfunction:: ttor::make_Communicator_World
+
+
+.. doxygenclass:: ttor::Communicator_Base
    :members:
 
-.. doxygenclass:: ttor::ActiveMsg
+.. doxygenclass:: ttor::Communicator_MPI
    :members:
 
-.. doxygenclass:: ttor::Communicator
+.. doxygenclass:: ttor::Communicator_UPCXX
    :members:
 
 .. doxygenclass:: ttor::Threadpool_dist

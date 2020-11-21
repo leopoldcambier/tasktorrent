@@ -60,7 +60,7 @@ void Threadpool_shared::consume(int self, Task *t, const std::string &name)
     if (verb > 1)
     {
         ++total_tasks;
-        printf("[%s] %s done; total tasks completed %d\n", name.c_str(), t->c_name(), total_tasks.load());
+        printf("[%s] %s done; total tasks completed %lld\n", name.c_str(), t->c_name(), total_tasks.load());
     }
 
     delete t;
@@ -109,8 +109,8 @@ void Threadpool_shared::start()
                 {
                     std::lock_guard<std::mutex> lock_rT(rTmtx);
                     std::lock_guard<std::mutex> lock_sT(bTmtx);
-                    int rT_size = rT.size();
-                    int sT_size = bT.size();
+                    size_t rT_size = rT.size();
+                    size_t sT_size = bT.size();
                     if (rT_size > 0 && sT_size > 0)
                     {
                         double t_bound_prio = bT.top()->priority;
@@ -174,7 +174,7 @@ void Threadpool_shared::start()
                 {
                     consume(self, t, name);
                     if (verb > 1)
-                        printf("[%s] tasks_in_flight %d\n", name.c_str(), tasks_in_flight.load());
+                        printf("[%s] tasks_in_flight %lld\n", name.c_str(), tasks_in_flight.load());
                 }
                 else
                 { // no task was found in any queue

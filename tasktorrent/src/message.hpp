@@ -1,14 +1,14 @@
 #ifndef __TTOR_SRC_MESSAGE_HPP__
 #define __TTOR_SRC_MESSAGE_HPP__
 
-#ifndef TTOR_SHARED
+#ifdef TTOR_MPI
 
 #include <vector>
 #include <mpi.h>
 
 namespace ttor {
 
-struct message
+struct message_MPI
 {
 public:
 
@@ -26,18 +26,18 @@ public:
 
     // Header
     bool header_processed;
-    int header_tag;                         // 0 if count in B, 1 if count in MB
-    std::vector<char> header_buffer;        // Header buffer (internally allocated/deallocated)
-    MPI_Request header_request;             // Associated request
+    int header_tag;                                     // 0 if count in B, 1 if count in MB
+    std::unique_ptr<std::vector<char>> header_buffer;   // Header buffer (internally allocated/deallocated)
+    MPI_Request header_request;                         // Associated request
 
     // Body
     int body_tag;                           // Tag used to communicate the body
-    char* body_send_buffer;                 // "Large" body buffer (user provided) on the sender
+    const char* body_send_buffer;           // "Large" body buffer (user provided) on the sender
     char* body_recv_buffer;                 // "Large" body buffer (user provided) on the receiver
     size_t body_size;                       // Sizes
     std::vector<MPI_Request> body_requests; // Associated requests (multiple needed if message > 2 GB since we sent multiple messages)
 
-    message();
+    message_MPI();
 };
 
 }

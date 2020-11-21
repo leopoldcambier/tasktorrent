@@ -33,7 +33,7 @@ if read_the_docs_build:
 # -- Project information -----------------------------------------------------
 
 project = 'TaskTorrent'
-copyright = '2019-2020, Leopold Cambier'
+copyright = '2019-2021, Leopold Cambier'
 author = 'Leopold Cambier'
 
 

@@ -1,0 +1,6 @@
+*.log.*
+*.dot.*
+*.csv*
+*.png
+*.pyc
+

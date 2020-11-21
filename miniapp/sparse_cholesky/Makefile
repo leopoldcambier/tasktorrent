@@ -1,9 +1,9 @@
-include Makefile.conf
+include ../Makefile.conf
 
 CC       = mpicxx
 CFLAGS   += -pthread -O3 -g -std=c++14 -DEIGEN_NO_DEBUG
-INCLUDE  += -I../../ -I../../external
-LIBS     += 
+INCLUDE  += -I../../ -I../../external ${EIGEN_INC} ${BLAS_INC} ${SCOTCH_INC}
+LIBS     += ${BLAS_SEQ_LIBS} ${SCOTCH_LIBS}
 SRCDIR   = ../../tasktorrent/src
 OBJDIR   = ../../build
 

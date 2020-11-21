@@ -1,8 +1,8 @@
-include Makefile.conf
+include ../Makefile.conf
 
-CFLAGS   += -pthread -O3 -g -std=c++14 -DEIGEN_NO_DEBUG
-INCLUDE  += -I../../ -I../../external/
-LIBS     += 
+CFLAGS   += -pthread -O3 -g -std=c++14 -DEIGEN_USE_LAPACKE -DEIGEN_NO_DEBUG
+INCLUDE  += -I../../ -I../../external/ ${EIGEN_INC} ${BLAS_INC} 
+LIBS     += ${BLAS_SEQ_LIBS}
 SRCDIR   = ../../tasktorrent/src
 OBJDIR   = ../../build
 

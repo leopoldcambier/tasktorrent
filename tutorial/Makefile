@@ -1,5 +1,5 @@
 CC       = mpicxx
-CFLAGS   = -std=c++14 -g
+CFLAGS   = -std=c++14 -g -DTTOR_MPI
 INCLUDE  = -I../
 SRCDIR   = ../tasktorrent/src
 OBJDIR   = ../build
@@ -23,9 +23,9 @@ tuto: tuto.cpp $(OBJ)
 tuto_large_am: tuto_large_am.cpp $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(INCLUDE)
 
-run: tuto
-	mpirun -n 2 ./tuto
+run: tuto tuto_large_am
+	mpirun -n 2 ./tuto && mpirun -n 2 ./tuto_large_am
 
 clean:
-	rm -f tuto
+	rm -f tuto tuto_large_am
 	rm -f $(OBJDIR)/*.o

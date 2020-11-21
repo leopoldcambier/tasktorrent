@@ -1,23 +1,4 @@
-#include "tasktorrent/tasktorrent.hpp"
-#ifdef USE_MKL
-#include <mkl_cblas.h>
-#include <mkl_lapacke.h>
-#else
-#include <cblas.h>
-#include <lapacke.h>
-#endif
-#include <Eigen/Core>
-#include <Eigen/Cholesky>
-#include <fstream>
-#include <array>
-#include <random>
-#include <mutex>
-#include <iostream>
-#include <map>
-#include <memory>
-#include <set>
-#include <mpi.h>
-#include <string>
+#include "../utils_shared.hpp"
 
 using namespace std;
 using namespace Eigen;
@@ -46,8 +27,8 @@ enum PrioKind { no = 0, row = 1, cp = 2, cp_row = 3};
 
 void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npcols, int nprows, PrioKind prio, int log, int debug)
 {
-    const int rank = comm_rank();
-    const int n_ranks = comm_size();
+    const int rank = ttor::comms_world_rank();
+    const int n_ranks = ttor::comms_world_size();
     std::atomic<long long int> potrf_us_t(0);
     std::atomic<long long int> trsm_us_t(0);
     std::atomic<long long int> gemm_us_t(0);
@@ -60,7 +41,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
         {
             cerr << "Number of processes must be a perfect cube." << endl;
         }
-        MPI_Finalize();
+        ttor::comms_finalize();
         exit(1);
     }
     
@@ -128,7 +109,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
     auto rank3d21 = [&](int i, int j, int k) { return ((j % q) * q + k % q) + (i % q) * q * q;};
     auto rank2d21 = [&](int i, int j) { return (j % npcols) * nprows + (i % nprows);};
     auto rank1d21 = [&](int j) { return j % n_ranks; };
-    vector<unique_ptr<MatrixXd>> blocks(num_blocks*num_blocks);
+    vector<MatrixXd> blocks(num_blocks*num_blocks);
 
     auto bloc_2_rank = [&](int i, int j) {
         int r = (j % npcols) * nprows + (i % nprows);
@@ -155,8 +136,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
             auto val_loc = [&](int i, int j) { return val(ii*block_size+i,jj*block_size+j); };
             int dest = (ii == jj) ? rank1d21(ii) : rank2d21(ii,jj);
             if(dest == rank) {
-                blocks[ii+jj*num_blocks]=make_unique<MatrixXd>(block_size, block_size);
-                *blocks[ii+jj*num_blocks]=MatrixXd::NullaryExpr(block_size, block_size, val_loc);
+                blocks[ii+jj*num_blocks]=MatrixXd::NullaryExpr(block_size, block_size, val_loc);
                 gemm_results[ii+jj*num_blocks].to_accumulate= vector<std::unique_ptr<MatrixXd>>(q);
                 for (int ll=0; ll<q; ll++) {
                     gemm_results[ii+jj*num_blocks].to_accumulate[ll]=make_unique<MatrixXd>(block_size, block_size);
@@ -164,18 +144,17 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
                 }
             } 
             else if (((ii % q) == rank_3d[0]) && ((jj % q) == rank_3d[1])) {
-                blocks[ii+jj*num_blocks]=make_unique<MatrixXd>(block_size, block_size);
-                *blocks[ii+jj*num_blocks]=MatrixXd::Zero(block_size, block_size);
+                blocks[ii+jj*num_blocks]=MatrixXd::Zero(block_size, block_size);
             } 
             else {
-                blocks[ii+jj*num_blocks]=make_unique<MatrixXd>(block_size, block_size);
+                blocks[ii+jj*num_blocks]=MatrixXd(block_size, block_size);
             }
         }
     }
     // Initialize the communicator structure
-    Communicator comm(MPI_COMM_WORLD, verb);
+    auto comm = ttor::make_communicator_world(verb);
     // Initialize the runtime structures
-    Threadpool tp(n_threads, &comm, verb, "WkTuto_" + to_string(rank) + "_");
+    Threadpool tp(n_threads, comm.get(), verb, "WkTuto_" + to_string(rank) + "_");
     Taskflow<int> potrf(&tp, verb);
     Taskflow<int2> trsm(&tp, verb);
     Taskflow<int3> gemm(&tp, verb);
@@ -184,10 +163,10 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
     Logger ttorlog(1000000);
     if (log)  {
         tp.set_logger(&ttorlog);
-        comm.set_logger(&ttorlog);
+        comm->set_logger(&ttorlog);
     }
     // Create active message
-    auto am_trsm = comm.make_large_active_msg( 
+    auto am_trsm = comm->make_large_active_msg( 
         [&](int& j) {
                 int offset = ((j + 1) / nprows + (((j + 1) % nprows) > rank_2d[0])) * nprows + rank_2d[0];
                 for(int i = offset; i < num_blocks; i = i + nprows) {
@@ -197,13 +176,13 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
                 }
             },
             [&](int& j){
-                return blocks[j+j*num_blocks]->data();
+                return blocks[j+j*num_blocks].data();
             },
             [&](int& j){
                 return;
             });
 
-    auto am_gemm = comm.make_large_active_msg(
+    auto am_gemm = comm->make_large_active_msg(
         [&](int& i, int& k) {
             assert(k % q == rank_3d[2]);
             int offset_c = ((k + 1) / q + (((k + 1) % q) > rank_3d[1])) * q + rank_3d[1]; 
@@ -224,7 +203,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
             }
         },
         [&](int& i, int& k) {
-            return blocks[i+k*num_blocks]->data();
+            return blocks[i+k*num_blocks].data();
         },
         [&](int& i, int& k) {
             return;
@@ -233,7 +212,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
     potrf.set_task([&](int j) {
             assert(rank1d21(j) == rank);
             timer t1 = wctime();
-            int info = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', block_size, blocks[j+j*num_blocks]->data(), block_size);
+            int info = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', block_size, blocks[j+j*num_blocks].data(), block_size);
             timer t2 = wctime();
             potrf_us_t += 1e6 * elapsed(t1, t2);
             assert(info == 0);
@@ -250,7 +229,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
                     }
                 }
                 else {
-                    auto Ljjv = view<double>(blocks[j+j*num_blocks]->data(), block_size*block_size);
+                    auto Ljjv = view<double>(blocks[j+j*num_blocks].data(), block_size*block_size);
                     am_trsm->send_large(r, Ljjv, j);
                 }
             }
@@ -283,7 +262,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
             int j=ij[1];
             assert(rank2d21(i,j) == rank);
             timer t1 = wctime();
-            cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, block_size, block_size, 1.0, blocks[j + j * num_blocks]->data(),block_size, blocks[i + j * num_blocks]->data(), block_size);
+            cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, block_size, block_size, 1.0, blocks[j + j * num_blocks].data(),block_size, blocks[i + j * num_blocks].data(), block_size);
             timer t2 = wctime();
             trsm_us_t += 1e6 * elapsed(t1, t2);
             if (debug) printf("Running trsm (%d, %d) on rank %d, %d\n", i, j, rank_2d[0], rank_2d[1]);
@@ -309,7 +288,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
                         }
                     }
                     else {
-                        auto Lijv = view<double>(blocks[i + j * num_blocks]->data(), block_size*block_size);
+                        auto Lijv = view<double>(blocks[i + j * num_blocks].data(), block_size*block_size);
                         am_gemm->send_large(r, Lijv, i, j);
                     } 
                 }
@@ -338,7 +317,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
             return "TRSM" + to_string(j) + "_" + to_string(i) + "_" +to_string(rank);
         });
    
-    auto am_accu = comm.make_large_active_msg(
+    auto am_accu = comm->make_large_active_msg(
         [&](int& i, int& j, int& from) {
             accu.fulfill_promise({from, i, j});
         },
@@ -356,10 +335,10 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
             assert(rank3d21(i,j,k) == rank);
             timer t1 = wctime();           
             if (i==j) { 
-                cblas_dsyrk(CblasColMajor, CblasLower, CblasNoTrans, block_size, block_size, -1.0, blocks[i+k*num_blocks]->data(), block_size, 1.0, blocks[i+j*num_blocks]->data(), block_size);
+                cblas_dsyrk(CblasColMajor, CblasLower, CblasNoTrans, block_size, block_size, -1.0, blocks[i+k*num_blocks].data(), block_size, 1.0, blocks[i+j*num_blocks].data(), block_size);
             }
             else {
-                cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, block_size, block_size, block_size, -1.0,blocks[i+k*num_blocks]->data(), block_size, blocks[j+k*num_blocks]->data(), block_size, 1.0, blocks[i+j*num_blocks]->data(), block_size);
+                cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, block_size, block_size, block_size, -1.0,blocks[i+k*num_blocks].data(), block_size, blocks[j+k*num_blocks].data(), block_size, 1.0, blocks[i+j*num_blocks].data(), block_size);
             }
             timer t2 = wctime();
             if (debug) printf("Running gemm (%d, %d, %d) on rank %d, %d, %d\n", k, i, j, rank_3d[2], rank_3d[0], rank_3d[1]);
@@ -380,7 +359,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
                 }
                 else {
                     int kk = rank_3d[2];
-                    auto Lij = view<double>(blocks[i+j*num_blocks]->data(), block_size*block_size);
+                    auto Lij = view<double>(blocks[i+j*num_blocks].data(), block_size*block_size);
                     if (debug) printf("gemm (%d, %d, %d) Sending accumu (%d, %d, %d) to rank %d, %d\n", k, i, j, rank_3d[2], i, j, dest % nprows, dest / nprows);
                     am_accu->send_large(dest, Lij, i, j, kk);
                 }
@@ -407,7 +386,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
             int k=kij[0];
             int i=kij[1];
             int j=kij[2];
-            return "gemm" + to_string(k) + "_" + to_string(i)+"_"+to_string(j)+"_"+to_string(comm_rank());
+            return "gemm" + to_string(k) + "_" + to_string(i)+"_"+to_string(j)+"_"+to_string(rank);
         });
 
     accu.set_task([&](int3 kij) {
@@ -420,7 +399,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
             if (debug) printf("Running accumu (%d, %d, %d) on rank %d, %d\n", k, i, j, rank % nprows, rank / nprows);
             {
                 timer t_ = wctime();
-                *blocks[i+j*num_blocks] += (*gemm_results[i+j*num_blocks].to_accumulate[k]);
+                blocks[i+j*num_blocks] += (*gemm_results[i+j*num_blocks].to_accumulate[k]);
                 timer t__ = wctime();
                 accu_us_t += 1e6 * elapsed(t_, t__);
             }
@@ -453,53 +432,66 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
             int k=kij[0];
             int i=kij[1];
             int j=kij[2];
-            return "accumu" + to_string(k) + "_" + to_string(i)+"_"+to_string(j)+"_"+to_string(comm_rank());
+            return "accumu" + to_string(k) + "_" + to_string(i)+"_"+to_string(j)+"_"+to_string(rank);
         });
 
-    MPI_Barrier(MPI_COMM_WORLD);
+    ttor::comms_world_barrier();
     timer t0 = wctime();
     if (rank == 0){
         potrf.fulfill_promise(0);
     }
     tp.join();
-    MPI_Barrier(MPI_COMM_WORLD);
+    ttor::comms_world_barrier();
     timer t1 = wctime();
-    MPI_Status status;
     if (rank==0) {
         cout<<"3D, Number of ranks "<<n_ranks<<", block_size "<<block_size<<", num_blocks "<<num_blocks<<", n_threads "<<n_threads<<", Priority "<<prio<<", Elapsed time: "<<elapsed(t0,t1)<<endl;
     }
-    MatrixXd A;
-    A = MatrixXd::NullaryExpr(block_size*num_blocks,block_size*num_blocks, val);
-    MatrixXd L = A;
-    for (int ii=0; ii<num_blocks; ii++) {
-        for (int jj=0; jj<num_blocks; jj++) {
-            if (jj<=ii)  {
-                int dest = (ii == jj) ? rank1d21(ii) : rank2d21(ii,jj);
-                if (rank==0 && rank!=dest) {
-                    blocks[ii+jj*num_blocks]=make_unique<MatrixXd>(block_size,block_size);
-                    MPI_Recv(blocks[ii+jj*num_blocks]->data(), block_size*block_size, MPI_DOUBLE, dest, 0, MPI_COMM_WORLD, &status);
-                }
-                else if (rank==dest && rank != 0) {
-                    MPI_Send(blocks[ii+jj*num_blocks]->data(), block_size*block_size, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
-                }
-            }
-        }
-    }
-    if (rank == 0)  {
+    {
+        MatrixXd A = MatrixXd::NullaryExpr(block_size*num_blocks,block_size*num_blocks, val);
+        MatrixXd L = A;
+        // Send the matrix to rank 0
+        int n_received = 0;
+        int n_expected = 0;
+        auto comm = ttor::make_communicator_world(verb);
+        auto am = comm->make_active_msg([&](ttor::view<double>& A, int& ii, int& jj) {
+            blocks[ii+jj*num_blocks] = make_from_view(A, block_size);
+            n_received++;
+        });
         for (int ii=0; ii<num_blocks; ii++) {
             for (int jj=0; jj<num_blocks; jj++) {
                 if (jj<=ii)  {
-                    L.block(ii*block_size,jj*block_size,block_size,block_size)=*blocks[ii+jj*num_blocks];
+                    int owner = (ii == jj) ? rank1d21(ii) : rank2d21(ii,jj);
+                    if (rank == 0 && rank != owner) {
+                        n_expected++;
+                    } else if (rank != 0 && rank == owner) {
+                        auto C_view = make_view(&blocks[ii+jj*num_blocks]);
+                        am->send(0, C_view, ii, jj);
+                    }
                 }
             }
         }
-        auto L1=L.triangularView<Lower>();
-        VectorXd x = VectorXd::Random(block_size * num_blocks);
-        VectorXd b = A*x;
-        L1.solveInPlace(b);
-        L1.transpose().solveInPlace(b);
-        double error = (b - x).norm() / x.norm();
-        cout << "Error solve: " << error << endl;
+        while((!comm->is_done()) || (n_received < n_expected)) {
+            comm->progress();
+        }
+        if (rank == 0)  {
+            for (int ii=0; ii<num_blocks; ii++) {
+                for (int jj=0; jj<num_blocks; jj++) {
+                    if (jj<=ii)  {
+                        L.block(ii*block_size,jj*block_size,block_size,block_size)=blocks[ii+jj*num_blocks];
+                    }
+                }
+            }
+            auto L1=L.triangularView<Lower>();
+            VectorXd x = VectorXd::Random(block_size * num_blocks);
+            VectorXd b = A*x;
+            L1.solveInPlace(b);
+            L1.transpose().solveInPlace(b);
+            double error = (b - x).norm() / x.norm();
+            cout << "Error solve: " << error << endl;
+            if(error > 1e-8) {
+                exit(1);
+            }
+        }
     }
     if (log)  {
         std::ofstream logfile;
@@ -510,56 +502,54 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
     }
 }
 
-int main(int argc, char **argv)
+int main(int argc, const char **argv)
 {
-    int req = MPI_THREAD_FUNNELED;
-    int prov = -1;
-    MPI_Init_thread(NULL, NULL, req, &prov);
-    assert(prov == req);    
-    int n_threads = 2;
-    int verb = 0; // Can be changed to vary the verbosity of the messages
-    int block_size = 5;
-    int num_blocks = 10;
-    int npcols = 1;
-    int nprows = ttor::comm_size();
-    PrioKind prio = PrioKind::no;
-    int log = 0;
-    int debug = 0;
-    if (argc >= 2)
-    {
-        block_size = atoi(argv[1]);
-        assert(block_size > 0);
+
+    ttor::comms_init();
+
+    std::stringstream sstr;
+    sstr << ttor::comms_world_size();
+    const std::string comm_size_str = sstr.str();
+
+    cxxopts::Options options("3d_cholesky", "3D dense cholesky using TaskTorrent");
+    options.add_options()
+        ("help", "Print help")
+        ("n_threads", "Number of threads", cxxopts::value<int>()->default_value("2"))
+        ("verb", "Verbosity level", cxxopts::value<int>()->default_value("0"))
+        ("block_size", "Block size", cxxopts::value<int>()->default_value("5"))
+        ("num_blocks", "Number of blocks", cxxopts::value<int>()->default_value("10"))
+        ("nprows", "Number of processors accross rows", cxxopts::value<int>()->default_value("1"))
+        ("npcols", "Number of processors accross columns", cxxopts::value<int>()->default_value(comm_size_str.c_str()))
+        ("kind", "Priority kind", cxxopts::value<int>()->default_value("0"))
+        ("log", "Enable logging", cxxopts::value<bool>()->default_value("false"))
+        ("debug", "Debug or not", cxxopts::value<bool>()->default_value("false"));
+    auto result = options.parse(argc, argv);
+
+    const int n_threads = result["n_threads"].as<int>();
+    const int verb = result["verb"].as<int>();
+    const int block_size = result["block_size"].as<int>();
+    const int num_blocks = result["num_blocks"].as<int>();
+    const int nprows = result["nprows"].as<int>();
+    const int npcols = result["npcols"].as<int>();
+    const PrioKind prio = (PrioKind)(result["kind"].as<int>());
+    const bool log = result["log"].as<bool>();
+    const bool debug = result["debug"].as<bool>();
+
+    assert(block_size > 0);
+    assert(num_blocks > 0);
+    assert(n_threads > 0);
+    assert(verb >= 0);
+    assert(nprows >= 0);
+    assert(npcols >= 0);
+
+    if (result.count("help")) {
+        std::cout << options.help({"", "Group"}) << endl;
+        exit(0);
     }
-    if (argc >= 3)
-    {
-        num_blocks = atoi(argv[2]);
-        assert(num_blocks > 0);
-    }
-    if (argc >= 5) {
-        n_threads=atoi(argv[3]);
-        assert(n_threads > 0);
-        verb=atoi(argv[4]);
-        assert(verb >= 0);
-    }
-    if (argc >= 7) {
-        npcols=atoi(argv[5]);
-        assert(npcols > 0);
-        nprows=atoi(argv[6]);
-        assert(nprows > 0);
-    }
-    if (argc >= 8) {
-        prio=(PrioKind)atoi(argv[7]);
-        assert(prio >= 0 && prio < 4);
-    }
-    if (argc >= 9) {
-        log = atoi(argv[9]);
-        assert(log == 0 || log == 1);
-    }
-    if (argc >= 10) {
-        debug = atoi(argv[10]);
-        assert(debug == 0 || debug == 1);
-    }
-    if(comm_rank() == 0) printf("Usage: ./3d_cholesky block_size num_blocks n_threads verb nprows npcols priority log debug\n");
+    if(ttor::comms_world_rank() == 0) printf("Arguments: block_size (size of blocks) %d\nnum_blocks (# of blocks) %d\nn_threads %d\nverb %d\nnprows %d\nnpcols %d\nprio %d\nlog %d\ndebug %d\n", 
+        block_size, num_blocks, n_threads, verb, nprows, npcols, (int)prio, log, debug);
+
     cholesky3d(n_threads, verb, block_size, num_blocks, npcols, nprows, prio, log, debug);  
-    MPI_Finalize();
+    
+    ttor::comms_finalize();
 }

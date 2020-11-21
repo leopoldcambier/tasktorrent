@@ -45,7 +45,7 @@ private:
     Threadpool_shared *tp;
     int verb;
 
-    typedef std::unordered_map<K, int, hash_int_N<K>> map_t;
+    using map_t = std::unordered_map<K, int, details::hash_int_N<K>>;
     std::vector<map_t> dep_map;
 
     std::function<void(K)> f_run;

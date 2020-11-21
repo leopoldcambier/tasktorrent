@@ -1,0 +1,49 @@
+name: Tests
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: docker.io/lcambier/tasktorrent_tests:latest
+
+    strategy:
+      matrix:
+        ttor_test: [TESTSUITE]
+        ttor_kind: [MPI, SHARED, UPCXX]
+        ttor_build_type: [Debug, Release]
+        ttor_san: [OFF, ADDRESS, UB]
+        include:
+        - ttor_test: TESTSUITE
+          ttor_kind: SHARED
+          ttor_build_type: Debug
+          ttor_san: THREAD
+        - ttor_test: TESTSUITE
+          ttor_kind: SHARED
+          ttor_build_type: Release
+          ttor_san: THREAD
+        - ttor_test: MINIAPPS
+          ttor_kind: NONE
+          ttor_build_type: NONE
+          ttor_san: NONE
+
+    steps:
+    - name: Pull repository
+      uses: actions/checkout@v2
+
+    - name: Testsuite
+      env: 
+        EIGEN3_ROOT: "/eigen"
+        ASAN_OPTIONS: "detect_leaks=0"
+        TTOR_ROOT: ${{github.workspace}}
+        TTOR_LARGE_TESTS: "OFF"
+        TTOR_MANY_RANKS: "OFF"
+        TTOR_TEST: ${{matrix.ttor_test}}
+        TTOR_KIND: ${{matrix.ttor_kind}}
+        TTOR_BUILD_TYPE: ${{matrix.ttor_build_type}}
+        TTOR_SAN: ${{matrix.ttor_san}}
+        TTOR_UPCXX_PREFIX: "/usr/local/upcxx"
+        TTOR_CXX: "/usr/bin/g++"
+      run: |
+        cd $TTOR_ROOT
+        ./tests/test_github.sh

@@ -4,8 +4,9 @@
 #include <array>
 #include <tuple>
 
-namespace ttor
-{
+namespace ttor {
+
+namespace details {
 
 template <class T>
 struct hash_int_N
@@ -68,6 +69,8 @@ struct hash_int_N<std::array<T, N>>
         return (*this)(h);
     }
 };
+
+} // namespace details
 
 } // namespace ttor
 

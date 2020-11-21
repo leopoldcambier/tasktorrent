@@ -15,14 +15,13 @@ env:
     - EIGEN3_ROOT="${HOME}/build/leopoldcambier/tasktorrent/eigen"
     - ASAN_OPTIONS="detect_leaks=0"
     - TTOR_MPIRUN="mpirun -oversubscribe"
+    - TTOR_LARGE_TESTS="OFF"
+    - TTOR_MANY_RANKS="OFF"
   jobs:
-    - TEST="MINIAPPS"
-    - TEST="TESTSUITE" SHARED="ON"  SAN="UB"
-    - TEST="TESTSUITE" SHARED="ON"  SAN="OFF"
-    - TEST="TESTSUITE" SHARED="ON"  SAN="ADDRESS"
-    - TEST="TESTSUITE" SHARED="OFF" SAN="OFF"
-    - TEST="TESTSUITE" SHARED="OFF" SAN="UB"
-    - TEST="TESTSUITE" SHARED="OFF" SAN="ADDRESS"
+    - TTOR_TEST="MINIAPPS"
+    - TTOR_TEST="TESTSUITE" TTOR_SHARED="ON"  TTOR_BUILD_TYPE="Debug"   TTOR_SAN="OFF"
+    - TTOR_TEST="TESTSUITE" TTOR_SHARED="OFF" TTOR_BUILD_TYPE="Debug"   TTOR_SAN="OFF"
+
 install:
 script:
   - ./tests/test_travis.sh

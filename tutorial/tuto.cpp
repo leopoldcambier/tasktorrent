@@ -2,24 +2,23 @@
 
 #include <iostream>
 #include <map>
-
-#include <mpi.h>
+#include <functional>
 
 using namespace std;
 using namespace ttor;
 
-void tuto_1(int n_threads, int verb)
+void tuto(int n_threads, int verb)
 {
-    const int rank = comm_rank();
-    const int n_ranks = comm_size();
+    const int rank = comms_world_rank();
+    const int n_ranks = comms_world_size();
 
     if (n_ranks < 2)
     {
-        printf("You need to run this code with at least 2 MPI processors\n");
+        printf("You need to run this code with at least 2 processors\n");
         exit(0);
     }
 
-    printf("Rank %d hello from %s\n", rank, processor_name().c_str());
+    printf("Rank %d hello on %s\n", rank, comms_hostname().c_str());
 
     // Number of tasks
     int n_tasks_per_rank = 2;
@@ -36,25 +35,21 @@ void tuto_1(int n_threads, int verb)
     indegree[2] = 1;
     indegree[3] = 2;
 
-    // Large data buffer
-    vector<vector<double>> large_data(4);
-    for(int k = 0; k < 4; k++) large_data[k] = vector<double>(1000, (double)rank);
-
     // Map tasks to rank
     auto task_2_rank = [&](int k) {
         return k / n_tasks_per_rank;
     };
 
     // Initialize the communicator structure
-    Communicator comm(MPI_COMM_WORLD, verb);
+    auto comm = make_communicator_world();
 
     // Initialize the runtime structures
-    Threadpool tp(n_threads, &comm, verb, "WkTuto_" + to_string(rank) + "_");
+    Threadpool tp(n_threads, comm.get(), verb, "WkTuto_" + to_string(rank) + "_");
     Taskflow<int> tf(&tp, verb);
 
     // Create active message
-    auto am = comm.make_active_msg(
-        [&](int &k, int &k_) {
+    auto am = comm->make_active_msg(
+        [&](const int &k, const int &k_) {
             /* The data k and k_ are received over the network using MPI */
             printf("Task %d fulfilling %d (remote)\n", k, k_);
             tf.fulfill_promise(k_);
@@ -62,8 +57,8 @@ void tuto_1(int n_threads, int verb)
 
     // Define the task flow
     tf.set_task([&](int k) {
-          printf("Task %d is now running on rank %d\n", k, comm_rank());
-      })
+          printf("Task %d is now running on rank %d\n", k, rank);
+        })
         .set_fulfill([&](int k) {
             for (int k_ : out_deps[k]) // Looping through all outgoing dependency edges
             {
@@ -71,7 +66,7 @@ void tuto_1(int n_threads, int verb)
                 if (dest == rank)
                 {
                     tf.fulfill_promise(k_);
-                    printf("Task %d fulfilling local task %d on rank %d\n", k, k_, comm_rank());
+                    printf("Task %d fulfilling local task %d on rank %d\n", k, k_, rank);
                 }
                 else
                 {
@@ -123,12 +118,7 @@ void tuto_1(int n_threads, int verb)
 
 int main(int argc, char **argv)
 {
-    int req = MPI_THREAD_FUNNELED;
-    int prov = -1;
-
-    MPI_Init_thread(NULL, NULL, req, &prov);
-
-    assert(prov == req);
+    comms_init();
 
     int n_threads = 2;
     int verb = 0; // Can be changed to vary the verbosity of the messages
@@ -143,7 +133,7 @@ int main(int argc, char **argv)
         verb = atoi(argv[2]);
     }
 
-    tuto_1(n_threads, verb);
+    tuto(n_threads, verb);
 
-    MPI_Finalize();
+    comms_finalize();
 }

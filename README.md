@@ -1,5 +1,5 @@
 # TaskTorrent 
-[![Build Status](https://travis-ci.com/leopoldcambier/tasktorrent.svg?branch=master)](https://travis-ci.com/leopoldcambier/tasktorrent)
+![Github tests](https://github.com/leopoldcambier/tasktorrent/workflows/Tests/badge.svg) [![Documentation Status](https://readthedocs.org/projects/tasktorrent/badge/?version=latest)](https://tasktorrent.readthedocs.io/en/latest/?badge=latest)
 
 _A parallel runtime library for executing concurrent directed acyclic graphs of computational tasks with a focus on a very low-overhead when executing micro-tasks, speed, portability, light weight, and user friendly interface_
 
@@ -19,20 +19,24 @@ This system uses the parametrized task graph model.<sup id="a1">[1,](#f1)</sup><
 
 The basic philosophy behind TaskTorrent is [MPI](https://en.wikipedia.org/wiki/Message_Passing_Interface) + X. The complete DAG is distributed across nodes by the user. Each node is assumed to be a shared memory computer. On each node, the calculation is described as a local DAG ([directed acyclic graph](https://en.wikipedia.org/wiki/Directed_acyclic_graph)), with dependencies. A thread pool is created. The number of threads is typically set equal to the number of cores on the node. A scheduler is in charge of managing dependencies between tasks and assigning tasks that are ready to run (all dependencies are satisfied) to worker threads. The execution is somewhat similar to the concept of `task` in [OpenMP](https://www.openmp.org/). However, the runtime is more general as it can handle arbitrary graphs with complex dependencies. The current backend to manage threads is C++ [threads](https://en.cppreference.com/w/cpp/thread/thread).
 
-Nodes communicate through active messages. These are messages that contain data and a function that will be run on the remote node following the reception of the data. All this is not exposed to the user the library is handling the communication through MPI, using non-blocking send and receive. The main thread that starts the program is handling all the MPI requests (which are therefore processed sequentially). This follows the concept of `MPI_THREAD_FUNNELED`. That is we are running a multithreaded code, but only the (main) thread that calls `MPI_Init_thread` makes subsequent MPI calls. See for example [MPI_init_thread](https://www.open-mpi.org/doc/v4.0/man3/MPI_Init_thread.3.php) or similar page.
+Nodes communicate through active messages. These are messages that contain data and a function that will be run on the remote node following the reception of the data. All this is not exposed to the user. 
+The library handles communications using either MPI, with non-blocking send and receive, or [UPC++](https://bitbucket.org/berkeleylab/upcxx/wiki/Home). In the following, we focus on MPI. More information on MPI vs UPC++ can be found at the end of the tutorial.
+The main thread that starts the program is handling all the MPI requests (which are therefore processed sequentially). This follows the concept of `MPI_THREAD_FUNNELED`. That is we are running a multithreaded code, but only the (main) thread that calls `MPI_Init_thread` makes subsequent MPI calls. See for example [MPI_init_thread](https://www.open-mpi.org/doc/v4.0/man3/MPI_Init_thread.3.php) or similar page.
 
 But let's start with a simple example to illustrate the syntax and logic of TaskTorrent.
 
-1. First, we begin with some basic MPI-like information
+1. First, we begin with some basic MPI-like information (those functions are remely aliases to `MPI_Comm_rank` and `MPI_Comm_size`)
 ```cpp
-const int rank = comm_rank();
-const int n_ranks = comm_size();
+const int rank = comms_world_rank();
+const int n_ranks = comms_world_size();
+
 if (n_ranks < 2)
 {
-    printf("You need to run this with at least 2 ranks\n");
+    printf("You need to run this code with at least 2 processors\n");
     exit(0);
 }
-printf("Rank %d hello from %s\n", rank, processor_name().c_str());
+
+printf("Rank %d hello on %s\n", rank, comms_hostname().c_str());
 ```
 
 2. Then, referring to each task by an integer from 0 to 3, we declare some information regarding their dependencies
@@ -68,10 +72,10 @@ auto task_2_rank = [&](int k) {
 4. We create a thread pool, a task flow and a communicator structure:
 ```cpp
 // Initialize the communicator structure
-Communicator comm(MPI_COMM_WORLD, verb);
+auto comm = make_communicator_world();
 
 // Initialize the runtime structures
-Threadpool tp(n_threads, &comm, verb, "WkTuto_" + to_string(rank) + "_");
+Threadpool tp(n_threads, comm.get(), verb, "WkTuto_" + to_string(rank) + "_");
 Taskflow<int> tf(&tp, verb);
 ```
 
@@ -82,8 +86,9 @@ The task flow `tf` needs to point to the thread pool `&tp` that will be executin
 5. We create a remote procedure call. This registers a function that will be executed on the receiving rank using the provided arguments, which are sent over the network using MPI (the MPI calls are all made by the TaskTorrent library). All MPI send and receive calls made by the library are non-blocking.
 ```cpp
 // Create active message
-auto am = comm.make_active_msg(
-    [&](int &k, int &k_) {
+auto am = comm->make_active_msg(
+    [&](const int &k, const int &k_) {
+        /* The data k and k_ are received over the network using MPI */
         printf("Task %d fulfilling %d (remote)\n", k, k_);
         tf.fulfill_promise(k_);
     });
@@ -94,48 +99,49 @@ The local structure `tf` is accessed by reference capture (`[&]`). Note that sin
 ```cpp
 // Define the task flow
 tf.set_task([&](int k) {
-        printf("Task %d is now running on rank %d\n", k, comm_rank());
-    })
-    .set_fulfill([&](int k) {
-        for (int k_ : out_deps[k]) // Looping through all outgoing dependency edges
+    printf("Task %d is now running on rank %d\n", k, rank);
+})
+.set_fulfill([&](int k) {
+    for (int k_ : out_deps[k]) // Looping through all outgoing dependency edges
+    {
+        int dest = task_2_rank(k_); // defined above
+        if (dest == rank)
         {
-            int dest = task_2_rank(k_); // defined above
-            if (dest == rank)
-            {
-                tf.fulfill_promise(k_);
-                printf("Task %d fulfilling local task %d on rank %d\n", k, k_, comm_rank());
-            }
-            else
-            {
-                // Satisfy remote task
-                // Send k and k_ to rank dest using an MPI non-blocking send.
-                // The type of k and k_ must match the declaration of am above.
-                am->send(dest, k, k_);
-            }
+            tf.fulfill_promise(k_);
+            printf("Task %d fulfilling local task %d on rank %d\n", k, k_, rank);
         }
-    })
-    .set_indegree([&](int k) {
-        return indegree[k];
-    })
-    .set_mapping([&](int k) {
-        /* This is the index of the thread that will get assigned to run this task.
-            * Tasks can in general be stolen (i.e., migrate) by other threads, when idle.
-            * The optional set_binding function below determines whether task k
-            * is migratable or not.
-            */
-        return (k % n_threads);
-    })
-    .set_binding([&](int k) {
-        return false;
-        /* false == task can be migrated between worker threads [default value].
-            * true == task is bound to the thread selected by set_mapping.
-            * This function is optional. The library assumes false if this
-            * function is not defined.
-            */
-    })
-    .set_name([&](int k) { // This is a string used for debugging and profiling
-        return "tutoTask_" + to_string(k) + "_" + to_string(rank);
-    });
+        else
+        {
+            // Satisfy remote task
+            // Send k and k_ to rank dest using an MPI non-blocking send.
+            // The type of k and k_ must match the declaration of am above.
+            // am->send(dest, k, k_);
+            am->send(dest, k, k_);
+        }
+    }
+})
+.set_indegree([&](int k) {
+    return indegree[k];
+})
+.set_mapping([&](int k) {
+    /* This is the index of the thread that will get assigned to run this task.
+     * Tasks can in general be stolen (i.e., migrate) by other threads, when idle.
+     * The optional set_binding function below determines whether task k
+     * is migratable or not.
+     */
+    return (k % n_threads);
+})
+.set_binding([&](int k) {
+    return false;
+    /* false == task can be migrated between worker threads [default value].
+     * true == task is bound to the thread selected by set_mapping.
+     * This function is optional. The library assumes false if this
+     * function is not defined.
+     */
+})
+.set_name([&](int k) { // This is just for debugging and profiling
+    return "tutoTask_" + to_string(k) + "_" + to_string(rank);
+});
 ```
 Tasks need to define _at least_ three functions, by calling (`K` is the template argument of `Taskflow` and is an `int` in this example):
  * `set_task(fun)` where `fun` is a `void(K)` function; this is the function the task will execute;
@@ -153,13 +159,14 @@ The following functions may be defining optionally:
  The line `am->send(dest, k, k_)` sends the data from the remote rank to rank `dest`. The data being sent are two integers, `k`, and `k_`. Arbitrary data can be included in `am->send`. The types of these data must match the declaration of the active message:
  ```cpp
 auto am = comm.make_active_msg(
-    [&](int &k, int &k_) {
+    [&](const int &k, const int &k_) {
         ...
     });
 ```
-The variables `k` and `k_` in `am->send(dest, k, k_)` correspond to the arguments `[&](int &k, int &k_)` in the lambda function above. The library will take variables `k` and `k_` on the remote rank, send the data over the network to rank `dest`, and call the active message using these data on rank `dest`. Note that the lambda function associated with the active message
+Note that both pass-by const-references and values are supported.
+The variables `k` and `k_` in `am->send(dest, k, k_)` correspond to the arguments `[&](const int &k, const int &k_)` in the lambda function above. The library will take variables `k` and `k_` on the remote rank, send the data over the network to rank `dest`, and call the active message using these data on rank `dest`. Note that the lambda function associated with the active message
 ```cpp
-[&](int &k, int &k_) {...}
+[&](const int &k, const int &k_) {...}
 ```
 is run by the main thread of the program through the `comm` object defined previously. Worker threads that compute the DAG tasks are not involved in processing active messages. Consequently, TaskTorrent assumes that relatively few flops need to be performed in each active message since limited computational resources are assigned to running them.
 
@@ -184,7 +191,7 @@ There are also cases where it is advantageous to run this code using `am->send` 
 ```cpp
 int x;
 auto am = comm.make_active_msg(
-    [&](int &k_) {
+    [&](const int &k_) {
         x += k_;
     });
 
@@ -217,7 +224,7 @@ The following code no longer has a race condition because all `x` updates are do
 ```cpp
 int x;
 auto am = comm.make_active_msg(
-    [&](int &k_) {
+    [&](const int &k_) {
         x += k_;
     });
 
@@ -280,7 +287,7 @@ am->send(dest, vector_view);
 The active message declaration looks like this:
 ```cpp
 auto am = comm.make_active_msg(
-    [&](view<double> &vector_view) {
+    [&](const view<double> &vector_view) {
         /*
             Use vector_view.data() and vector_view.size()
             to use the data stored in the view.
@@ -298,7 +305,7 @@ If buffers are large, this may slow down the executing significantly. TaskTorren
 ```cpp
 auto am = comm.make_large_active_msg(fulfill, buffer, release)
 ```
-where `fulfill` is a `void(Ps&...)` function, `buffer` is a `(T*)(Ps&...)` function and release is a `void(Ps&...)` function.
+where `fulfill` is a `void(Ps...)` function, `buffer` is a `(T*)(Ps...)` function and release is a `void(Ps...)` function.
 The active message can then be sent by
 ```cpp
 am->send_large(dest, view, ps...)
@@ -306,11 +313,13 @@ am->send_large(dest, view, ps...)
 where `view` is a `view<T>` pointing to a buffer to be sent.
 
 The three functions are the following:
-- `fulfill` is run on the receiver when the buffer has arrived and is ready to be used. Typically this would fulfill some tasks;
-- `buffer` is run on the receiver and should return a pointer to an allocated buffer sufficiently large to hold the sent buffer;
+- `fulfill` is run on the _receiver_ when the buffer has arrived and is ready to be used. Typically this would fulfill some tasks;
+- `buffer` is run on the _receiver_ and should return a pointer to an allocated buffer sufficiently large to hold the sent buffer;
 - `release` is run on the _sender_ after the buffer has been sent and can be safely reused. This could be used to free the buffer for instance.
 
 The tutorial `tutorial/tuto_large_am.cpp` provides an example of use of large active messages.
+
+Note that this optimization has no impact on the UPC++ backend at the moment.
 
 ### MPI note
 
@@ -323,13 +332,18 @@ assert(prov == req); // this line is optional
 ```
 See for example [MPI_Init_thread](https://www.open-mpi.org/doc/v4.0/man3/MPI_Init_thread.3.php) for some documentation on this point.
 
+### Shared memory, MPI or UPC++
+
+TaskTorrent can be built with three configurations:
+- Shared memory. This means no MPI or UPC++. To do so, the user should define `TTOR_SHARED` before TaskTorrent is built. Usually, this means adding `-DTTOR_SHARED` to your compiler flags.
+- MPI. This is the most classical one. MPI is used for communications. The user should then define `TTOR_MPI` and use `mpicxx` (or equivalent) to compile TaskTorrent
+- UPC++. This uses UPC++ (and, under the hood, Gasnet) for communications. The user should then define `TTOR_UPCXX` and use `upcxx` to compile TaskTorrent.
+
 ### Building and running
 
 To build this example, you will need
 - A [C++14 compiler](https://en.cppreference.com/w/cpp) ([C++ compiler support](https://en.cppreference.com/w/cpp/compiler_support)).
-- An [MPI](https://www.mpi-forum.org/) implementation (see the [MPI Forum](https://www.mpi-forum.org/docs/) for MPI documentation). There are many options: [MPICH](https://www.mpich.org/), [MVAPICH](http://mvapich.cse.ohio-state.edu/), [Open MPI](https://www.open-mpi.org/), [Cray MPICH](https://pubs.cray.com/content/S-2529/17.05/xctm-series-programming-environment-user-guide-1705-s-2529/mpt), [Intel MPI](https://software.intel.com/en-us/mpi-library), [IBM Spectrum MPI](https://www.ibm.com/us-en/marketplace/spectrum-mpi), [Microsoft MPI](https://docs.microsoft.com/en-us/message-passing-interface/microsoft-mpi)
-  * On MacOS/Linux, you can also use [Homebrew](https://brew.sh/). For instance, to install MPICH: `brew install mpich`
-- If you are running on a single node only, and do not use MPI for communication, you can compile the code with the option `-DTTOR_SHARED`. This will comment out the components of the library that depend on MPI. You can then compile the code with a standard C++ compiler instead of [mpicxx](https://www.open-mpi.org/doc/v4.0/man1/mpicxx.1.php) for example.
+- An [MPI](https://www.mpi-forum.org/) implementation (see the [MPI Forum](https://www.mpi-forum.org/docs/) for MPI documentation). There are many options: [MPICH](https://www.mpich.org/), [MVAPICH](http://mvapich.cse.ohio-state.edu/), [Open MPI](https://www.open-mpi.org/), [Cray MPICH](https://pubs.cray.com/content/S-2529/17.05/xctm-series-programming-environment-user-guide-1705-s-2529/mpt), [Intel MPI](https://software.intel.com/en-us/mpi-library), [IBM Spectrum MPI](https://www.ibm.com/us-en/marketplace/spectrum-mpi), [Microsoft MPI](https://docs.microsoft.com/en-us/message-passing-interface/microsoft-mpi). On MacOS/Linux, you can also use [Homebrew](https://brew.sh/) to install MPI. For instance, to install MPICH: `brew install mpich`.  Optionally, you can use [UPC++](https://bitbucket.org/berkeleylab/upcxx/wiki/Home) instead of MPI. However, we recommend MPI in order to get started.
 - The code contains a lot of [assert](https://en.cppreference.com/w/cpp/error/assert) statements. In production/benchmark runs, we recommend compiling with the option [-DNDEBUG](https://en.cppreference.com/w/cpp/error/assert). This will disable all the assert checks. This doesn't disable MPI error checking ; those are always checked.
 
 Once you have this:

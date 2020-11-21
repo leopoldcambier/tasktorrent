@@ -1,7 +1,7 @@
 #ifndef __TTOR_SRC_MPI_UTILS_HPP__
 #define __TTOR_SRC_MPI_UTILS_HPP__
 
-#ifndef TTOR_SHARED
+#ifdef TTOR_MPI
 
 #include <mpi.h>
 #include <cstdio>
@@ -20,29 +20,29 @@
 namespace ttor {
 
 /**
- * Return this processor's rank within comm
+ * This processor's rank within comm
  * 
  * \param[in] comm the MPI communicator
  * 
  * \return the rank of this processor within comm
  */
-int comm_rank(MPI_Comm comm = MPI_COMM_WORLD);
+int mpi_comm_rank(MPI_Comm comm = MPI_COMM_WORLD);
 
 /**
- * Return comm's size
+ * Comm's size
  * 
  * \param[in] comm the MPI communicator
  * 
  * \return the number of processors in comm
  */
-int comm_size(MPI_Comm comm = MPI_COMM_WORLD);
+int mpi_comm_size(MPI_Comm comm = MPI_COMM_WORLD);
 
 /**
- * Return the hostname
+ * The hostname
  * 
  * \return the hostname of this processor
  */
-std::string processor_name();
+std::string mpi_processor_name();
 
 }
 

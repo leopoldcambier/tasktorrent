@@ -12,7 +12,7 @@
 namespace ttor
 {
 
-typedef std::priority_queue<Task *, std::vector<Task *>, less_pTask> queueT;
+using queueT = std::priority_queue<Task *, std::vector<Task *>, less_pTask> ;
 
 /**
  * \brief   A set of threads continuously running tasks.
@@ -29,7 +29,7 @@ class Threadpool_shared
 
 protected:
 
-    std::atomic<int> tasks_in_flight; // Counts the number of tasks currently live in the thread pool
+    std::atomic<llint> tasks_in_flight; // Counts the number of tasks currently live in the thread pool
     std::atomic<bool> done;           // Used to signal that the threadpool should stop
     // Verbosity level
     // TODO: clarify the intent for the different levels of verbosity
@@ -53,7 +53,7 @@ private:
     Logger *logger;
 
     // Debug only
-    std::atomic<int> total_tasks;
+    std::atomic<llint> total_tasks;
 
     // Run task t
     void consume(int self, Task *t, const std::string &name);
@@ -126,9 +126,12 @@ public:
     int size();
 };
 
-#ifdef TTOR_SHARED
+#if (!defined(TTOR_MPI)) && (!defined(TTOR_UPCXX))
 
-typedef Threadpool_shared Threadpool;
+/** 
+ * `Threadpool` aliases to `Threadpool_shared` when neither `TTOR_MPI` or `TTOR_UPCXX` are defined
+ */
+using Threadpool = Threadpool_shared;
 
 #endif
 

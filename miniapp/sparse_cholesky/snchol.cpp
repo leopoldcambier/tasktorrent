@@ -298,7 +298,7 @@ struct DistMat
             mini = min(mini, nodes.at(i)->size);
             maxi = max(maxi, nodes.at(i)->size);
         }
-        printf("[%d] %d blocks, min size %d, mean size %f, max size %d\n", comm_rank(), nblk, mini, mean / nblk, maxi);
+        printf("[%d] %d blocks, min size %d, mean size %f, max size %d\n", ttor::comms_world_rank(), nblk, mini, mean / nblk, maxi);
         return i2irow;
     }
 
@@ -372,7 +372,7 @@ struct DistMat
                     }
                 }
                 p->children.push_back(k);
-                // if(comm_rank() == 0) printf("%d -> %d\n", k, prow);
+                // if(ttor::comms_world_rank() == 0) printf("%d -> %d\n", k, prow);
             }
             else
             {
@@ -390,14 +390,14 @@ struct DistMat
         vector<range> node2range(nblk);
         for (auto k : roots)
         {
-            node2range[k] = {0, comm_size(), 0};
+            node2range[k] = {0, ttor::comms_world_size(), 0};
             toexplore.push(k);
         }
         // Distribute tree
         while (!toexplore.empty())
         {
             int k = toexplore.front();
-            // if(comm_rank() == 0) printf("exploring %d\n", k);
+            // if(ttor::comms_world_rank() == 0) printf("exploring %d\n", k);
             auto r = node2range.at(k);
             toexplore.pop();
             auto &n = nodes.at(k);
@@ -412,14 +412,14 @@ struct DistMat
                 assert(r.ub > r.lb);
                 int newk = r.lb + (r.k - r.lb + 1) % (r.ub - r.lb);
                 node2range[c] = {r.lb, r.ub, newk};
-                // if(comm_rank() == 0) printf(" children %d\n", c);
+                // if(ttor::comms_world_rank() == 0) printf(" children %d\n", c);
                 toexplore.push(c);
             }
             else
             {
                 int nc = n->children.size();
                 int step = (r.ub - r.lb) / nc;
-                // if(comm_rank() == 0) printf("lb ub step nc %d %d %d %d\n", r.lb, r.ub, step, nc);
+                // if(ttor::comms_world_rank() == 0) printf("lb ub step nc %d %d %d %d\n", r.lb, r.ub, step, nc);
                 if (step == 0)
                 { // To many children. Cycle by steps of 1.
                     for (int i = 0; i < nc; i++)
@@ -430,7 +430,7 @@ struct DistMat
                         assert(start < end);
                         node2range[c] = {start, end, start};
                         toexplore.push(c);
-                        // if(comm_rank() == 0) printf(" children %d start %d end %d\n", c, start, end);
+                        // if(ttor::comms_world_rank() == 0) printf(" children %d start %d end %d\n", c, start, end);
                     }
                 }
                 else
@@ -443,18 +443,18 @@ struct DistMat
                         assert(start < end);
                         node2range[c] = {start, end, start};
                         toexplore.push(c);
-                        // if(comm_rank() == 0) printf(" children %d start %d end %d\n", c, start, end);
+                        // if(ttor::comms_world_rank() == 0) printf(" children %d start %d end %d\n", c, start, end);
                     }
                 }
             }
-            // if(comm_rank() == 0) printf(" childrnode2range size %d\n", node2range.size());
+            // if(ttor::comms_world_rank() == 0) printf(" childrnode2range size %d\n", node2range.size());
         }
         node2rank = vector<int>(nblk, 0);
         for (int i = 0; i < nblk; i++)
         {
             node2rank[i] = node2range.at(i).k;
-            // if(comm_rank() == 0)
-            // printf("[%d] Node %d - %d\n", comm_rank(), i, node2rank[i]);
+            // if(ttor::comms_world_rank() == 0)
+            // printf("[%d] Node %d - %d\n", ttor::comms_world_rank(), i, node2rank[i]);
         }
     }
 
@@ -463,7 +463,7 @@ struct DistMat
     void allocate_blocks(VectorXi& i2irow) {
         for (int k = 0; k < nblk; k++)
         {
-            if (col2rank(k) == comm_rank())
+            if (col2rank(k) == ttor::comms_world_rank())
             {
                 // Allocate
                 auto &n = nodes.at(k);
@@ -678,19 +678,19 @@ struct DistMat
             }
         }
 
-        MPI_Barrier(MPI_COMM_WORLD);
+        ttor::comms_world_barrier();
         timer t0 = wctime();
-        printf("Rank %d starting w/ %d threads\n", comm_rank(), n_threads);
+        printf("Rank %d starting w/ %d threads\n", ttor::comms_world_rank(), n_threads);
         Logger log(1000000);
-        Communicator comm(MPI_COMM_WORLD, verb);
-        Threadpool tp(n_threads, &comm, verb, "[" + to_string(comm_rank()) + "]_");
+        auto comm = ttor::make_communicator_world(verb);
+        Threadpool tp(n_threads, comm.get(), verb, "[" + to_string(ttor::comms_world_rank()) + "]_");
         Taskflow<int> pf(&tp, verb);
         Taskflow<int2> tf(&tp, verb);
         Taskflow<int3> gf(&tp, verb);
         Taskflow<int3> rf(&tp, verb);
-        const int my_rank = comm_rank();
+        const int my_rank = ttor::comms_world_rank();
 
-        auto am_send_panel = comm.make_active_msg(
+        auto am_send_panel = comm->make_active_msg(
             [&](int &i, int &k, int &isize, int &ksize, view<double> &Aik, view<int> &js) {
                 Bloc *b = this->blocs.at({i, k}).get();
                 b->matA = make_unique<MatrixXd>(isize, ksize);
@@ -704,7 +704,7 @@ struct DistMat
         if (want_log)
         {
             tp.set_logger(&log);
-            comm.set_logger(&log);
+            comm->set_logger(&log);
         }
 
         pf
@@ -885,7 +885,7 @@ struct DistMat
         }
 
         tp.join();
-        MPI_Barrier(MPI_COMM_WORLD);
+        ttor::comms_world_barrier();
         printf("Tp & Comms done\n");
         timer t1 = wctime();
         printf("Factorization done, time %3.2e s.\n", elapsed(t0, t1));
@@ -895,20 +895,25 @@ struct DistMat
         printf("Allo %3.2e s., %3.2e s./thread\n", double(allo_us / 1e6), double(allo_us / 1e6) / n_threads);
         printf("Scat %3.2e s., %3.2e s./thread\n", double(scat_us / 1e6), double(scat_us / 1e6) / n_threads);
         printf(">>>>snchol my_rank %d n_ranks %d n_threads %d n_cores_total %d matrix_size %d block_size %d nlevels %d fact_time %3.2e\n",
-                           my_rank, comm_size(), n_threads, n_threads * comm_size(), A.rows(), block_size, nlevels, elapsed(t0, t1));
+                           my_rank, ttor::comms_world_size(), n_threads, n_threads * ttor::comms_world_size(), (int)A.rows(), block_size, nlevels, elapsed(t0, t1));
 
-        auto am_send_pivot = comm.make_active_msg(
+        int received = 0;
+        int expected = 0;
+
+        auto am_send_pivot = comm->make_active_msg(
             [&](int &k, int &ksize, view<double> &Akk) {
                 auto &b = this->blocs.at({k, k});
                 b->matA = make_unique<MatrixXd>(ksize, ksize);
                 memcpy(b->A()->data(), Akk.data(), Akk.size() * sizeof(double));
+                received++;
             });
 
-        auto am_send_panel2 = comm.make_active_msg(
+        auto am_send_panel2 = comm->make_active_msg(
             [&](int &i, int &k, int &isize, int &ksize, view<double> &Aik) {
                 auto &b = this->blocs.at({i, k});
                 b->matA = make_unique<MatrixXd>(isize, ksize);
                 memcpy(b->A()->data(), Aik.data(), Aik.size() * sizeof(double));
+                received++;
             });
 
         if (my_rank != 0)
@@ -942,22 +947,22 @@ struct DistMat
             {
                 if (col2rank(k) != 0)
                 {
-                    comm.recv_process();
+                    expected++;
                     auto &n = nodes.at(k);
                     for (auto i : n->nbrs)
-                        comm.recv_process();
+                        expected++;
                 }
             }
         }
 
-        while(! comm.is_done()) {
-            comm.progress();
+        while(! comm->is_done() || (received != expected)) {
+            comm->progress();
         }
 
         if (want_log)
         {
             ofstream logfile;
-            string filename = FOLDER + "/snchol_" + to_string(comm_size()) + "_" + to_string(n_threads) + "_" + to_string(App.rows()) + ".log." + to_string(my_rank);
+            string filename = FOLDER + "/snchol_" + to_string(ttor::comms_world_size()) + "_" + to_string(n_threads) + "_" + to_string(App.rows()) + ".log." + to_string(my_rank);
             printf("[%d] Logger saved to %s\n", my_rank, filename.c_str());
             logfile.open(filename);
             logfile << log;
@@ -967,7 +972,7 @@ struct DistMat
 
     VectorXd solve(VectorXd &b)
     {
-        assert(comm_rank() == 0);
+        assert(ttor::comms_world_rank() == 0);
         VectorXd xglob = perm.asPermutation() * b;
         // Set solution on each node
         for (int krow = 0; krow < nblk; krow++)
@@ -1033,11 +1038,11 @@ struct DistMat
 
 void run_cholesky(const std::string filename, const int nlevels, const int n_threads, const int block_size, const int verb, const bool log)
 {
-    printf("[%d] Hello from %s\n", comm_rank(), processor_name().c_str());
+    printf("[%d] Hello\n", ttor::comms_world_rank());
     DistMat dm(filename, nlevels, block_size);
     SpMat A = dm.A;
     dm.factorize(n_threads, verb, log);
-    if (comm_rank() == 0)
+    if (ttor::comms_world_rank() == 0)
     {
         VectorXd b = random(A.rows(), 2019);
         VectorXd x = dm.solve(b);
@@ -1054,13 +1059,10 @@ void run_cholesky(const std::string filename, const int nlevels, const int n_thr
 
 int main(int argc, const char **argv)
 {
-    int req = MPI_THREAD_FUNNELED;
-    int prov = -1;
-    int err = MPI_Init_thread(NULL, NULL, req, &prov);
-    assert(err == 0 && prov == req);
+    ttor::comms_init();
 
     std::stringstream sstr;
-    sstr << comm_size();
+    sstr << ttor::comms_world_size();
     const std::string comm_size_str = sstr.str();
 
     cxxopts::Options options("2d_cholesky", "2D dense cholesky using TaskTorrent");
@@ -1087,6 +1089,6 @@ int main(int argc, const char **argv)
     const int nlevels = result["nlevels"].as<int>();
     
     run_cholesky(filename, nlevels, n_threads, block_size, verb, log);
-    MPI_Finalize();
+    ttor::comms_finalize();
     return 0;
 }

@@ -66,10 +66,10 @@ TEST(serialize,all) {
 TEST(serialize,views) {
     vector<int> d1 = {1, 2, 3, 4, 5};
     vector<double> d2 = {10.10, 11.11, 12.12, 13.13};
-    auto v1 = view<int>(d1.data(), d1.size());
-    auto v2 = view<double>(d2.data(), d2.size());
-    Serializer<view<int>, view<double>> s1;
-    Serializer<view<int>, view<double>> s2;
+    auto v1 = make_view(d1.data(), d1.size());
+    auto v2 = make_view(d2.data(), d2.size());
+    Serializer<details::view<int>, details::view<double>> s1;
+    Serializer<details::view<int>, details::view<double>> s2;
     size_t size = s1.size(v1, v2);
     vector<char> buffer(size);
     s1.write_buffer(buffer.data(), size, v1, v2);
@@ -91,9 +91,9 @@ TEST(serialize,alignement) {
     long long d = 4478687;
     vector<int> e = {1, 2, 3};
     vector<double> f = {10.10, 11.11, 12.12};
-    Serializer<short,int,double,long long,view<int>,view<double>> s;
-    auto e_v = view<int>(e.data(), e.size());
-    auto f_v = view<double>(f.data(), f.size());
+    Serializer<short,int,double,long long,details::view<int>,details::view<double>> s;
+    auto e_v = make_view(e.data(), e.size());
+    auto f_v = make_view(f.data(), f.size());
     size_t size = s.size(a,b,c,d,e_v,f_v);
     vector<char> buffer(size);
     s.write_buffer(buffer.data(), buffer.size(), a, b, c, d, e_v, f_v);
@@ -112,10 +112,10 @@ TEST(serialize,alignement2) {
     vector<char> a = {'l', 'o', 'l'};
     vector<int> b = {1, 2, 3, 4};
     vector<double> c = {10.10, 11.11};
-    Serializer<view<char>,view<int>,view<double>> s;
-    auto a_v = view<char>(a.data(), a.size());
-    auto b_v = view<int>(b.data(), b.size());
-    auto c_v = view<double>(c.data(), c.size());
+    Serializer<details::view<char>,details::view<int>,details::view<double>> s;
+    auto a_v = make_view(a.data(), a.size());
+    auto b_v = make_view(b.data(), b.size());
+    auto c_v = make_view(c.data(), c.size());
     size_t size = s.size(a_v, b_v, c_v);
     vector<char> buffer(size);
     s.write_buffer(buffer.data(), buffer.size(), a_v, b_v, c_v);
@@ -136,10 +136,10 @@ TEST(serialize,emptyViews) {
     vector<char> a = {};
     vector<int> b = {1};
     vector<double> c = {};
-    Serializer<int,view<char>,view<int>,view<double>> s;
-    auto a_v = view<char>(a.data(), a.size());
-    auto b_v = view<int>(b.data(), b.size());
-    auto c_v = view<double>(c.data(), c.size());
+    Serializer<int,details::view<char>,details::view<int>,details::view<double>> s;
+    auto a_v = make_view(a.data(), a.size());
+    auto b_v = make_view(b.data(), b.size());
+    auto c_v = make_view(c.data(), c.size());
     size_t size = s.size(z,a_v, b_v, c_v);
     vector<char> buffer(size);
     s.write_buffer(buffer.data(), buffer.size(), z, a_v, b_v, c_v);
@@ -160,14 +160,14 @@ TEST(serialize,large) {
         data[i] = (i / static_cast<size_t>(17)) % static_cast<size_t>(478965)  + static_cast<size_t>(49); // Anything, really
     }
     ASSERT_TRUE(data != nullptr);
-    auto vdata = view<char>(data, size);
-    Serializer<view<char>> s;
+    auto vdata = make_view(data, size);
+    Serializer<details::view<char>> s;
     size_t buffer_size = s.size(vdata);
     char* output = (char*)malloc( buffer_size * sizeof(char) );
     ASSERT_TRUE(output != nullptr);
     s.write_buffer(output, buffer_size, vdata);
     auto tup = s.read_buffer(output, buffer_size);
-    view<char>& voutput = get<0>(tup);
+    auto& voutput = get<0>(tup);
     ASSERT_EQ(voutput.size(), vdata.size());
     for(size_t i = 0; i < vdata.size(); i += static_cast<size_t>(1e5)) { // Too slow otherwise
         ASSERT_EQ(vdata.data()[i], voutput.data()[i]);

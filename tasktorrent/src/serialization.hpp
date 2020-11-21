@@ -26,24 +26,25 @@ constexpr auto tail(std::tuple<Ts...> t)
     return tail_impl(std::make_index_sequence<sizeof...(Ts) - 1u>(), t);
 }
 
+// Allows to call a function for each element of a tuple
+template <typename T, typename F, size_t... Is>
+constexpr void for_each_impl(T &t, F &&f, std::index_sequence<Is...>)
+{
+    auto l = {(f(std::get<Is>(t)), 0)...};
+    (void)l;
+}
+template <typename... Ts, typename F>
+constexpr void for_each_in_tuple(std::tuple<Ts...> &t, F &&f)
+{
+    for_each_impl(t, std::forward<F>(f), std::index_sequence_for<Ts...>{});
+}
+
 // Serialize data
 template <typename... Values>
 class Serializer
 {
 private:
-    // Allows to call a function for each element of a tuple
-    template <typename T, typename F, size_t... Is>
-    constexpr void for_each_impl(T &t, F &&f, std::index_sequence<Is...>)
-    {
-        auto l = {(f(std::get<Is>(t)), 0)...};
-        (void)l;
-    }
-    template <typename... Ts, typename F>
-    constexpr void for_each_in_tuple(std::tuple<Ts...> &t, F &&f)
-    {
-        for_each_impl(t, std::forward<F>(f), std::index_sequence_for<Ts...>{});
-    }
-
+    
     // Computing the buffer size
     class for_size_buffer
     {
@@ -51,12 +52,12 @@ private:
         size_t total;
         for_size_buffer() : total(0) {}
         template <typename T>
-        void operator()(T&)
+        void operator()(const T&)
         {
             total += sizeof(T);
         }
         template <typename T>
-        void operator()(view<T> &t)
+        void operator()(const details::view<T> &t)
         {
             total += sizeof(size_t);
             if(t.size() > 0) {
@@ -76,7 +77,7 @@ private:
     public:
         for_write_buffer(char *b, size_t s) : p(b), size(s) {}
         template <typename T>
-        void operator()(T &t)
+        void operator()(const T &t)
         {
             memcpy(p, &t, sizeof(T));
             p += sizeof(T);
@@ -84,7 +85,7 @@ private:
             size -= sizeof(T);
         }
         template <typename T>
-        void operator()(view<T> &t)
+        void operator()(const details::view<T> &t)
         {
             // Serialize the size
             size_t length = t.size();
@@ -99,6 +100,7 @@ private:
                 void* error = std::align(alignof(T), sizeof(T), pv, size);
                 p = (char*)pv;
                 assert(error != nullptr);
+                (void)error;
                 // Serialize the data at the now aligned address
                 size_t size_view = length * sizeof(T);
                 memcpy(p, t.data(), size_view);
@@ -114,11 +116,11 @@ private:
     class for_read_buffer
     {
     private:
-        char *p;
+        const char *p;
         size_t size;
 
     public:
-        for_read_buffer(char *b, size_t s) : p(b), size(s) {}
+        for_read_buffer(const char *b, size_t s) : p(b), size(s) {}
         template <typename T>
         void operator()(T &t)
         {
@@ -128,7 +130,7 @@ private:
             size -= sizeof(T);
         }
         template <typename T>
-        void operator()(view<T> &t)
+        void operator()(details::view<T> &t)
         {
             // Deserialize size
             size_t length;
@@ -139,25 +141,28 @@ private:
             if(length > 0) {
                 assert(size > 0);
                 // Align
-                void* pv = (void*)p;
+                // For some reason, std::align requires a void*, not a const void*. 
+                // So we have to const_cast the pointer
+                void* pv = (void*)(const_cast<char*>(p));
                 void* error = std::align(alignof(T), sizeof(T), pv, size);
-                p = (char*)pv;
+                p = (const char*)pv;
+                (void)error;
                 assert(error != nullptr);
                 // Deserialize data - avoid unnecessary copy and fetch the (aligned) pointer
                 size_t size_view = length * sizeof(T);
-                T *start = reinterpret_cast<T *>(p);
-                t = view<T>(start, length);
+                const T *start = reinterpret_cast<const T *>(p);
+                t = details::view<T>(start, length);
                 p += size_view;
                 assert(size >= size_view);
                 size -= size_view;
             } else {
-                t = view<T>(nullptr, 0);
+                t = details::view<T>();
             }
         }
     };
 
 public:
-    size_t size(Values &... vals)
+    size_t size(const Values &... vals)
     {
         for_size_buffer sizer;
         auto tup = std::make_tuple(vals...);
@@ -165,18 +170,31 @@ public:
         return sizer.total;
     }
 
-    void write_buffer(char *buffer, size_t size, Values &... vals)
+    size_t size(std::tuple<Values...>& tup)
+    {
+        for_size_buffer sizer;
+        for_each_in_tuple(tup, sizer);
+        return sizer.total;
+    }
+
+    void write_buffer(char *buffer, size_t size, const Values &... vals)
     {
         auto tup = std::make_tuple(vals...);
         for_each_in_tuple(tup, for_write_buffer(buffer, size));
     }
 
-    std::tuple<Values...> read_buffer(char *buffer, size_t size)
+    void write_buffer(char *buffer, size_t size, const std::tuple<Values...>& tup)
+    {
+        for_each_in_tuple(tup, for_write_buffer(buffer, size));
+    }
+
+    std::tuple<Values...> read_buffer(const char *buffer, size_t size)
     {
         std::tuple<Values...> tup;
         for_each_in_tuple(tup, for_read_buffer(buffer, size));
         return tup;
     }
+
 };
 
 template <>

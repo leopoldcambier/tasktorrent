@@ -11,7 +11,9 @@
 namespace ttor
 {
 
-typedef std::chrono::time_point<std::chrono::high_resolution_clock> timer;
+using llint = long long int;
+
+using timer = std::chrono::time_point<std::chrono::high_resolution_clock>;
 
 struct Logger;
 struct Event;

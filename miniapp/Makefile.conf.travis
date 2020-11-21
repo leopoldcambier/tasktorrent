@@ -1,0 +1,11 @@
+MPICXX          = mpicxx
+CFLAGS          = -DTTOR_MPI
+INCLUDE         = 
+LIBS            =
+
+EIGEN_INC       = -I${HOME}/build/leopoldcambier/tasktorrent/eigen 
+BLAS_INC        = -I/usr/include/ 
+BLAS_SEQ_LIBS   = -L/usr/lib/x86_64-linux-gnu/ -lblas -llapacke
+BLAS_PAR_LIBS   = -L/usr/lib/x86_64-linux-gnu/ -lblas -llapacke
+SCOTCH_INC      = -I/usr/include/x86_64-linux-gnu/
+SCOTCH_LIBS     = -L/usr/lib/x86_64-linux-gnu/ -lscotch -lscotcherr 

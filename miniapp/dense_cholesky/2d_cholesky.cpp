@@ -1,24 +1,4 @@
-#include "tasktorrent/tasktorrent.hpp"
-#ifdef USE_MKL
-#include <mkl_cblas.h>
-#include <mkl_lapacke.h>
-#else
-#include <cblas.h>
-#include <lapacke.h>
-#endif
-#include <Eigen/Core>
-#include <Eigen/Cholesky>
-#include <fstream>
-#include <array>
-#include <random>
-#include <mutex>
-#include <iostream>
-#include <map>
-#include <memory>
-#include <set>
-
-#include <mpi.h>
-#include <cxxopts.hpp>
+#include "../utils_shared.hpp"
 
 using namespace std;
 using namespace Eigen;
@@ -41,8 +21,8 @@ enum PrioKind { no = 0, row = 1, cp = 2, cp_row = 3};
 void cholesky(const int n_threads, const int verb, const int block_size, const int num_blocks, const int nprows, const int npcols, 
               const PrioKind prio_kind, const bool log, const bool deps_log, const bool test, const int accumulate_parallel, const int upper_block_size)
 {
-    const int rank = comm_rank();
-    const int n_ranks = comm_size();
+    const int rank = ttor::comms_world_rank();
+    const int n_ranks = ttor::comms_world_size();
     const int matrix_size = block_size * num_blocks;
     assert(nprows * npcols == n_ranks);
     std::atomic<long long int> potrf_us_t(0);
@@ -131,16 +111,15 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
 
     // Initializes the matrix
     auto val = [&](int i, int j) { return 1/(double)((i-j)*(i-j)+1); };
-    vector<unique_ptr<MatrixXd>> blocks(num_blocks*num_blocks);
+    vector<MatrixXd> blocks(num_blocks*num_blocks);
     for (int ii=0; ii<num_blocks; ii++) {
         for (int jj=0; jj<num_blocks; jj++) {
             auto val_loc = [&](int i, int j) { return val(block_displ[ii]+i,block_displ[jj]+j); };
             if(ii >= jj) {
                 if(block_2_rank(ii,jj) == rank) {
-                    blocks[ii+jj*num_blocks]=make_unique<MatrixXd>(block_sizes[ii],block_sizes[jj]);
-                    *blocks[ii+jj*num_blocks]=MatrixXd::NullaryExpr(block_sizes[ii],block_sizes[jj], val_loc);
+                    blocks[ii+jj*num_blocks] = MatrixXd::NullaryExpr(block_sizes[ii],block_sizes[jj], val_loc);
                 } else {
-                    blocks[ii+jj*num_blocks]=make_unique<MatrixXd>(0,0);
+                    blocks[ii+jj*num_blocks] = MatrixXd(0,0);
                 }
             }
         }
@@ -217,8 +196,8 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
     };
 
     const int num_blocksmax = 15;
-    MPI_Barrier(MPI_COMM_WORLD);
-    if(comm_rank() == 0) {
+    ttor::comms_world_barrier();
+    if(rank == 0) {
         printf("Block -> Rank\n");
         for(int i = 0; i < min(num_blocksmax, num_blocks); i++) {
             for(int j = 0; j < min(num_blocksmax, num_blocks); j++) {
@@ -256,8 +235,8 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
             }
         }
     }
-    for(int r = 0; r < ttor::comm_size(); r++) {
-        if(r == comm_rank()) {
+    for(int r = 0; r < n_ranks; r++) {
+        if(r == rank) {
             printf("[%d] Block -> thread\n", r);
             for(int i = 0; i < min(num_blocksmax, num_blocks); i++) {
                 for(int j = 0; j < min(num_blocksmax, num_blocks); j++) {
@@ -270,14 +249,14 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
                 printf("\n");
             }
         }
-        MPI_Barrier(MPI_COMM_WORLD);
+        ttor::comms_world_barrier();
     }
 
     // Initialize the communicator structure
-    Communicator comm(MPI_COMM_WORLD, verb);
+    auto comm = ttor::make_communicator_world(verb);
 
     // Initialize the runtime structures
-    Threadpool tp(n_threads, &comm, verb, "Wk_Chol_" + to_string(rank) + "_");
+    Threadpool tp(n_threads, comm.get(), verb, "Wk_Chol_" + to_string(rank) + "_");
     Taskflow<int>  potrf(&tp, verb);
     Taskflow<int2> trsm(&tp, verb);
     Taskflow<int3> gemm(&tp, verb);
@@ -286,13 +265,13 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
     Logger logger(1000000);
     if(log) {
         tp.set_logger(&logger);
-        comm.set_logger(&logger);
+        comm->set_logger(&logger);
     }
 
     DepsLogger dlog(1000000);
 
     // Send a potrf'ed pivot A(k,k) and trigger trsms below requiring A(k,k)
-    auto am_trsm = comm.make_large_active_msg( 
+    auto am_trsm = comm->make_large_active_msg( 
             [&](int& j) {
                 int off = (nprows + rank_row - block_2_rank_row(j,j)) % nprows;
                 assert(off > 0); // Can't be me
@@ -303,8 +282,8 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
                 }
             },
             [&](int& j) {
-                blocks[j+j*num_blocks]->resize(block_sizes[j],block_sizes[j]);
-                return blocks[j+j*num_blocks]->data();
+                blocks[j+j*num_blocks].resize(block_sizes[j],block_sizes[j]);
+                return blocks[j+j*num_blocks].data();
             },
             [&](int&){
                 return;
@@ -316,7 +295,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
     potrf.set_task([&](int j) { // A[j,j] -> A[j,j]
             assert(block_2_rank(j,j) == rank);
             timer t_ = wctime();
-            LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', block_sizes[j], blocks[j+j*num_blocks]->data(), block_sizes_lda[j]);
+            LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', block_sizes[j], blocks[j+j*num_blocks].data(), block_sizes_lda[j]);
             timer t__ = wctime();
             potrf_us_t += 1e6 * elapsed(t_, t__);
         })
@@ -333,7 +312,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
                 trsm.fulfill_promise({i,j});
             }
             // Send to other procs in column
-            auto Ljjv = view<double>(blocks[j+j*num_blocks]->data(), block_sizes[j]*block_sizes[j]);
+            auto Ljjv = view<double>(blocks[j+j*num_blocks].data(), block_sizes[j]*block_sizes[j]);
             for(int p = 0; p < nprows; p++) {
                 if(j+p >= num_blocks) break;
                 int dest = block_2_rank(j+p,j);
@@ -361,7 +340,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
         });
 
     // Sends a panel (trsm'ed block A(i,j)) and trigger gemms requiring A(i,j)
-    auto am_gemm = comm.make_large_active_msg(
+    auto am_gemm = comm->make_large_active_msg(
         [&](int& i, int& j) {
             if(block_2_rank_row(i,j) == rank_row) {
                 const int off_right = (npcols + rank_col - block_2_rank_col(i,j)) % npcols;
@@ -385,8 +364,8 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
             }
         },
         [&](int& i, int& j) {
-            blocks[i+j*num_blocks]->resize(block_sizes[i],block_sizes[j]);
-            return blocks[i+j*num_blocks]->data();
+            blocks[i+j*num_blocks].resize(block_sizes[i],block_sizes[j]);
+            return blocks[i+j*num_blocks].data();
         },
         [&](int& i, int& j) {
             return;
@@ -402,7 +381,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
             assert(i > j);
             timer t_ = wctime();
             cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, 
-                block_sizes[i], block_sizes[j], 1.0, blocks[j+j*num_blocks]->data(), block_sizes_lda[j], blocks[i+j*num_blocks]->data(), block_sizes_lda[i]);
+                block_sizes[i], block_sizes[j], 1.0, blocks[j+j*num_blocks].data(), block_sizes_lda[j], blocks[i+j*num_blocks].data(), block_sizes_lda[i]);
             timer t__ = wctime();
             trsm_us_t += 1e6 * elapsed(t_, t__);
         })
@@ -430,7 +409,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
                 }
             }
             // Remote
-            auto Lijv = view<double>(blocks[i+j*num_blocks]->data(), block_sizes[i]*block_sizes[j]);
+            auto Lijv = view<double>(blocks[i+j*num_blocks].data(), block_sizes[i]*block_sizes[j]);
             std::set<int> dests;
             for (int c = 0; c < npcols; c++) {
                 if(j+c >= num_blocks) break;
@@ -482,16 +461,16 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
                 Aij = Atmp.get();
             } else {
                 beta = 1.0;
-                Aij = blocks[i+j*num_blocks].get();
+                Aij = &blocks[i+j*num_blocks];
             }
             assert(Aij->rows() == block_sizes[i] && Aij->cols() == block_sizes[j]);
             timer t_ = wctime();
             if (i == j) {
                 cblas_dsyrk(CblasColMajor, CblasLower, CblasNoTrans, 
-                    block_sizes[i], block_sizes[k], -1.0, blocks[i+k*num_blocks]->data(), block_sizes_lda[i], beta, Aij->data(), block_sizes_lda[i]);
+                    block_sizes[i], block_sizes[k], -1.0, blocks[i+k*num_blocks].data(), block_sizes_lda[i], beta, Aij->data(), block_sizes_lda[i]);
             } else {
                 cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, 
-                    block_sizes[i], block_sizes[j], block_sizes[k], -1.0, blocks[i+k*num_blocks]->data(), block_sizes_lda[i], blocks[j+k*num_blocks]->data(), block_sizes_lda[j], beta, Aij->data(), block_sizes_lda[i]);
+                    block_sizes[i], block_sizes[j], block_sizes[k], -1.0, blocks[i+k*num_blocks].data(), block_sizes_lda[i], blocks[j+k*num_blocks].data(), block_sizes_lda[j], beta, Aij->data(), block_sizes_lda[i]);
             }
             timer t__ = wctime();
             gemm_us_t += 1e6 * elapsed(t_, t__);
@@ -567,7 +546,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
                 gemm_results[i+j*num_blocks].to_accumulate.erase(k);
             }
             timer t_ = wctime();
-            *blocks[i+j*num_blocks] += (*Atmp);
+            blocks[i+j*num_blocks] += (*Atmp);
             timer t__ = wctime();
             accu_us_t += 1e6 * elapsed(t_, t__);
         })
@@ -608,13 +587,13 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
         });
 
     printf("Starting Cholesky factorization...\n");
-    MPI_Barrier(MPI_COMM_WORLD);
+    ttor::comms_world_barrier();
     timer t0 = wctime();
     if (rank == 0){
         potrf.fulfill_promise(0);
     }
     tp.join();
-    MPI_Barrier(MPI_COMM_WORLD);
+    ttor::comms_world_barrier();
     timer t1 = wctime();
     double total_time = elapsed(t0, t1);
     printf("Done with Cholesky factorization...\n");
@@ -648,28 +627,36 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
         MatrixXd A = MatrixXd::NullaryExpr(matrix_size,matrix_size,val);
         MatrixXd L = MatrixXd::Zero(matrix_size,matrix_size);
         // Send the matrix to rank 0
+        int n_received = 0;
+        int n_expected = 0;
+        auto comm = ttor::make_communicator_world(verb);
+        auto am = comm->make_active_msg([&](ttor::view<double>& A, int& ii, int& jj) {
+            blocks[ii+jj*num_blocks] = make_from_view(A, block_size);
+            n_received++;
+        });
         for (int ii=0; ii<num_blocks; ii++) {
             for (int jj=0; jj<num_blocks; jj++) {
                 if (jj<=ii)  {
                     int owner = block_2_rank(ii,jj);
-                    MPI_Status status;
-                    if (rank == 0 && rank != owner) { // Careful with deadlocks here
-                        blocks[ii+jj*num_blocks] = make_unique<Eigen::MatrixXd>(block_sizes[ii], block_sizes[jj]);
-                        MPI_Recv(blocks[ii+jj*num_blocks]->data(), block_sizes[ii]*block_sizes[jj], MPI_DOUBLE, owner, 0, MPI_COMM_WORLD, &status);
+                    if (rank == 0 && rank != owner) {
+                        n_expected++;
                     } else if (rank != 0 && rank == owner) {
-                        MPI_Send(blocks[ii+jj*num_blocks]->data(), block_sizes[ii]*block_sizes[jj], MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+                        auto C_view = make_view(&blocks[ii+jj*num_blocks]);
+                        am->send(0, C_view, ii, jj);
                     }
                 }
             }
         }
-
+        while((!comm->is_done()) || (n_received < n_expected)) {
+            comm->progress();
+        }
         // Rank 0 test
         if(rank == 0) {
             printf("Starting test on rank 0...\n");
             for (int ii=0; ii<num_blocks; ii++) {
                 for (int jj=0; jj<num_blocks; jj++) {
                     if (jj<=ii) {
-                        L.block(block_displ[ii],block_displ[jj],block_sizes[ii],block_sizes[jj])=*blocks[ii+jj*num_blocks];
+                        L.block(block_displ[ii],block_displ[jj],block_sizes[ii],block_sizes[jj])=blocks[ii+jj*num_blocks];
                     }
                 }
             }
@@ -691,15 +678,10 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
 
 int main(int argc, const char **argv)
 {
-    int req = MPI_THREAD_FUNNELED;
-    int prov = -1;
-
-    MPI_Init_thread(NULL, NULL, req, &prov);
-
-    assert(prov == req);
+    ttor::comms_init();
 
     std::stringstream sstr;
-    sstr << comm_size();
+    sstr << ttor::comms_world_size();
     const std::string comm_size_str = sstr.str();
 
     cxxopts::Options options("2d_cholesky", "2D dense cholesky using TaskTorrent");
@@ -712,10 +694,10 @@ int main(int argc, const char **argv)
         ("nprows", "Number of processors accross rows", cxxopts::value<int>()->default_value("1"))
         ("npcols", "Number of processors accross columns", cxxopts::value<int>()->default_value(comm_size_str.c_str()))
         ("kind", "Priority kind", cxxopts::value<int>()->default_value("0"))
-        ("log", "Enable logging")
-        ("depslog", "Enable dependency logging")
-        ("notest", "Disable testing")
-        ("accumulate", "Accumulate block GEMMs in parallel")
+        ("log", "Enable logging", cxxopts::value<bool>()->default_value("false"))
+        ("depslog", "Enable dependency logging", cxxopts::value<bool>()->default_value("false"))
+        ("test", "Test or not", cxxopts::value<bool>()->default_value("true"))
+        ("accumulate", "Accumulate block GEMMs in parallel", cxxopts::value<bool>()->default_value("false"))
         ("upper_block_size", "Upper block size", cxxopts::value<int>()->default_value("-1"));
     auto result = options.parse(argc, argv);
 
@@ -728,7 +710,7 @@ int main(int argc, const char **argv)
     const PrioKind kind = (PrioKind) result["kind"].as<int>();
     const bool log = result["log"].as<bool>();
     const bool depslog = result["depslog"].as<bool>();
-    const bool test = ! result["notest"].as<bool>();
+    const bool test = result["test"].as<bool>();
     const bool accumulate = result["accumulate"].as<bool>();
     const int upper_block_size = (result["upper_block_size"].as<int>() == -1 ? block_size : result["upper_block_size"].as<int>());
 
@@ -744,9 +726,9 @@ int main(int argc, const char **argv)
         std::cout << options.help({"", "Group"}) << endl;
         exit(0);
     }
-    if(comm_rank() == 0) printf("Arguments: block_size (size of blocks) %d\nnum_blocks (# of blocks) %d\nn_threads %d\nverb %d\nnprows %d\nnpcols %d\nkind %d\nlog %d\ndeplog %d\ntest %d\naccumulate %d\nupper_block_size %d\n", block_size, num_blocks, n_threads, verb, nprows, npcols, (int)kind, log, depslog, test, accumulate, upper_block_size);
+    if(ttor::comms_world_rank() == 0) printf("Arguments: block_size (size of blocks) %d\nnum_blocks (# of blocks) %d\nn_threads %d\nverb %d\nnprows %d\nnpcols %d\nkind %d\nlog %d\ndeplog %d\ntest %d\naccumulate %d\nupper_block_size %d\n", block_size, num_blocks, n_threads, verb, nprows, npcols, (int)kind, log, depslog, test, accumulate, upper_block_size);
 
     cholesky(n_threads, verb, block_size, num_blocks, nprows, npcols, kind, log, depslog, test, accumulate, upper_block_size);
 
-    MPI_Finalize();
+    ttor::comms_finalize();
 }
