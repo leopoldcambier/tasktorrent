@@ -5,6 +5,9 @@
 #include <tuple>
 #include <cassert>
 #include <set>
+#include <cstdlib>
+#include <chrono>
+#include <thread>
 
 #include "communications.hpp"
 #include "mpi_utils.hpp"
@@ -41,6 +44,14 @@ Communicator::Communicator(MPI_Comm comm_, int verb_, size_t break_msg_size_) :
         TASKTORRENT_MPI_CHECK(MPI_Type_commit(&MPI_MEGABYTE));
         assert(break_msg_size <= max_int_size);
         assert(break_msg_size >= static_cast<size_t>(mega));
+        const char* env = std::getenv("TTOR_THROTTLE_SLEEP");
+        if(env != nullptr) {
+            sleep_time_us = atoi(env);
+            assert(sleep_time_us >= 0);
+            if(verb > 1) printf("[%3d] sleeping for %zd us\n", my_rank, sleep_time_us);
+        } else {
+            sleep_time_us = 0;
+        }
     }
     
 void Communicator::set_logger(Logger *logger_)
@@ -380,6 +391,9 @@ void Communicator::progress()
     probe_Irecv_headers();
     test_process_Ircvd_headers_Irecv_bodies();
     test_process_bodies();
+    if(sleep_time_us > 0) {
+        std::this_thread::sleep_for(std::chrono::microseconds(sleep_time_us));
+    }
 }
 
 // Blocking versions

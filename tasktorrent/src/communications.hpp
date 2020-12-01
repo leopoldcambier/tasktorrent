@@ -64,6 +64,7 @@ private:
     std::atomic<int> messages_processed; // received and processed messages
     MPI_Datatype MPI_MEGABYTE; // used to send large message larger than 4GB
     const size_t break_msg_size; // really mainly used for testing, where we make message artificially smaller, so we can actually test them
+    size_t sleep_time_us;
 
     /**
      * We have different channels for different kinds of messages
