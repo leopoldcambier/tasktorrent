@@ -712,10 +712,10 @@ int main(int argc, const char **argv)
         ("nprows", "Number of processors accross rows", cxxopts::value<int>()->default_value("1"))
         ("npcols", "Number of processors accross columns", cxxopts::value<int>()->default_value(comm_size_str.c_str()))
         ("kind", "Priority kind", cxxopts::value<int>()->default_value("0"))
-        ("log", "Enable logging")
-        ("depslog", "Enable dependency logging")
-        ("notest", "Disable testing")
-        ("accumulate", "Accumulate block GEMMs in parallel")
+        ("log", "Enable logging", cxxopts::value<bool>()->default_value("false"))
+        ("depslog", "Enable dependency logging", cxxopts::value<bool>()->default_value("false"))
+        ("test", "Test or not", cxxopts::value<bool>()->default_value("true"))
+        ("accumulate", "Accumulate block GEMMs in parallel", cxxopts::value<bool>()->default_value("false"))
         ("upper_block_size", "Upper block size", cxxopts::value<int>()->default_value("-1"));
     auto result = options.parse(argc, argv);
 
@@ -728,7 +728,7 @@ int main(int argc, const char **argv)
     const PrioKind kind = (PrioKind) result["kind"].as<int>();
     const bool log = result["log"].as<bool>();
     const bool depslog = result["depslog"].as<bool>();
-    const bool test = ! result["notest"].as<bool>();
+    const bool test = result["test"].as<bool>();
     const bool accumulate = result["accumulate"].as<bool>();
     const int upper_block_size = (result["upper_block_size"].as<int>() == -1 ? block_size : result["upper_block_size"].as<int>());
 

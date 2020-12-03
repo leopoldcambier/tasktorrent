@@ -227,7 +227,7 @@ void gemm(const int matrix_size, const int block_size, const int n_threads, int 
     }
 }
 
-int main(int argc, char **argv)
+int main(int argc, const char **argv)
 {
     int req = MPI_THREAD_FUNNELED;
     int prov = -1;
@@ -236,49 +236,47 @@ int main(int argc, char **argv)
 
     assert(prov == req);
 
-    int N = 128;
-    int Nt = 8;
-    int n_threads = 1;
-    int verb = 0;
-    bool test = true;
-    std::string logfile = "";
-    int nprows = 1;
-    int npcols = 1;
-    bool use_large = true;
+    std::stringstream sstr;
+    sstr << ttor::comm_size();
+    const std::string comm_size_str = sstr.str();
 
-    if (argc >= 2)
-    {
-        N = atoi(argv[1]);
-        assert(N > 0);
+    cxxopts::Options options("2d_gemm", "2D dense gemm using TaskTorrent");
+    options.add_options()
+        ("help", "Print help")
+        ("n_threads", "Number of threads", cxxopts::value<int>()->default_value("1"))
+        ("verb", "Verbosity level", cxxopts::value<int>()->default_value("0"))
+        ("block_size", "Block size", cxxopts::value<int>()->default_value("8"))
+        ("matrix_size", "Total matrix size", cxxopts::value<int>()->default_value("128"))
+        ("nprows", "Number of processors accross rows", cxxopts::value<int>()->default_value("1"))
+        ("npcols", "Number of processors accross columns", cxxopts::value<int>()->default_value(comm_size_str.c_str()))
+        ("test", "Test or not", cxxopts::value<bool>()->default_value("true"))
+        ("use_large", "Use large active messages", cxxopts::value<bool>()->default_value("true"));
+    auto result = options.parse(argc, argv);
+
+    const int n_threads = result["n_threads"].as<int>();
+    const int verb = result["verb"].as<int>();
+    const int block_size = result["block_size"].as<int>();
+    const int matrix_size = result["matrix_size"].as<int>();
+    const int nprows = result["nprows"].as<int>();
+    const int npcols = result["npcols"].as<int>();
+    const bool test = result["test"].as<bool>();
+    const bool use_large = result["use_large"].as<bool>();
+
+    assert(block_size > 0);
+    assert(matrix_size > 0);
+    assert(n_threads > 0);
+    assert(verb >= 0);
+    assert(nprows >= 0);
+    assert(npcols >= 0);
+
+    if (result.count("help")) {
+        std::cout << options.help({"", "Group"}) << endl;
+        exit(0);
     }
-    
-    if (argc >= 3) {
-        Nt = atoi(argv[2]);
-        assert(Nt > 0);
-        assert(Nt <= N);
-    }
+    if(ttor::comm_rank() == 0) printf("Arguments: block_size %d\nmatrix_size %d\nn_threads %d\nverb %d\nnprows %d\nnpcols %d\ntest %d\nuse_large %d\n", 
+        block_size, matrix_size, n_threads, verb, nprows, npcols, test, use_large);
 
-    if (argc >= 4) {
-        n_threads = atoi(argv[3]);
-        assert(n_threads > 0);
-    }
-
-    if (argc >= 6) {
-        nprows = atoi(argv[4]);
-        npcols = atoi(argv[5]);
-    }
-
-    if (argc >= 7) {
-        test = static_cast<bool>(atoi(argv[6]));
-    }
-
-    if (argc >= 8) {
-        use_large = static_cast<bool>(atoi(argv[7]));
-    }
-
-    if(ttor::comm_rank() == 0) printf("Usage: ./2d_gemm matrix_size block_size n_threads nprows npcols test use_large\n");
-
-    gemm(N, Nt, n_threads, nprows, npcols, test, use_large);
+    gemm(matrix_size, block_size, n_threads, nprows, npcols, test, use_large);
 
     MPI_Finalize();
 }

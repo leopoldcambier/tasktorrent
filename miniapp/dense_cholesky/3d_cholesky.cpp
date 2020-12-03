@@ -18,6 +18,7 @@
 #include <set>
 #include <mpi.h>
 #include <string>
+#include <cxxopts.hpp>
 
 using namespace std;
 using namespace Eigen;
@@ -510,56 +511,58 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
     }
 }
 
-int main(int argc, char **argv)
+int main(int argc, const char **argv)
 {
+
     int req = MPI_THREAD_FUNNELED;
     int prov = -1;
+
     MPI_Init_thread(NULL, NULL, req, &prov);
-    assert(prov == req);    
-    int n_threads = 2;
-    int verb = 0; // Can be changed to vary the verbosity of the messages
-    int block_size = 5;
-    int num_blocks = 10;
-    int npcols = 1;
-    int nprows = ttor::comm_size();
-    PrioKind prio = PrioKind::no;
-    int log = 0;
-    int debug = 0;
-    if (argc >= 2)
-    {
-        block_size = atoi(argv[1]);
-        assert(block_size > 0);
+
+    assert(prov == req);
+
+    std::stringstream sstr;
+    sstr << comm_size();
+    const std::string comm_size_str = sstr.str();
+
+    cxxopts::Options options("2d_cholesky", "2D dense cholesky using TaskTorrent");
+    options.add_options()
+        ("help", "Print help")
+        ("n_threads", "Number of threads", cxxopts::value<int>()->default_value("2"))
+        ("verb", "Verbosity level", cxxopts::value<int>()->default_value("0"))
+        ("block_size", "Block size", cxxopts::value<int>()->default_value("5"))
+        ("num_blocks", "Number of blocks", cxxopts::value<int>()->default_value("10"))
+        ("nprows", "Number of processors accross rows", cxxopts::value<int>()->default_value("1"))
+        ("npcols", "Number of processors accross columns", cxxopts::value<int>()->default_value(comm_size_str.c_str()))
+        ("kind", "Priority kind", cxxopts::value<int>()->default_value("0"))
+        ("log", "Enable logging", cxxopts::value<bool>()->default_value("false"))
+        ("debug", "Debug or not", cxxopts::value<bool>()->default_value("false"));
+    auto result = options.parse(argc, argv);
+
+    const int n_threads = result["n_threads"].as<int>();
+    const int verb = result["verb"].as<int>();
+    const int block_size = result["block_size"].as<int>();
+    const int num_blocks = result["num_blocks"].as<int>();
+    const int nprows = result["nprows"].as<int>();
+    const int npcols = result["npcols"].as<int>();
+    const PrioKind prio = (PrioKind)(result["kind"].as<int>());
+    const bool log = result["log"].as<bool>();
+    const bool debug = result["debug"].as<bool>();
+
+    assert(block_size > 0);
+    assert(num_blocks > 0);
+    assert(n_threads > 0);
+    assert(verb >= 0);
+    assert(nprows >= 0);
+    assert(npcols >= 0);
+
+    if (result.count("help")) {
+        std::cout << options.help({"", "Group"}) << endl;
+        exit(0);
     }
-    if (argc >= 3)
-    {
-        num_blocks = atoi(argv[2]);
-        assert(num_blocks > 0);
-    }
-    if (argc >= 5) {
-        n_threads=atoi(argv[3]);
-        assert(n_threads > 0);
-        verb=atoi(argv[4]);
-        assert(verb >= 0);
-    }
-    if (argc >= 7) {
-        npcols=atoi(argv[5]);
-        assert(npcols > 0);
-        nprows=atoi(argv[6]);
-        assert(nprows > 0);
-    }
-    if (argc >= 8) {
-        prio=(PrioKind)atoi(argv[7]);
-        assert(prio >= 0 && prio < 4);
-    }
-    if (argc >= 9) {
-        log = atoi(argv[9]);
-        assert(log == 0 || log == 1);
-    }
-    if (argc >= 10) {
-        debug = atoi(argv[10]);
-        assert(debug == 0 || debug == 1);
-    }
-    if(comm_rank() == 0) printf("Usage: ./3d_cholesky block_size num_blocks n_threads verb nprows npcols priority log debug\n");
+    if(comm_rank() == 0) printf("Arguments: block_size (size of blocks) %d\nnum_blocks (# of blocks) %d\nn_threads %d\nverb %d\nnprows %d\nnpcols %d\nprio %d\nlog %d\ndebug %d\n", 
+        block_size, num_blocks, n_threads, verb, nprows, npcols, (int)prio, log, debug);
+
     cholesky3d(n_threads, verb, block_size, num_blocks, npcols, nprows, prio, log, debug);  
     MPI_Finalize();
 }

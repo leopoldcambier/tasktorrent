@@ -1,0 +1,11 @@
+MPICXX          = mpiicpc
+CFLAGS          = -DUSE_MKL -DEIGEN_USE_MKL_ALL -qopenmp
+INCLUDE         =
+LIBS            =
+
+EIGEN_INC       = -I${HOME}/Softwares/eigen
+BLAS_INC        = -I${MKLROOT}/include
+BLAS_SEQ_LIBS   = -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_lp64.a ${MKLROOT}/lib/intel64/libmkl_sequential.a ${MKLROOT}/lib/intel64/libmkl_core.a -Wl,--end-group -lpthread -lm -ldl
+BLAS_PAR_LIBS   = -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_lp64.a ${MKLROOT}/lib/intel64/libmkl_intel_thread.a ${MKLROOT}/lib/intel64/libmkl_core.a -Wl,--end-group -liomp5 -lpthread -lm -ldl
+SCOTCH_INC      = -I${SCOTCH_INC}
+SCOTCH_LIBS     = -lscotch -lscotcherr -L${SCOTCH_LIB} -lbz2 -lz

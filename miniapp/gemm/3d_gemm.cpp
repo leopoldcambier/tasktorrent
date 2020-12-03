@@ -391,7 +391,7 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
     }
 }
 
-int main(int argc, char **argv)
+int main(int argc, const char **argv)
 {
     int req = MPI_THREAD_FUNNELED;
     int prov = -1;
@@ -400,50 +400,37 @@ int main(int argc, char **argv)
 
     assert(prov == req);
 
-    int N = 128;
-    int Nt = 8;
-    int n_threads = 1;
-    int verb = 0;
-    bool test = false;
-    std::string logfile = "";
+    cxxopts::Options options("3d_gemm", "3D dense gemm using TaskTorrent");
+    options.add_options()
+        ("help", "Print help")
+        ("n_threads", "Number of threads", cxxopts::value<int>()->default_value("1"))
+        ("verb", "Verbosity level", cxxopts::value<int>()->default_value("0"))
+        ("block_size", "Block size", cxxopts::value<int>()->default_value("8"))
+        ("matrix_size", "Total matrix size", cxxopts::value<int>()->default_value("128"))
+        ("logfile", "TTOR logging file", cxxopts::value<std::string>()->default_value(""))
+        ("test", "Test or not", cxxopts::value<bool>()->default_value("true"));
+    auto result = options.parse(argc, argv);
 
-    if (argc >= 2)
-    {
-        N = atoi(argv[1]);
-        assert(N > 0);
+    const int n_threads = result["n_threads"].as<int>();
+    const int verb = result["verb"].as<int>();
+    const int block_size = result["block_size"].as<int>();
+    const int matrix_size = result["matrix_size"].as<int>();
+    const bool test = result["test"].as<bool>();
+    const std::string logfile = result["logfile"].as<std::string>();
+
+    assert(block_size > 0);
+    assert(matrix_size > 0);
+    assert(n_threads > 0);
+    assert(verb >= 0);
+
+    if (result.count("help")) {
+        std::cout << options.help({"", "Group"}) << endl;
+        exit(0);
     }
-    
-    if (argc >= 3) {
-        Nt = atoi(argv[2]);
-        assert(Nt > 0);
-        assert(Nt <= N);
-    }
+    if(ttor::comm_rank() == 0) printf("Arguments: block_size %d\nmatrix_size %d\nn_threads %d\nverb %d\ntest %d\nlogfile %s\n", 
+        block_size, matrix_size, n_threads, verb, test, logfile.c_str());
 
-    if (argc >= 4) {
-        n_threads = atoi(argv[3]);
-        assert(n_threads > 0);
-    }
-
-    if (argc >= 5) {
-        logfile = argv[4];
-        if(logfile == string("NONE")) {
-            logfile = "";
-        }
-    }
-
-    if (argc >= 6) {
-        verb = atoi(argv[5]);
-        assert(verb >= 0);
-    }
-
-    if (argc >= 7) {
-        test = static_cast<bool>(atoi(argv[6]));
-    }
-
-    if(ttor::comm_rank() == 0) printf("Usage: ./3d_gemm matrix_size block_size n_threads logfile verb test\n");
-    if(ttor::comm_rank() == 0) printf("Arguments: N (global matrix size) %d, Nt (smallest block size) %d, n_threads %d, logfile %s, verb %d, test %d\n", N, Nt, n_threads, logfile.c_str(), verb, test);
-
-    gemm(N, Nt, n_threads, logfile, verb, test);
+    gemm(matrix_size, block_size, n_threads, logfile, verb, test);
 
     MPI_Finalize();
 }

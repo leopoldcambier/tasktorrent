@@ -15,6 +15,7 @@
 #include <memory>
 #include <set>
 #include <mpi.h>
+#include <cxxopts.hpp>
 
 typedef array<int, 2> int2;
 typedef array<int, 3> int3;

@@ -1,0 +1,11 @@
+MPICXX          = mpicxx
+CFLAGS          = 
+INCLUDE         =
+LIBS            =
+
+EIGEN_INC       = -I/usr/local/Cellar/eigen/3.3.7/include/eigen3/
+BLAS_INC        = -I/usr/local/opt/openblas/include
+BLAS_SEQ_LIBS   = -L/usr/local/opt/openblas/lib -lblas -llapack
+BLAS_PAR_LIBS   = -L/usr/local/opt/openblas/lib -lblas -llapack
+SCOTCH_INC      = -I${HOME}/Softwares/scotch_6.0.9/include
+SCOTCH_LIBS     = -L${HOME}/Softwares/scotch_6.0.9/lib -lscotch -lscotcherr
