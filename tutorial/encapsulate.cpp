@@ -155,11 +155,6 @@ struct VeryComplexAlgorithm {
     }
 };
 
-struct Matrix {
-    int nrows;
-    int ncols;
-};
-
 void algorithm()
 {
     const int rank = comm_rank();
