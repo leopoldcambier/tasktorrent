@@ -272,7 +272,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
 
     // Send a potrf'ed pivot A(k,k) and trigger trsms below requiring A(k,k)
     auto am_trsm = comm->make_large_active_msg( 
-            [&](int& j) {
+            [&](const int& j) {
                 int off = (nprows + rank_row - block_2_rank_row(j,j)) % nprows;
                 assert(off > 0); // Can't be me
                 assert(off < nprows);
@@ -281,11 +281,11 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
                     trsm.fulfill_promise({i,j});
                 }
             },
-            [&](int& j) {
+            [&](const int& j) {
                 blocks[j+j*num_blocks].resize(block_sizes[j],block_sizes[j]);
                 return blocks[j+j*num_blocks].data();
             },
-            [&](int&){
+            [&](const int&){
                 return;
             });
 
@@ -312,7 +312,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
                 trsm.fulfill_promise({i,j});
             }
             // Send to other procs in column
-            auto Ljjv = view<double>(blocks[j+j*num_blocks].data(), block_sizes[j]*block_sizes[j]);
+            auto Ljjv = make_view<double>(blocks[j+j*num_blocks].data(), block_sizes[j]*block_sizes[j]);
             for(int p = 0; p < nprows; p++) {
                 if(j+p >= num_blocks) break;
                 int dest = block_2_rank(j+p,j);
@@ -341,7 +341,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
 
     // Sends a panel (trsm'ed block A(i,j)) and trigger gemms requiring A(i,j)
     auto am_gemm = comm->make_large_active_msg(
-        [&](int& i, int& j) {
+        [&](const int& i, const int& j) {
             if(block_2_rank_row(i,j) == rank_row) {
                 const int off_right = (npcols + rank_col - block_2_rank_col(i,j)) % npcols;
                 assert(off_right > 0); // Can't be me
@@ -363,11 +363,11 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
                 }
             }
         },
-        [&](int& i, int& j) {
+        [&](const int& i, const int& j) {
             blocks[i+j*num_blocks].resize(block_sizes[i],block_sizes[j]);
             return blocks[i+j*num_blocks].data();
         },
-        [&](int& i, int& j) {
+        [&](const int& i, const int& j) {
             return;
         });
 
@@ -409,7 +409,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
                 }
             }
             // Remote
-            auto Lijv = view<double>(blocks[i+j*num_blocks].data(), block_sizes[i]*block_sizes[j]);
+            auto Lijv = make_view<double>(blocks[i+j*num_blocks].data(), block_sizes[i]*block_sizes[j]);
             std::set<int> dests;
             for (int c = 0; c < npcols; c++) {
                 if(j+c >= num_blocks) break;
@@ -630,7 +630,7 @@ void cholesky(const int n_threads, const int verb, const int block_size, const i
         int n_received = 0;
         int n_expected = 0;
         auto comm = ttor::make_communicator_world(verb);
-        auto am = comm->make_active_msg([&](ttor::view<double>& A, int& ii, int& jj) {
+        auto am = comm->make_active_msg([&](const ttor::view<double>& A, const int& ii, const int& jj) {
             blocks[ii+jj*num_blocks] = make_from_view(A, block_size);
             n_received++;
         });

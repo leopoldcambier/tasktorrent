@@ -167,7 +167,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
     }
     // Create active message
     auto am_trsm = comm->make_large_active_msg( 
-        [&](int& j) {
+        [&](const int& j) {
                 int offset = ((j + 1) / nprows + (((j + 1) % nprows) > rank_2d[0])) * nprows + rank_2d[0];
                 for(int i = offset; i < num_blocks; i = i + nprows) {
                     if (debug) printf("Fulfilling trsm (%d, %d) on rank (%d, %d)\n", i, j, rank_2d[0], rank_2d[1]);
@@ -175,15 +175,15 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
                     trsm.fulfill_promise({i,j});
                 }
             },
-            [&](int& j){
+            [&](const int& j){
                 return blocks[j+j*num_blocks].data();
             },
-            [&](int& j){
+            [&](const int& j){
                 return;
             });
 
     auto am_gemm = comm->make_large_active_msg(
-        [&](int& i, int& k) {
+        [&](const int& i, const int& k) {
             assert(k % q == rank_3d[2]);
             int offset_c = ((k + 1) / q + (((k + 1) % q) > rank_3d[1])) * q + rank_3d[1]; 
             if (i % q == rank_3d[0]) {
@@ -202,10 +202,10 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
                 }
             }
         },
-        [&](int& i, int& k) {
+        [&](const int& i, const int& k) {
             return blocks[i+k*num_blocks].data();
         },
-        [&](int& i, int& k) {
+        [&](const int& i, const int& k) {
             return;
         });
 
@@ -229,7 +229,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
                     }
                 }
                 else {
-                    auto Ljjv = view<double>(blocks[j+j*num_blocks].data(), block_size*block_size);
+                    auto Ljjv = make_view(blocks[j+j*num_blocks].data(), block_size*block_size);
                     am_trsm->send_large(r, Ljjv, j);
                 }
             }
@@ -288,7 +288,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
                         }
                     }
                     else {
-                        auto Lijv = view<double>(blocks[i + j * num_blocks].data(), block_size*block_size);
+                        auto Lijv = make_view(blocks[i + j * num_blocks].data(), block_size*block_size);
                         am_gemm->send_large(r, Lijv, i, j);
                     } 
                 }
@@ -318,13 +318,13 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
         });
    
     auto am_accu = comm->make_large_active_msg(
-        [&](int& i, int& j, int& from) {
+        [&](const int& i, const int& j, const int& from) {
             accu.fulfill_promise({from, i, j});
         },
-        [&](int& i, int& j, int& from){
+        [&](const int& i, const int& j, const int& from){
             return gemm_results[i+j*num_blocks].to_accumulate[from]->data();
         },
-        [&](int& i, int& j, int& from){
+        [&](const int& i, const int& j, const int& from){
             return; 
         });
     
@@ -359,7 +359,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
                 }
                 else {
                     int kk = rank_3d[2];
-                    auto Lij = view<double>(blocks[i+j*num_blocks].data(), block_size*block_size);
+                    auto Lij = make_view(blocks[i+j*num_blocks].data(), block_size*block_size);
                     if (debug) printf("gemm (%d, %d, %d) Sending accumu (%d, %d, %d) to rank %d, %d\n", k, i, j, rank_3d[2], i, j, dest % nprows, dest / nprows);
                     am_accu->send_large(dest, Lij, i, j, kk);
                 }
@@ -453,7 +453,7 @@ void cholesky3d(int n_threads, int verb, int block_size, int num_blocks, int npc
         int n_received = 0;
         int n_expected = 0;
         auto comm = ttor::make_communicator_world(verb);
-        auto am = comm->make_active_msg([&](ttor::view<double>& A, int& ii, int& jj) {
+        auto am = comm->make_active_msg([&](const ttor::view<double>& A, const int& ii, const int& jj) {
             blocks[ii+jj*num_blocks] = make_from_view(A, block_size);
             n_received++;
         });

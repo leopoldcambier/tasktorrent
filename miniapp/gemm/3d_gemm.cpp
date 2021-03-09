@@ -113,19 +113,19 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
      * Send
      **/
 
-    auto send_Aij_am = comm->make_large_active_msg([&](int& sub_i, int& sub_j) {
+    auto send_Aij_am = comm->make_large_active_msg([&](const int& sub_i, const int& sub_j) {
         bcst_Aij.fulfill_promise({sub_i, sub_j});
-    }, [&](int& sub_i, int& sub_j) {
+    }, [&](const int& sub_i, const int& sub_j) {
         A_ijk[sub_i][sub_j].resize(Nt, Nt);
         return A_ijk[sub_i][sub_j].data();
-    }, [&](int& sub_i, int& sub_j){});
+    }, [&](const int& sub_i, const int& sub_j){});
 
-    auto send_Bij_am = comm->make_large_active_msg([&](int& sub_i, int& sub_j) {
+    auto send_Bij_am = comm->make_large_active_msg([&](const int& sub_i, const int& sub_j) {
         bcst_Bij.fulfill_promise({sub_i, sub_j});
-    }, [&](int& sub_i, int& sub_j) {
+    }, [&](const int& sub_i, const int& sub_j) {
         B_ijk[sub_i][sub_j].resize(Nt, Nt);
         return B_ijk[sub_i][sub_j].data();
-    }, [&](int& sub_i, int& sub_j){});
+    }, [&](const int& sub_i, const int& sub_j){});
 
     // (i,j,0) sends A_ij to (i,j,j) for all i,j
     send_Aij.set_task([&](int2 sub_ij){
@@ -179,23 +179,23 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
      * Broadcast
      **/
 
-    auto bcst_Aij_am = comm->make_large_active_msg([&](int &sub_i, int &sub_j) {
+    auto bcst_Aij_am = comm->make_large_active_msg([&](const int &sub_i, const int &sub_j) {
         for(int k = 0; k < n; k++) {
             gemm_Cijk.fulfill_promise({sub_i, k, sub_j});
         }
-    }, [&](int& sub_i, int& sub_j) {
+    }, [&](const int &sub_i, const int &sub_j) {
         A_ijk[sub_i][sub_j].resize(Nt, Nt);
         return A_ijk[sub_i][sub_j].data();
-    }, [&](int& sub_i, int& sub_j) {});
+    }, [&](const int &sub_i, const int &sub_j) {});
 
-    auto bcst_Bij_am = comm->make_large_active_msg([&](int &sub_i, int &sub_j) {
+    auto bcst_Bij_am = comm->make_large_active_msg([&](const int &sub_i, const int &sub_j) {
         for(int k = 0; k < n; k++) {
             gemm_Cijk.fulfill_promise({k, sub_j, sub_i});
         }
-    }, [&](int& sub_i, int& sub_j) {
+    }, [&](const int &sub_i, const int &sub_j) {
         B_ijk[sub_i][sub_j].resize(Nt, Nt);
         return B_ijk[sub_i][sub_j].data();
-    }, [&](int& sub_i, int& sub_j) {});
+    }, [&](const int &sub_i, const int &sub_j) {});
 
     // (i,j,j) sends A_ij along j to all (i,*,j) for all i,j
     bcst_Aij.set_task([&](int2 sub_ij){
@@ -254,12 +254,12 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
      * GEMM
      **/
 
-    auto gemm_Cijk_am = comm->make_large_active_msg([&](int &sub_i, int &sub_j, int& from) {
+    auto gemm_Cijk_am = comm->make_large_active_msg([&](const int &sub_i, const int &sub_j, const int& from) {
         accu_Cij.fulfill_promise({sub_i, sub_j, from});
-    }, [&](int& sub_i, int& sub_j, int& from) {
+    }, [&](const int& sub_i, const int& sub_j, const int& from) {
         C_ijk_accu[sub_i][sub_j][from].resize(Nt, Nt);
         return C_ijk_accu[sub_i][sub_j][from].data();
-    }, [&](int& sub_i, int& sub_j, int& from) {});
+    }, [&](const int& sub_i, const int& sub_j, const int& from) {});
 
     // (i,j,k) compute C_ijk = A_ik * B_kj
     gemm_Cijk.set_task([&](int3 sub_ijk){
@@ -361,7 +361,7 @@ void gemm(const int N, const int Nt, const int n_threads, std::string logfile, c
         int n_expected = (rank == 0 ? n * n * n_ranks_1d * n_ranks_1d : 0);
         Eigen::MatrixXd C_test = Eigen::MatrixXd::Zero(N, N);
         auto comm = ttor::make_communicator_world(verb);
-        auto am = comm->make_active_msg([&](ttor::view<double>& A, int& rank_i_from, int& rank_j_from, int& sub_i, int& sub_j){
+        auto am = comm->make_active_msg([&](const ttor::view<double>& A, const int& rank_i_from, const int& rank_j_from, const int& sub_i, const int& sub_j){
             C_test.block(rank_i_from * Nr + sub_i * Nt, rank_j_from * Nr + sub_j * Nt, Nt, Nt) = make_from_view(A, Nt);
             n_received++;
         });

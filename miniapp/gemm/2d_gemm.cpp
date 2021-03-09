@@ -53,18 +53,18 @@ void gemm(const int matrix_size, const int block_size, const int n_threads, int 
      * Send
      **/
 
-    auto send_Aij_am_large = comm->make_large_active_msg([&](int& i, int& j) {
+    auto send_Aij_am_large = comm->make_large_active_msg([&](const int& i, const int& j) {
         assert(block_2_rank(i,j) != rank);
         for(int k = rank_j; k < num_blocks; k += npcols) {
             assert(block_2_rank(i,k) == rank);
             gemm_Cikj.fulfill_promise({i, j, k});
         }
-    }, [&](int& i, int& j) {
+    }, [&](const int& i, const int& j) {
         A_ij[i + j*num_blocks].resize(block_size, block_size);
         return A_ij[i + j*num_blocks].data();
-    }, [&](int& i, int& j){});
+    }, [&](const int& i, const int& j){});
 
-    auto send_Aij_am = comm->make_active_msg([&](ttor::view<double>& Aij, int& i, int& j) {
+    auto send_Aij_am = comm->make_active_msg([&](const ttor::view<double>& Aij, const int& i, const int& j) {
         assert(block_2_rank(i,j) != rank);
         A_ij[i + j*num_blocks].resize(block_size, block_size);
         copy_from_view(&A_ij[i + j*num_blocks], Aij);
@@ -74,18 +74,18 @@ void gemm(const int matrix_size, const int block_size, const int n_threads, int 
         }
     });
 
-    auto send_Bij_am_large = comm->make_large_active_msg([&](int& i, int& j) {
+    auto send_Bij_am_large = comm->make_large_active_msg([&](const int& i, const int& j) {
         assert(block_2_rank(i,j) != rank);
         for(int k = rank_i; k < num_blocks; k += nprows) {
             assert(block_2_rank(k,j) == rank);
             gemm_Cikj.fulfill_promise({k, i, j});
         }
-    }, [&](int& i, int& j) {
+    }, [&](const int& i, const int& j) {
         B_ij[i + j*num_blocks].resize(block_size, block_size);
         return B_ij[i + j*num_blocks].data();
-    }, [&](int& i, int& j){});
+    }, [&](const int& i, const int& j){});
 
-    auto send_Bij_am = comm->make_active_msg([&](ttor::view<double>& Bij, int& i, int& j) {
+    auto send_Bij_am = comm->make_active_msg([&](const ttor::view<double>& Bij, const int& i, const int& j) {
         assert(block_2_rank(i,j) != rank);
         B_ij[i + j*num_blocks].resize(block_size, block_size);
         copy_from_view(&B_ij[i + j*num_blocks], Bij);
@@ -198,7 +198,7 @@ void gemm(const int matrix_size, const int block_size, const int n_threads, int 
         int n_expected = (rank == 0 ? num_blocks * num_blocks : 0);
         Eigen::MatrixXd C_test = Eigen::MatrixXd::Zero(matrix_size, matrix_size);
         auto comm = ttor::make_communicator_world(verb);
-        auto am = comm->make_active_msg([&](ttor::view<double>& A, int& i, int& j) {
+        auto am = comm->make_active_msg([&](const ttor::view<double>& A, const int& i, const int& j) {
             C_test.block(i * block_size, j * block_size, block_size, block_size) = make_from_view(A, block_size);
             n_received++;
         });
