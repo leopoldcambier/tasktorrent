@@ -39,7 +39,7 @@ struct scoped_timer {
 };
 
 ttor::view<double> make_view(Eigen::MatrixXd* A) {
-    return ttor::view<double>(A->data(), A->size());
+    return ttor::make_view(A->data(), A->size());
 }
 
 Eigen::MatrixXd make_from_view(ttor::view<double> A, int nrows) {
